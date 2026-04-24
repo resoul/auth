@@ -14,19 +14,10 @@ BUILD_CMD = go build \
 	-buildvcs=false \
 	-ldflags "$(BUILD_LD_FLAGS)$(2)"
 
-build: studio studio-arm64 studio-darwin-arm64
+build: studio
 
 studio: deps
 	CGO_ENABLED=0 $(call BUILD_CMD,$(@),)
-
-studio-x86: deps
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(call BUILD_CMD,$(@),)
-
-studio-arm64: deps
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 $(call BUILD_CMD,$(@),)
-
-studio-darwin-arm64: deps
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 $(call BUILD_CMD,$(@),)
 
 deps: ## Install dependencies.
 	@go mod download
