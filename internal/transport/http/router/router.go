@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/resoul/api/internal/config"
+	"github.com/resoul/api/internal/domain"
 	"github.com/resoul/api/internal/transport/http/handlers"
 	"github.com/resoul/api/internal/transport/http/middleware"
 	"github.com/resoul/api/internal/transport/http/utils"
@@ -12,10 +13,10 @@ import (
 	"gorm.io/gorm"
 )
 
-func New(cfg *config.Config, db *gorm.DB, authClient auth.Client) *gin.Engine {
+func New(cfg *config.Config, db *gorm.DB, authClient auth.Client, profileSvc domain.ProfileService) *gin.Engine {
 	r := gin.Default()
 
-	profileHandler := handlers.NewProfileHandler()
+	profileHandler := handlers.NewProfileHandler(profileSvc)
 
 	api := r.Group("/api/v1")
 	{
@@ -24,17 +25,16 @@ func New(cfg *config.Config, db *gorm.DB, authClient auth.Client) *gin.Engine {
 			utils.RespondOK(c, gin.H{"status": "ok"})
 		})
 
-		// Authenticated routes — Auth middleware validates Bearer token
-		// and injects *types.User into the context for all handlers below.
+		// Authenticated routes.
 		authed := api.Group("/", middleware.Auth(authClient))
 		{
 			authed.GET("/user/me", profileHandler.GetMe)
+			authed.PATCH("/user/profile", profileHandler.UpdateProfile)
 		}
 	}
 
-	// 404 fallback.
 	r.NoRoute(func(c *gin.Context) {
-		utils.RespondError(c, http.StatusNotFound, "not_found", "The requested resource does not exist")
+		utils.RespondError(c, http.StatusNotFound, "not_found", "the requested resource does not exist")
 	})
 
 	return r
