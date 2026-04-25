@@ -1,20 +1,23 @@
 package middleware
 
 import (
+	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/resoul/api/internal/transport/http/utils"
-	"github.com/supabase-community/auth-go"
-	"net/http"
 )
 
 const ContextKeyUser = "user"
 
-// Auth validates the Bearer token from the Authorization header using Supabase Auth.
-// On success it injects *auth.User into the Gin context under ContextKeyUser.
-// On failure it aborts with 401 Unauthorized.
-func Auth(authClient auth.Client) gin.HandlerFunc {
+type AuthUser struct {
+	ID    string
+	Email string
+	Role  string
+}
+
+func Auth(jwtSecret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		token, ok := bearerToken(c)
 		if !ok {
@@ -23,11 +26,30 @@ func Auth(authClient auth.Client) gin.HandlerFunc {
 			return
 		}
 
-		user, err := authClient.WithToken(token).GetUser()
-		if err != nil {
+		parsed, err := jwt.Parse(token, func(t *jwt.Token) (interface{}, error) {
+			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, jwt.ErrSignatureInvalid
+			}
+			return []byte(jwtSecret), nil
+		})
+
+		if err != nil || !parsed.Valid {
 			utils.RespondError(c, http.StatusUnauthorized, "unauthorized", "Invalid or expired token")
 			c.Abort()
 			return
+		}
+
+		claims, ok := parsed.Claims.(jwt.MapClaims)
+		if !ok {
+			utils.RespondError(c, http.StatusUnauthorized, "unauthorized", "Invalid token claims")
+			c.Abort()
+			return
+		}
+
+		user := &AuthUser{
+			ID:    claims["sub"].(string),
+			Email: claims["email"].(string),
+			Role:  claims["role"].(string),
 		}
 
 		c.Set(ContextKeyUser, user)
