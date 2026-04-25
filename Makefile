@@ -1,12 +1,7 @@
 .PHONY: all build deps image migrate test vet sec vulncheck format unused release
 CHECK_FILES ?= ./...
 
-ifdef RELEASE_VERSION
-	VERSION=v$(RELEASE_VERSION)
-else
-	VERSION=$(shell git describe --tags)
-endif
-
+VERSION=v0.0.1
 BUILD_VERSION_PKG = github.com/resoul/api/internal/utilities
 BUILD_LD_FLAGS = -X $(BUILD_VERSION_PKG).Version=$(VERSION)
 BUILD_CMD = go build \
