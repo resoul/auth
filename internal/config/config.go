@@ -29,8 +29,9 @@ type ServerConfig struct {
 }
 
 type AuthConfig struct {
-	URL    string `envconfig:"URL" required:"true"`
-	APIKey string `envconfig:"API_KEY" required:"true"`
+	URL       string `envconfig:"URL" required:"true"`
+	APIKey    string `envconfig:"API_KEY" required:"true"`
+	JWTSecret string `envconfig:"JWT_SECRET" required:"true"`
 }
 
 func Init(ctx context.Context) *Config {
