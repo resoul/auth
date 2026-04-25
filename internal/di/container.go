@@ -6,10 +6,9 @@ import (
 	"time"
 
 	"github.com/resoul/api/internal/config"
-	infradb "github.com/resoul/api/internal/infrastructure/db"
 	"github.com/resoul/api/internal/domain"
+	infradb "github.com/resoul/api/internal/infrastructure/db"
 	"github.com/resoul/api/internal/service"
-	"github.com/supabase-community/auth-go"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -22,7 +21,6 @@ import (
 type Container struct {
 	Config         *config.Config
 	DB             *gorm.DB
-	Auth           auth.Client
 	ProfileService domain.ProfileService
 }
 
@@ -34,18 +32,12 @@ func NewContainer(ctx context.Context) (*Container, error) {
 		return nil, fmt.Errorf("open database: %w", err)
 	}
 
-	authClient := auth.New(cfg.Auth.URL, cfg.Auth.APIKey)
-
-	// Repositories
 	profileRepo := infradb.NewProfileRepository(db)
-
-	// Services
 	profileSvc := service.NewProfileService(profileRepo)
 
 	return &Container{
 		Config:         cfg,
 		DB:             db,
-		Auth:           authClient,
 		ProfileService: profileSvc,
 	}, nil
 }
