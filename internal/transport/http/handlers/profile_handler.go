@@ -5,9 +5,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/resoul/api/internal/domain"
-	"github.com/resoul/api/internal/transport/http/middleware"
+	"github.com/resoul/api/internal/middleware"
 	"github.com/resoul/api/internal/transport/http/utils"
-	"github.com/supabase-community/auth-go/types"
 )
 
 // ProfileResponse is the typed response payload for profile endpoints.
@@ -46,7 +45,7 @@ func (h *ProfileHandler) GetMe(c *gin.Context) {
 		return
 	}
 
-	profile, err := h.svc.GetOrCreate(c.Request.Context(), authUser.ID.String())
+	profile, err := h.svc.GetOrCreate(c.Request.Context(), authUser.ID)
 	if err != nil {
 		utils.RespondMapped(c, err)
 		return
@@ -72,7 +71,7 @@ func (h *ProfileHandler) UpdateProfile(c *gin.Context) {
 		return
 	}
 
-	profile, err := h.svc.Update(c.Request.Context(), authUser.ID.String(), inp)
+	profile, err := h.svc.Update(c.Request.Context(), authUser.ID, inp)
 	if err != nil {
 		utils.RespondMapped(c, err)
 		return
@@ -81,34 +80,24 @@ func (h *ProfileHandler) UpdateProfile(c *gin.Context) {
 	utils.RespondOK(c, toProfileResponse(authUser, profile))
 }
 
-// contextUser retrieves the *types.User injected by the Auth middleware.
-func contextUser(c *gin.Context) (*types.User, bool) {
+func contextUser(c *gin.Context) (*middleware.AuthUser, bool) {
 	raw, exists := c.Get(middleware.ContextKeyUser)
 	if !exists {
 		return nil, false
 	}
-
-	user, ok := raw.(*types.User)
+	user, ok := raw.(*middleware.AuthUser)
 	return user, ok
 }
 
-func toProfileResponse(u *types.User, p *domain.Profile) ProfileResponse {
-	resp := ProfileResponse{
+func toProfileResponse(u *middleware.AuthUser, p *domain.Profile) ProfileResponse {
+	return ProfileResponse{
 		ID:          p.ID,
 		UserID:      p.UserID,
 		Email:       u.Email,
-		Phone:       u.Phone,
 		Role:        u.Role,
 		DisplayName: p.DisplayName,
 		AvatarURL:   p.AvatarURL,
 		Bio:         p.Bio,
 		CreatedAt:   p.CreatedAt.String(),
 	}
-
-	if u.LastSignInAt != nil {
-		s := u.LastSignInAt.String()
-		resp.LastSignInAt = &s
-	}
-
-	return resp
 }
