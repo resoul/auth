@@ -1,0 +1,300 @@
+# promtool unit tests of alerts.yaml: `make test-alerts`.
+rule_files:
+  - alerts.yaml
+evaluation_interval: 1m
+
+tests:
+  - interval: 1m
+    name: availability
+    input_series:
+      - series: 'up{job="airlance-auth"}'
+        values: '1 1 0 0 0 0'
+      - series: 'airlance_auth_mail_queue_stats_up'
+        values: '1 1 1 0 0 0 0 0'
+    alert_rule_test:
+      - {eval_time: 3m, alertname: AirlanceAuthDown, exp_alerts: []}
+      - eval_time: 5m
+        alertname: AirlanceAuthDown
+        exp_alerts:
+          - exp_labels: {severity: critical, job: airlance-auth}
+            exp_annotations:
+              summary: "The service is not scraped"
+              description: "Prometheus cannot reach the metrics of the service for 2 minutes, so nobody can sign in."
+      - {eval_time: 4m, alertname: AirlanceAuthDatabaseUnreachable, exp_alerts: []}
+      - eval_time: 7m
+        alertname: AirlanceAuthDatabaseUnreachable
+        exp_alerts:
+          - exp_labels: {severity: critical}
+            exp_annotations:
+              summary: "The service cannot read its database"
+              description: "The queue statistics, read from PostgreSQL on every scrape, have failed for 2 minutes."
+
+  - interval: 1m
+    name: server errors fire only on a high share of real traffic
+    input_series:
+      # 60 requests a minute, 3 of them failing: 5%.
+      - series: 'airlance_auth_http_requests_total{route="POST /v1/native/auth/email/start",status_class="2xx"}'
+        values: '0+57x20'
+      - series: 'airlance_auth_http_requests_total{route="POST /v1/native/auth/email/start",status_class="5xx"}'
+        values: '0+3x20'
+      # Nearly idle service, all failing: below the traffic floor, so it stays quiet.
+      - series: 'airlance_auth_http_requests_total{route="GET /v1/me",status_class="5xx"}'
+        values: '0 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1'
+    alert_rule_test:
+      - {eval_time: 5m, alertname: AirlanceAuthServerErrors, exp_alerts: []}
+      - eval_time: 12m
+        alertname: AirlanceAuthServerErrors
+        exp_alerts:
+          - exp_labels: {severity: critical}
+            exp_annotations:
+              summary: "More than 2% of requests fail on the server side"
+              description: "The share of 5xx answers has been above 2% for 5 minutes at more than one request in ten seconds."
+
+  - interval: 1m
+    name: a few errors in busy traffic do not fire
+    input_series:
+      - series: 'airlance_auth_http_requests_total{route="POST /v1/native/auth/email/start",status_class="2xx"}'
+        values: '0+99x20'
+      - series: 'airlance_auth_http_requests_total{route="POST /v1/native/auth/email/start",status_class="5xx"}'
+        values: '0+1x20'
+    alert_rule_test:
+      - {eval_time: 15m, alertname: AirlanceAuthServerErrors, exp_alerts: []}
+
+  - interval: 1m
+    name: idle service with only failures stays below the traffic floor
+    input_series:
+      - series: 'airlance_auth_http_requests_total{route="GET /v1/me",status_class="5xx"}'
+        values: '0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19'
+    alert_rule_test:
+      - {eval_time: 15m, alertname: AirlanceAuthServerErrors, exp_alerts: []}
+
+  - interval: 1m
+    name: slow requests
+    input_series:
+      # Nine in ten answers are fast: the median is fine, the 95th percentile is not.
+      - series: 'airlance_auth_http_request_seconds_bucket{route="POST /x",le="0.5"}'
+        values: '0+54x20'
+      - series: 'airlance_auth_http_request_seconds_bucket{route="POST /x",le="1"}'
+        values: '0+54x20'
+      - series: 'airlance_auth_http_request_seconds_bucket{route="POST /x",le="2.5"}'
+        values: '0+60x20'
+      - series: 'airlance_auth_http_request_seconds_bucket{route="POST /x",le="+Inf"}'
+        values: '0+60x20'
+    alert_rule_test:
+      - {eval_time: 8m, alertname: AirlanceAuthSlowRequests, exp_alerts: []}
+      - eval_time: 18m
+        alertname: AirlanceAuthSlowRequests
+        exp_alerts:
+          - exp_labels: {severity: warning}
+            exp_annotations:
+              summary: "The 95th percentile of the answer time is above one second"
+              description: "Requests have been slow for 10 minutes; look at the database and at the mail queue first."
+
+  - interval: 1m
+    name: mail queue stuck
+    input_series:
+      - series: 'airlance_auth_mail_oldest_due_wait_seconds{quota_class="unknown"}'
+        values: '0 0 200 200 200 200 200 200 200'
+      - series: 'airlance_auth_mail_oldest_due_wait_seconds{quota_class="recognized"}'
+        values: '0 0 0 0 0 0 0 0 0'
+    alert_rule_test:
+      - {eval_time: 5m, alertname: AirlanceAuthMailQueueStuck, exp_alerts: []}
+      - eval_time: 8m
+        alertname: AirlanceAuthMailQueueStuck
+        exp_alerts:
+          - exp_labels: {severity: critical}
+            exp_annotations:
+              summary: "Sign-in emails wait more than two minutes"
+              description: "The oldest due email has waited over 120 seconds for 5 minutes. Without the email nobody signs in."
+
+  - interval: 1m
+    name: mail key unavailable fires at once, one event is enough
+    input_series:
+      - series: 'airlance_auth_mail_jobs_total{outcome="key_unavailable",quota_class="unknown"}'
+        values: '0 0 0 1 1 1 1'
+    alert_rule_test:
+      - {eval_time: 2m, alertname: AirlanceAuthMailKeyUnavailable, exp_alerts: []}
+      - eval_time: 4m
+        alertname: AirlanceAuthMailKeyUnavailable
+        exp_alerts:
+          - exp_labels: {severity: critical}
+            exp_annotations:
+              summary: "An email cannot be made because its OTP key is missing"
+              description: "The worker found a flow whose OTP key is not in the keyring. Fix the keyring; the jobs go out on a later attempt."
+
+  - interval: 1m
+    name: rejected mail needs a share and a volume
+    input_series:
+      # Two refused for every four sent, a minute after a minute: a third of the attempts.
+      - series: 'airlance_auth_mail_jobs_total{outcome="sent",quota_class="unknown"}'
+        values: '0+4x40'
+      - series: 'airlance_auth_mail_jobs_total{outcome="rejected",quota_class="unknown"}'
+        values: '0+2x40'
+      # Obsolete jobs (a flow that ended first) are not delivery attempts and must not dilute the share.
+      - series: 'airlance_auth_mail_jobs_total{outcome="obsolete",quota_class="unknown"}'
+        values: '0+50x40'
+    alert_rule_test:
+      - {eval_time: 3m, alertname: AirlanceAuthMailRejected, exp_alerts: []}
+      - eval_time: 30m
+        alertname: AirlanceAuthMailRejected
+        exp_alerts:
+          - exp_labels: {severity: warning}
+            exp_annotations:
+              summary: "A fifth of the delivery attempts are refused or given up"
+              description: "The mail server refuses recipients or the attempts run out. One bad address is normal; a share this high is not."
+
+  - interval: 1m
+    name: one rejected address among few mails is quiet
+    input_series:
+      - series: 'airlance_auth_mail_jobs_total{outcome="sent",quota_class="unknown"}'
+        values: '0 0 0 0 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1'
+      - series: 'airlance_auth_mail_jobs_total{outcome="rejected",quota_class="unknown"}'
+        values: '0 0 0 0 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1'
+    alert_rule_test:
+      - {eval_time: 12m, alertname: AirlanceAuthMailRejected, exp_alerts: []}
+
+  - interval: 1m
+    name: attempts that ran out count as refused too
+    input_series:
+      - series: 'airlance_auth_mail_jobs_total{outcome="sent",quota_class="unknown"}'
+        values: '0+4x40'
+      - series: 'airlance_auth_mail_jobs_total{outcome="exhausted",quota_class="unknown"}'
+        values: '0+2x40'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: AirlanceAuthMailRejected
+        exp_alerts:
+          - exp_labels: {severity: warning}
+            exp_annotations:
+              summary: "A fifth of the delivery attempts are refused or given up"
+              description: "The mail server refuses recipients or the attempts run out. One bad address is normal; a share this high is not."
+
+  - interval: 1m
+    name: mail retries
+    input_series:
+      - series: 'airlance_auth_mail_jobs_total{outcome="sent",quota_class="unknown"}'
+        values: '0+1x40'
+      - series: 'airlance_auth_mail_jobs_total{outcome="retried",quota_class="unknown"}'
+        values: '0+1x40'
+    alert_rule_test:
+      - {eval_time: 10m, alertname: AirlanceAuthMailRetries, exp_alerts: []}
+      - eval_time: 35m
+        alertname: AirlanceAuthMailRetries
+        exp_alerts:
+          - exp_labels: {severity: warning}
+            exp_annotations:
+              summary: "The mail server keeps failing temporarily"
+              description: "Over 30% of the delivery attempts need a retry for 10 minutes; codes arrive late."
+
+  - interval: 1m
+    name: a suspected clone fires at once and stays for the hour
+    input_series:
+      - series: 'airlance_auth_denied_total{operation="step_up",reason="clone_suspected"}'
+        values: '0 0 0 1 1 1 1'
+      - series: 'airlance_auth_denied_total{operation="login",reason="ceremony_failed"}'
+        values: '0 0 0 0 0 0 0'
+    alert_rule_test:
+      - {eval_time: 2m, alertname: AirlanceAuthPasskeyCloneSuspected, exp_alerts: []}
+      - eval_time: 4m
+        alertname: AirlanceAuthPasskeyCloneSuspected
+        exp_alerts:
+          - exp_labels: {severity: critical}
+            exp_annotations:
+              summary: "A passkey presented a counter that did not grow"
+              description: "A key was refused because its signature counter did not increase, which can mean a copied key."
+
+  - interval: 1m
+    name: refresh reuse needs more than one lost response
+    input_series:
+      - series: 'airlance_auth_refresh_reuse_total'
+        values: '0 0 1 1 1 2 2 2 3 3 3 3'
+    alert_rule_test:
+      - {eval_time: 6m, alertname: AirlanceAuthRefreshReuse, exp_alerts: []}
+      - eval_time: 10m
+        alertname: AirlanceAuthRefreshReuse
+        exp_alerts:
+          - exp_labels: {severity: warning}
+            exp_annotations:
+              summary: "Used refresh tokens keep coming back"
+              description: "More than two sessions in an hour were revoked because an already used refresh token was presented. One is a lost response; several can be a stolen token."
+
+  - interval: 1m
+    name: code guessing
+    input_series:
+      - series: 'airlance_auth_http_requests_total{route="POST /v1/native/auth/email/verify",status_class="4xx"}'
+        values: '0+10x30'
+      - series: 'airlance_auth_http_requests_total{route="POST /v1/native/auth/email/verify",status_class="2xx"}'
+        values: '0+2x30'
+    alert_rule_test:
+      - {eval_time: 8m, alertname: AirlanceAuthCodeGuessing, exp_alerts: []}
+      - eval_time: 25m
+        alertname: AirlanceAuthCodeGuessing
+        exp_alerts:
+          - exp_labels: {severity: warning}
+            exp_annotations:
+              summary: "Most code checks fail"
+              description: "Over half of the email code checks are refused for 10 minutes: guessing, or codes that do not reach people."
+
+  - interval: 1m
+    name: healthy verify traffic is quiet
+    input_series:
+      - series: 'airlance_auth_http_requests_total{route="POST /v1/auth/email/verify",status_class="4xx"}'
+        values: '0+1x30'
+      - series: 'airlance_auth_http_requests_total{route="POST /v1/auth/email/verify",status_class="2xx"}'
+        values: '0+9x30'
+    alert_rule_test:
+      - {eval_time: 25m, alertname: AirlanceAuthCodeGuessing, exp_alerts: []}
+
+  - interval: 1m
+    name: passkey refusals
+    input_series:
+      # Each reason alone is under the line; together they are over it.
+      - series: 'airlance_auth_denied_total{operation="login",reason="ceremony_failed"}'
+        values: '0+7x30'
+      - series: 'airlance_auth_denied_total{operation="login",reason="bad_challenge"}'
+        values: '0+7x30'
+      - series: 'airlance_auth_denied_total{operation="step_up",reason="bad_ticket"}'
+        values: '0+7x30'
+      - series: 'airlance_auth_denied_total{operation="step_up",reason="unknown_key"}'
+        values: '0+7x30'
+      - series: 'airlance_auth_denied_total{operation="verify",reason="wrong_code"}'
+        values: '0+500x30'
+    alert_rule_test:
+      - {eval_time: 8m, alertname: AirlanceAuthPasskeyRefusals, exp_alerts: []}
+      - eval_time: 25m
+        alertname: AirlanceAuthPasskeyRefusals
+        exp_alerts:
+          - exp_labels: {severity: warning}
+            exp_annotations:
+              summary: "Passkey proofs are refused at a high rate"
+              description: "More than one refused passkey proof every five seconds for 10 minutes: an attack, or a client that sends wrong data after a release."
+
+  - interval: 1m
+    name: recovery codes guessing
+    input_series:
+      - series: 'airlance_auth_denied_total{operation="recovery",reason="bad_recovery_code"}'
+        values: '0 0 0 3 6 9 12 15 15 15'
+    alert_rule_test:
+      - {eval_time: 4m, alertname: AirlanceAuthRecoveryCodeGuessing, exp_alerts: []}
+      - eval_time: 7m
+        alertname: AirlanceAuthRecoveryCodeGuessing
+        exp_alerts:
+          - exp_labels: {severity: warning}
+            exp_annotations:
+              summary: "Recovery codes are being tried"
+              description: "More than ten wrong recovery codes in 15 minutes. Recovery codes open an account without a passkey."
+
+  - interval: 1m
+    name: quota refusals
+    input_series:
+      - series: 'airlance_auth_denied_total{operation="start",reason="quota"}'
+        values: '0+15x30'
+    alert_rule_test:
+      - {eval_time: 8m, alertname: AirlanceAuthQuotaRefusals, exp_alerts: []}
+      - eval_time: 25m
+        alertname: AirlanceAuthQuotaRefusals
+        exp_alerts:
+          - exp_labels: {severity: warning}
+            exp_annotations:
+              summary: "Quotas refuse requests steadily"
+              description: "Quota refusals have run above one every five seconds for 10 minutes: an abuse run, or limits that are too tight for real use."

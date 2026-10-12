@@ -1,0 +1,14 @@
+# Scrapes the service's metrics listener over the compose network and evaluates deploy/alerts.yaml.
+# Alerts show in the Prometheus UI at http://127.0.0.1:9091/alerts. Sending them elsewhere
+# requires an Alertmanager, which this stack does not include.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 30s
+
+rule_files:
+  - /etc/prometheus/alerts.yaml
+
+scrape_configs:
+  - job_name: airlance-auth
+    static_configs:
+      - targets: ["airlance-auth:9090"]

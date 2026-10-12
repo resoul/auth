@@ -1,0 +1,13 @@
+# TLS in front of the service: Caddy gets and renews the certificate for AIRLANCE_AUTH_DOMAIN itself (ports 80 and
+# 443 must reach it from the internet). It adds the client's address to X-Forwarded-For, which the service
+# believes only because Caddy's network is listed in AIRLANCE_AUTH_TRUSTED_PROXIES.
+{$AIRLANCE_AUTH_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy airlance-auth:8080
+}
+
+# The admin API, when you turn it on (AIRLANCE_AUTH_ADMIN_ADDR=0.0.0.0:8081 in airlance_auth.env): its own
+# hostname, because an operator's passkey is bound to it.
+# admin.{$AIRLANCE_AUTH_DOMAIN} {
+# 	reverse_proxy airlance-auth:8081
+# }

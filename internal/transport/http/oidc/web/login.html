@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in</title>
+<link rel="stylesheet" href="/oauth2/login/app.css">
+</head>
+<body>
+<main>
+  <h1>Sign in</h1>
+
+  <section id="choose">
+    <button id="passkey" type="button">Sign in with a passkey</button>
+    <p class="or">or with your email</p>
+    <form id="emailForm">
+      <label for="email">Email</label>
+      <input id="email" type="email" autocomplete="username webauthn" required>
+      <button type="submit">Send me a code</button>
+    </form>
+  </section>
+
+  <section id="codeStep" hidden>
+    <p>We sent a code to your email.</p>
+    <form id="codeForm">
+      <label for="code">Code</label>
+      <input id="code" inputmode="numeric" autocomplete="one-time-code" required>
+      <button type="submit">Continue</button>
+    </form>
+  </section>
+
+  <section id="nextStep" hidden>
+    <p id="nextText"></p>
+    <button id="createPasskey" type="button" hidden>Create a passkey</button>
+    <button id="usePasskey" type="button" hidden>Use my passkey</button>
+    <form id="recoveryForm" hidden>
+      <label for="recovery">Lost your passkey? A recovery code</label>
+      <input id="recovery" autocomplete="off">
+      <button type="submit">Use the recovery code</button>
+    </form>
+  </section>
+
+  <section id="codesStep" hidden>
+    <h2>Save your recovery codes</h2>
+    <p>Each works once if you lose your passkey. They are shown only now. Using one replaces every passkey you have.</p>
+    <pre id="codeList"></pre>
+    <button id="codesSaved" type="button">I saved them</button>
+  </section>
+
+  <p id="message" role="status"></p>
+</main>
+<script src="/oauth2/login/app.js"></script>
+</body>
+</html>

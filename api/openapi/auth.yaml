@@ -1,0 +1,3007 @@
+openapi: 3.0.3
+info:
+  title: Airlance Auth
+  version: 0.1.0
+  description: |
+    Contract of the routes served by the authentication service.
+
+    Two profiles share the operations. `/v1/native/` is for explicit native clients: the
+    refresh token and the client binding travel in JSON and cookies are ignored. `/v1/` is for
+    browsers: the refresh token and the client binding live in HttpOnly cookies that JSON
+    never carries, state-changing requests pass the cross-origin check, and CORS answers only
+    the configured origins. A request that has neither profile's credentials is refused.
+
+    Every error body carries a stable code and the request_id that is also sent in the
+    X-Request-Id header. Responses of /v1/ routes carry `Cache-Control: no-store`.
+    The server speaks plain HTTP: run it behind a TLS-terminating proxy or ingress.
+servers:
+  - url: http://127.0.0.1:8080
+tags:
+  - name: browser
+    description: Email sign-in and refresh for browsers; secrets live in HttpOnly cookies.
+  - name: native
+    description: Email sign-in and token refresh for explicit native clients.
+  - name: public
+    description: Key set and health shared by every profile.
+paths:
+  /v1/native/auth/email/start:
+    post:
+      tags: [native]
+      operationId: nativeStartEmail
+      summary: Start an email sign-in flow and queue the code
+      description: |
+        The response schema is the same for a new and an existing email. A client that
+        has no binding yet omits client_binding and receives one; it then sends it to
+        verify and to its next start calls.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NativeStartRequest"
+      responses:
+        "202":
+          description: Flow started; the code is on its way.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NativeStartResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/native/auth/email/verify:
+    post:
+      tags: [native]
+      operationId: nativeVerifyEmail
+      summary: Prove the code and receive the ticket for the next step
+      description: |
+        A wrong, expired or used code, an unknown flow and a wrong binding all give the
+        same invalid_code. A successful verify creates the user on first sign-in, but opens
+        no session: a session needs a passkey. The
+        response says what comes next and carries the ticket for it: `enroll_passkey` for a
+        user who has no passkey, `second_factor` for one who has. A flow verifies at most once.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NativeVerifyRequest"
+      responses:
+        "200":
+          description: The email is proven; carry the ticket to the next step.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NextStepResponse"
+        "400":
+          description: invalid_code or invalid_request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/native/auth/passkey/register/options:
+    post:
+      tags: [native]
+      operationId: nativeBeginPasskeyRegistration
+      summary: Start registering a passkey
+      description: |
+        Needs the ticket of a verify that answered `enroll_passkey` (or of a recovery code). `client_binding` is the binding secret of the email sign-in.
+        The ticket is not spent here. The response is the challenge to echo back and the options
+        to pass to navigator.credentials.create: a resident key and user verification are required.
+        Every refusal is invalid_proof.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NativePasskeyOptionsRequest"
+      responses:
+        "200":
+          description: The ceremony to run.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CeremonyResponse"
+        "400":
+          description: invalid_proof or invalid_request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/native/auth/passkey/register/verify:
+    post:
+      tags: [native]
+      operationId: nativeFinishPasskeyRegistration
+      summary: Finish registering a passkey and sign in
+      description: |
+        Verifies the attestation, stores the passkey and opens the session the ticket was waiting
+        for. The response carries the refresh token and the recovery codes.
+        The recovery codes are shown once; an older set stops working. A refused ceremony spends its
+        challenge, not the ticket. Every refusal is invalid_proof.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NativePasskeyRegisterRequest"
+      responses:
+        "200":
+          description: Registered and signed in.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NativePasskeyRegisterResponse"
+        "400":
+          description: invalid_proof or invalid_request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/native/auth/passkey/login/options:
+    post:
+      tags: [native]
+      operationId: nativeBeginPasskeyLogin
+      summary: Start a passkey assertion
+      description: |
+        Names no user: the authenticator offers the passkeys it holds for this service. The same
+        ceremony serves a passkey sign-in and the second factor after an email code.
+      responses:
+        "200":
+          description: The ceremony to run.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CeremonyResponse"
+        "400":
+          description: invalid_request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/native/auth/passkey/login/verify:
+    post:
+      tags: [native]
+      operationId: nativeFinishPasskeyLogin
+      summary: Verify the assertion and sign in
+      description: |
+        Without a ticket the passkey alone signs in. With the ticket of a verify that answered
+        `second_factor` it completes that sign-in, and the ticket's binding becomes the session's. The response carries the refresh token, and a client binding when it sent none.
+        A counter that did not grow, a key of another user and every other refusal are invalid_proof.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NativePasskeyLoginRequest"
+      responses:
+        "200":
+          description: Signed in.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NativePasskeyLoginResponse"
+        "400":
+          description: invalid_proof or invalid_request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/native/auth/recovery/verify:
+    post:
+      tags: [native]
+      operationId: nativeRedeemRecoveryCode
+      summary: Spend a recovery code in place of a passkey
+      description: |
+        Needs the `second_factor` ticket of a verify. `client_binding` is the binding secret of the email sign-in. It opens no session: a right code
+        returns the ticket to register a new passkey, which is the only way past lost keys. Every attempt that
+        reaches the code spends the second-factor ticket, so guessing costs an email proof each time.
+        Every refusal is invalid_proof.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NativeRecoveryRequest"
+      responses:
+        "200":
+          description: The ticket to register a new passkey.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NextStepResponse"
+        "400":
+          description: invalid_proof or invalid_request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/auth/passkey/register/options:
+    post:
+      tags: [browser]
+      operationId: browserBeginPasskeyRegistration
+      summary: Start registering a passkey
+      description: |
+        Needs the ticket of a verify that answered `enroll_passkey` (or of a recovery code). The binding cookie of the email sign-in is required.
+        The ticket is not spent here. The response is the challenge to echo back and the options
+        to pass to navigator.credentials.create: a resident key and user verification are required.
+        Every refusal is invalid_proof.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrowserPasskeyOptionsRequest"
+      responses:
+        "200":
+          description: The ceremony to run.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CeremonyResponse"
+        "400":
+          description: invalid_proof or invalid_request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/auth/passkey/register/verify:
+    post:
+      tags: [browser]
+      operationId: browserFinishPasskeyRegistration
+      summary: Finish registering a passkey and sign in
+      description: |
+        Verifies the attestation, stores the passkey and opens the session the ticket was waiting
+        for. The response sets the refresh cookie and renews the binding cookie; the JSON carries the access token and the recovery codes.
+        The recovery codes are shown once; an older set stops working. A refused ceremony spends its
+        challenge, not the ticket. Every refusal is invalid_proof.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrowserPasskeyRegisterRequest"
+      responses:
+        "200":
+          description: Registered and signed in.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BrowserPasskeyRegisterResponse"
+        "400":
+          description: invalid_proof or invalid_request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/auth/passkey/login/options:
+    post:
+      tags: [browser]
+      operationId: browserBeginPasskeyLogin
+      summary: Start a passkey assertion
+      description: |
+        Names no user: the authenticator offers the passkeys it holds for this service. The same
+        ceremony serves a passkey sign-in and the second factor after an email code.
+      responses:
+        "200":
+          description: The ceremony to run.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CeremonyResponse"
+        "400":
+          description: invalid_request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/auth/passkey/login/verify:
+    post:
+      tags: [browser]
+      operationId: browserFinishPasskeyLogin
+      summary: Verify the assertion and sign in
+      description: |
+        Without a ticket the passkey alone signs in. With the ticket of a verify that answered
+        `second_factor` it completes that sign-in, and the ticket's binding becomes the session's. The response sets the refresh cookie and the binding cookie (a new one when the browser had none); the JSON carries the access token.
+        A counter that did not grow, a key of another user and every other refusal are invalid_proof.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrowserPasskeyLoginRequest"
+      responses:
+        "200":
+          description: Signed in.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BrowserPasskeyLoginResponse"
+        "400":
+          description: invalid_proof or invalid_request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/auth/recovery/verify:
+    post:
+      tags: [browser]
+      operationId: browserRedeemRecoveryCode
+      summary: Spend a recovery code in place of a passkey
+      description: |
+        Needs the `second_factor` ticket of a verify. The binding cookie of the email sign-in is required. It opens no session: a right code
+        returns the ticket to register a new passkey, which is the only way past lost keys. Every attempt that
+        reaches the code spends the second-factor ticket, so guessing costs an email proof each time.
+        Every refusal is invalid_proof.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrowserRecoveryRequest"
+      responses:
+        "200":
+          description: The ticket to register a new passkey.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NextStepResponse"
+        "400":
+          description: invalid_proof or invalid_request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/native/token/refresh:
+    post:
+      tags: [native]
+      operationId: nativeRefreshToken
+      summary: Exchange a refresh token for new tokens
+      description: |
+        Strict rotation: the presented token is used up. Presenting a used token again
+        revokes the whole session.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NativeRefreshRequest"
+      responses:
+        "200":
+          description: New access and refresh tokens.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NativeRefreshResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          description: invalid_refresh.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/native/auth/email/resend:
+    post:
+      tags: [native]
+      operationId: nativeResendEmail
+      summary: Send a new code for the same flow
+      description: |
+        Invalidates the previous code of the flow; the flow, its expiry and its attempts stay.
+        Allowed once per resend pause. A flow that cannot continue, or a wrong binding, gives
+        invalid_code.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NativeResendRequest"
+      responses:
+        "202":
+          description: A new code is on its way.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResendResponse"
+        "400":
+          description: invalid_code or invalid_request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/auth/email/start:
+    post:
+      tags: [browser]
+      operationId: browserStartEmail
+      summary: Start an email sign-in flow and queue the code
+      description: |
+        The client binding is the `__Secure-px_binding` cookie (HttpOnly, Secure, Path
+        `/v1/auth/email`). A browser without it receives one in this response's Set-Cookie;
+        the JSON never carries it. A malformed cookie is replaced like a missing one.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrowserStartRequest"
+      responses:
+        "202":
+          description: Flow started; the code is on its way.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResendResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/auth/email/verify:
+    post:
+      tags: [browser]
+      operationId: browserVerifyEmail
+      summary: Prove the code and receive the ticket for the next step
+      description: |
+        Needs the binding cookie of the start. The response opens no session: it names the
+        next step and carries the ticket for it, which is useless without the same binding
+        cookie. Every refusal is invalid_code.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrowserVerifyRequest"
+      responses:
+        "200":
+          description: The email is proven; carry the ticket to the next step.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NextStepResponse"
+        "400":
+          description: invalid_code or invalid_request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/auth/email/resend:
+    post:
+      tags: [browser]
+      operationId: browserResendEmail
+      summary: Send a new code for the same flow
+      description: Needs the binding cookie of the start; see the native operation.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrowserResendRequest"
+      responses:
+        "202":
+          description: A new code is on its way.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResendResponse"
+        "400":
+          description: invalid_code or invalid_request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/token/refresh:
+    post:
+      tags: [browser]
+      operationId: browserRefreshToken
+      summary: Exchange the refresh cookie for a new access token
+      description: |
+        Reads only the `__Secure-px_refresh` cookie; a refresh token in the body is not
+        accepted. Strict rotation sets a new cookie. A refusal clears the cookie.
+      responses:
+        "200":
+          description: New access token and a new refresh cookie.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BrowserRefreshResponse"
+        "401":
+          description: invalid_refresh; the cookie is cleared.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/signout:
+    post:
+      tags: [browser]
+      operationId: browserSignOut
+      summary: End the current session or all sessions
+      description: |
+        scope `current` (default) ends the session of the access token and its refresh tokens
+        and keeps the device recognized; `forget_client` also ends the recognition of this
+        device. scope `all` ends every session and forgets every device of the user.
+        Repeating a sign-out succeeds. The response also clears the refresh cookie (and the binding cookie with forget_client or scope all).
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SignOutRequest"
+      responses:
+        "204":
+          description: Signed out.
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/me:
+    delete:
+      tags: [browser]
+      operationId: browserDeleteAccount
+      summary: Permanently delete the signed-in account
+      description: |
+        Requires a single-use step-up proof for delete_account. Removes access data,
+        flows for the current email or owned by the account, and their mail jobs.
+        Audit events remain for 90 days from their occurrence with cleared references.
+        Mail already prepared for SMTP may still arrive. Offline access lasts until exp.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: X-Step-Up
+          in: header
+          required: false
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Account deleted.
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          description: step_up_required or permission_denied.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+    get:
+      tags: [browser]
+      operationId: browserGetMe
+      summary: The signed-in user and the current session
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: The user and the session of the access token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeResponse"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/sessions:
+    get:
+      tags: [browser]
+      operationId: browserListSessions
+      summary: The user's active sessions
+      description: |
+        Only the caller's own sessions, most recently active first, at most 100. No token,
+        hash or binding is ever shown.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: The sessions.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionList"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/sessions/{id}:
+    delete:
+      tags: [browser]
+      operationId: browserRevokeSession
+      summary: End one of the user's sessions
+      description: |
+        Ends the session and its refresh tokens; the device stays recognized. A session of
+        another user and a session that does not exist give the same 204, so ids cannot be probed.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: The session is ended, or there was none of the caller's to end.
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/me/apps:
+    get:
+      tags: [browser]
+      operationId: browserListApps
+      summary: The applications the user has connected
+      description: |
+        The live grants the user holds with applications that sign users in through this provider,
+        applications by name and the most recently used first, at most 200. A grant is what one
+        application may do for the user on one sign-in; the same application appears once for each
+        sign-in it holds a grant on. No token, secret or hash is ever shown. Only the caller's own.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: The grants.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectedAppList"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/me/apps/grants/{id}:
+    delete:
+      tags: [browser]
+      operationId: browserRevokeAppGrant
+      summary: Take one grant of an application back
+      description: |
+        Ends the grant and its refresh tokens and tells the application's backend that this sign-in
+        ended, so it closes its own session. It does not end the user's sign-in with the provider,
+        any other grant or application, or anyone else's grants. It is not a ban: while the sign-in
+        lives, the application may be opened again and be given a new grant. A grant of another
+        user, one that is over and one that does not exist give the same 204, so ids cannot be
+        probed. Ending access needs no step-up.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: The grant is ended, or there was none of the caller's to end.
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/me/apps/clients/{client_id}:
+    delete:
+      tags: [browser]
+      operationId: browserRevokeApp
+      summary: Take every grant of one application back
+      description: |
+        Ends every live grant the user holds with the application, on whichever sign-in, with the
+        same effect and the same limits as ending one grant. An application the user holds nothing
+        with, and one that does not exist, give the same 204.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: client_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: The grants are ended, or there were none of the caller's to end.
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/native/me/apps:
+    get:
+      tags: [native]
+      operationId: nativeListApps
+      summary: The applications the user has connected
+      description: |
+        The live grants the user holds with applications that sign users in through this provider,
+        applications by name and the most recently used first, at most 200. A grant is what one
+        application may do for the user on one sign-in; the same application appears once for each
+        sign-in it holds a grant on. No token, secret or hash is ever shown. Only the caller's own.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: The grants.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectedAppList"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/native/me/apps/grants/{id}:
+    delete:
+      tags: [native]
+      operationId: nativeRevokeAppGrant
+      summary: Take one grant of an application back
+      description: |
+        Ends the grant and its refresh tokens and tells the application's backend that this sign-in
+        ended, so it closes its own session. It does not end the user's sign-in with the provider,
+        any other grant or application, or anyone else's grants. It is not a ban: while the sign-in
+        lives, the application may be opened again and be given a new grant. A grant of another
+        user, one that is over and one that does not exist give the same 204, so ids cannot be
+        probed. Ending access needs no step-up.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: The grant is ended, or there was none of the caller's to end.
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/native/me/apps/clients/{client_id}:
+    delete:
+      tags: [native]
+      operationId: nativeRevokeApp
+      summary: Take every grant of one application back
+      description: |
+        Ends every live grant the user holds with the application, on whichever sign-in, with the
+        same effect and the same limits as ending one grant. An application the user holds nothing
+        with, and one that does not exist, give the same 204.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: client_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: The grants are ended, or there were none of the caller's to end.
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/native/signout:
+    post:
+      tags: [native]
+      operationId: nativeSignOut
+      summary: End the current session or all sessions
+      description: |
+        scope `current` (default) ends the session of the access token and its refresh tokens
+        and keeps the device recognized; `forget_client` also ends the recognition of this
+        device. scope `all` ends every session and forgets every device of the user.
+        Repeating a sign-out succeeds. The client deletes its stored tokens.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SignOutRequest"
+      responses:
+        "204":
+          description: Signed out.
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/native/me:
+    delete:
+      tags: [native]
+      operationId: nativeDeleteAccount
+      summary: Permanently delete the signed-in account
+      description: |
+        Requires a single-use step-up proof for delete_account. Removes access data,
+        flows for the current email or owned by the account, and their mail jobs.
+        Audit events remain for 90 days from their occurrence with cleared references.
+        Mail already prepared for SMTP may still arrive. Offline access lasts until exp.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: X-Step-Up
+          in: header
+          required: false
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Account deleted.
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          description: step_up_required or permission_denied.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+    get:
+      tags: [native]
+      operationId: nativeGetMe
+      summary: The signed-in user and the current session
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: The user and the session of the access token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeResponse"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/native/sessions:
+    get:
+      tags: [native]
+      operationId: nativeListSessions
+      summary: The user's active sessions
+      description: |
+        Only the caller's own sessions, most recently active first, at most 100. No token,
+        hash or binding is ever shown.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: The sessions.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionList"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/native/sessions/{id}:
+    delete:
+      tags: [native]
+      operationId: nativeRevokeSession
+      summary: End one of the user's sessions
+      description: |
+        Ends the session and its refresh tokens; the device stays recognized. A session of
+        another user and a session that does not exist give the same 204, so ids cannot be probed.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: The session is ended, or there was none of the caller's to end.
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/native/me/step-up/options:
+    post:
+      tags: [native]
+      operationId: nativeBeginStepUp
+      summary: Start a fresh strong proof for one operation
+      description: |
+        Names the operation the proof is for: add_passkey, delete_passkey, regenerate_recovery_codes,
+        change_email, delete_account or approve_device. The response is the assertion to run with navigator.credentials.get;
+        user verification is required. A step-up is not a sign-in and opens no session.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StepUpOptionsRequest"
+      responses:
+        "200":
+          description: The ceremony to run.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CeremonyResponse"
+        "400":
+          description: invalid_request or invalid_proof.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/native/me/step-up/verify:
+    post:
+      tags: [native]
+      operationId: nativeFinishStepUp
+      summary: Prove the passkey and receive the step-up token
+      description: |
+        Verifies the assertion of a key of the signed-in user. The token is good for that one operation of
+        this session for five minutes and works once. Every refusal is invalid_proof.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StepUpVerifyRequest"
+      responses:
+        "200":
+          description: The step-up token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StepUpResponse"
+        "400":
+          description: invalid_proof or invalid_request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/native/me/passkeys:
+    get:
+      tags: [native]
+      operationId: nativeListPasskeys
+      summary: The user's passkeys
+      description: |
+        Oldest first. A key's credential ID and public key are never shown.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: The passkeys.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PasskeyList"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+    post:
+      tags: [native]
+      operationId: nativeFinishAddPasskey
+      summary: Finish adding a passkey
+      description: |
+        Needs the step-up token for add_passkey and the challenge of the options route. The token is spent here; a
+        refused ceremony spends its challenge, not the token. Adding a key opens no session and keeps the recovery codes.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: X-Step-Up
+          in: header
+          required: false
+          schema:
+            type: string
+          description: The step-up token of the operation; without a valid one the answer is step_up_required.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasskeyAddRequest"
+      responses:
+        "201":
+          description: The new passkey.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Passkey"
+        "400":
+          description: invalid_proof or invalid_request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          description: step_up_required, so run a step-up for this operation first.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: too_many_passkeys.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/native/me/passkeys/options:
+    post:
+      tags: [native]
+      operationId: nativeBeginAddPasskey
+      summary: Start adding a passkey
+      description: |
+        Needs the step-up token for add_passkey. It is not spent here.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: X-Step-Up
+          in: header
+          required: false
+          schema:
+            type: string
+          description: The step-up token of the operation; without a valid one the answer is step_up_required.
+      responses:
+        "200":
+          description: The ceremony to run.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CeremonyResponse"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          description: step_up_required, so run a step-up for this operation first.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: too_many_passkeys.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/native/me/passkeys/{id}:
+    patch:
+      tags: [native]
+      operationId: nativeRenamePasskey
+      summary: Rename a passkey
+      description: |
+        Needs no step-up: a label opens nothing. Another user's passkey and a missing one both give not_found.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasskeyRenameRequest"
+      responses:
+        "200":
+          description: The passkey.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Passkey"
+        "400":
+          description: invalid_request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          description: not_found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+    delete:
+      tags: [native]
+      operationId: nativeDeletePasskey
+      summary: Delete a passkey
+      description: |
+        Needs the step-up token for delete_passkey. The last passkey cannot be deleted (last_passkey): a session needs
+        one, so add the new key first. A refusal spends nothing. Another user's passkey and a missing one both give not_found.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: X-Step-Up
+          in: header
+          required: false
+          schema:
+            type: string
+          description: The step-up token of the operation; without a valid one the answer is step_up_required.
+      responses:
+        "204":
+          description: Deleted.
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          description: step_up_required, so run a step-up for this operation first.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: not_found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: last_passkey.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/native/me/recovery-codes:
+    post:
+      tags: [native]
+      operationId: nativeRegenerateRecoveryCodes
+      summary: Replace the recovery codes
+      description: |
+        Needs the step-up token for regenerate_recovery_codes. The new set is shown once and the old one stops working at once.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: X-Step-Up
+          in: header
+          required: false
+          schema:
+            type: string
+          description: The step-up token of the operation; without a valid one the answer is step_up_required.
+      responses:
+        "200":
+          description: The new codes.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecoveryCodesResponse"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          description: step_up_required, so run a step-up for this operation first.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/native/me/email/change:
+    post:
+      tags: [native]
+      operationId: nativeStartEmailChange
+      summary: Ask for a code at a new email address
+      description: |
+        Needs the step-up token for change_email, which this request uses up. The code goes to the
+        new address, whether or not an account has it, so the answer says nothing about who is
+        registered; the old address changes only when `confirm` proves the code. The flow belongs to
+        the signed-in session and to nobody else.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: X-Step-Up
+          in: header
+          required: false
+          schema:
+            type: string
+          description: The step-up token of the operation; without a valid one the answer is step_up_required.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmailChangeStartRequest"
+      responses:
+        "202":
+          description: The code is on its way to the new address.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailChangeStartResponse"
+        "400":
+          description: invalid_request, including an address the account already has.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          description: step_up_required, so run a step-up for change_email first.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/native/me/email/change/confirm:
+    post:
+      tags: [native]
+      operationId: nativeConfirmEmailChange
+      summary: Prove the code from the new address and move the account
+      description: |
+        A wrong, expired or used code, another account's flow and a flow of another session all give
+        the same invalid_code. The account keeps its sessions and passkeys; the recognition of its
+        clients ends, and the old address is told. If another account took the address in the
+        meantime the answer is email_taken and nothing changes.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmailChangeConfirmRequest"
+      responses:
+        "200":
+          description: The account has the new address.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailChangeResponse"
+        "400":
+          description: invalid_code or invalid_request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "409":
+          description: email_taken.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/me/step-up/options:
+    post:
+      tags: [browser]
+      operationId: browserBeginStepUp
+      summary: Start a fresh strong proof for one operation
+      description: |
+        Names the operation the proof is for: add_passkey, delete_passkey, regenerate_recovery_codes,
+        change_email, delete_account or approve_device. The response is the assertion to run with navigator.credentials.get;
+        user verification is required. A step-up is not a sign-in and opens no session.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StepUpOptionsRequest"
+      responses:
+        "200":
+          description: The ceremony to run.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CeremonyResponse"
+        "400":
+          description: invalid_request or invalid_proof.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          description: permission_denied.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/me/step-up/verify:
+    post:
+      tags: [browser]
+      operationId: browserFinishStepUp
+      summary: Prove the passkey and receive the step-up token
+      description: |
+        Verifies the assertion of a key of the signed-in user. The token is good for that one operation of
+        this session for five minutes and works once. Every refusal is invalid_proof.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StepUpVerifyRequest"
+      responses:
+        "200":
+          description: The step-up token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StepUpResponse"
+        "400":
+          description: invalid_proof or invalid_request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          description: permission_denied.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/me/passkeys:
+    get:
+      tags: [browser]
+      operationId: browserListPasskeys
+      summary: The user's passkeys
+      description: |
+        Oldest first. A key's credential ID and public key are never shown.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: The passkeys.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PasskeyList"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+    post:
+      tags: [browser]
+      operationId: browserFinishAddPasskey
+      summary: Finish adding a passkey
+      description: |
+        Needs the step-up token for add_passkey and the challenge of the options route. The token is spent here; a
+        refused ceremony spends its challenge, not the token. Adding a key opens no session and keeps the recovery codes.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: X-Step-Up
+          in: header
+          required: false
+          schema:
+            type: string
+          description: The step-up token of the operation; without a valid one the answer is step_up_required.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasskeyAddRequest"
+      responses:
+        "201":
+          description: The new passkey.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Passkey"
+        "400":
+          description: invalid_proof or invalid_request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          description: permission_denied (a foreign origin) or step_up_required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: too_many_passkeys.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/me/passkeys/options:
+    post:
+      tags: [browser]
+      operationId: browserBeginAddPasskey
+      summary: Start adding a passkey
+      description: |
+        Needs the step-up token for add_passkey. It is not spent here.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: X-Step-Up
+          in: header
+          required: false
+          schema:
+            type: string
+          description: The step-up token of the operation; without a valid one the answer is step_up_required.
+      responses:
+        "200":
+          description: The ceremony to run.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CeremonyResponse"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          description: permission_denied (a foreign origin) or step_up_required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: too_many_passkeys.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/me/passkeys/{id}:
+    patch:
+      tags: [browser]
+      operationId: browserRenamePasskey
+      summary: Rename a passkey
+      description: |
+        Needs no step-up: a label opens nothing. Another user's passkey and a missing one both give not_found.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasskeyRenameRequest"
+      responses:
+        "200":
+          description: The passkey.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Passkey"
+        "400":
+          description: invalid_request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          description: not_found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: permission_denied.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+    delete:
+      tags: [browser]
+      operationId: browserDeletePasskey
+      summary: Delete a passkey
+      description: |
+        Needs the step-up token for delete_passkey. The last passkey cannot be deleted (last_passkey): a session needs
+        one, so add the new key first. A refusal spends nothing. Another user's passkey and a missing one both give not_found.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: X-Step-Up
+          in: header
+          required: false
+          schema:
+            type: string
+          description: The step-up token of the operation; without a valid one the answer is step_up_required.
+      responses:
+        "204":
+          description: Deleted.
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          description: permission_denied (a foreign origin) or step_up_required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: not_found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: last_passkey.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/me/recovery-codes:
+    post:
+      tags: [browser]
+      operationId: browserRegenerateRecoveryCodes
+      summary: Replace the recovery codes
+      description: |
+        Needs the step-up token for regenerate_recovery_codes. The new set is shown once and the old one stops working at once.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: X-Step-Up
+          in: header
+          required: false
+          schema:
+            type: string
+          description: The step-up token of the operation; without a valid one the answer is step_up_required.
+      responses:
+        "200":
+          description: The new codes.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecoveryCodesResponse"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          description: permission_denied (a foreign origin) or step_up_required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/me/email/change:
+    post:
+      tags: [browser]
+      operationId: browserStartEmailChange
+      summary: Ask for a code at a new email address
+      description: |
+        Needs the step-up token for change_email, which this request uses up. The code goes to the
+        new address, whether or not an account has it, so the answer says nothing about who is
+        registered; the old address changes only when `confirm` proves the code. The flow belongs to
+        the signed-in session and to nobody else.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: X-Step-Up
+          in: header
+          required: false
+          schema:
+            type: string
+          description: The step-up token of the operation; without a valid one the answer is step_up_required.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmailChangeStartRequest"
+      responses:
+        "202":
+          description: The code is on its way to the new address.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailChangeStartResponse"
+        "400":
+          description: invalid_request, including an address the account already has.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          description: permission_denied (a foreign origin) or step_up_required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/me/email/change/confirm:
+    post:
+      tags: [browser]
+      operationId: browserConfirmEmailChange
+      summary: Prove the code from the new address and move the account
+      description: |
+        A wrong, expired or used code, another account's flow and a flow of another session all give
+        the same invalid_code. The account keeps its sessions and passkeys; the recognition of its
+        clients ends, and the old address is told. If another account took the address in the
+        meantime the answer is email_taken and nothing changes.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmailChangeConfirmRequest"
+      responses:
+        "200":
+          description: The account has the new address.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailChangeResponse"
+        "400":
+          description: invalid_code or invalid_request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "409":
+          description: email_taken.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /.well-known/jwks.json:
+    get:
+      tags: [public]
+      operationId: getJWKS
+      summary: Public keys that verify access tokens
+      description: Public keys only; cacheable for a few minutes.
+      responses:
+        "200":
+          description: JSON Web Key Set.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JWKS"
+  /health/alive:
+    get:
+      tags: [public]
+      operationId: getHealthAlive
+      summary: The process serves requests
+      responses:
+        "200":
+          description: Alive.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+  /health/ready:
+    get:
+      tags: [public]
+      operationId: getHealthReady
+      summary: The service can handle sign-in requests
+      description: Checks the database. The body never names the failing dependency.
+      responses:
+        "200":
+          description: Ready.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+        "503":
+          description: Not ready.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+  /v1/native/auth/device/start:
+    post:
+      tags: [native]
+      operationId: nativeStartDeviceSignIn
+      summary: Ask for a session on this device, to be approved on another
+      description: |
+        Called by a device that has no session, for example a browser or a TV. Returns the request identifier a QR code should carry, the
+        pairing code the device must show, and the poll secret it keeps: the identifier alone proves nothing, and the QR code never holds the
+        secret. A client binding is issued when the request carries none. The request lives five minutes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NativeDeviceStartRequest"
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NativeDeviceStartResponse"
+        "400":
+          description: invalid_proof or invalid_request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/native/auth/device/status:
+    post:
+      tags: [native]
+      operationId: nativeDeviceSignInStatus
+      summary: Ask how the request stands
+      description: |
+        Reports pending, approved, denied, redeemed or expired. An unknown request, a wrong secret and a wrong binding are all invalid_proof.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NativeDeviceStatusRequest"
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceStatusResponse"
+        "400":
+          description: invalid_proof or invalid_request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/native/auth/device/redeem:
+    post:
+      tags: [native]
+      operationId: nativeRedeemDeviceSignIn
+      summary: Take the session of an approved request
+      description: |
+        Gives the device that made an approved request its own session, once. It needs the poll secret and the binding the request was made with.
+        The approving session must still be open and the user not blocked. Every refusal is invalid_proof.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NativeDeviceRedeemRequest"
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NativePasskeyLoginResponse"
+        "400":
+          description: invalid_proof or invalid_request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/native/device/requests/{request_id}:
+    get:
+      tags: [native]
+      operationId: nativeGetDeviceRequest
+      summary: See who asks to sign in
+      description: |
+        Shows a live pending request to a signed-in user: the label the new device gave itself and the times. The pairing code is not shown here; the person reads it on the new device.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: request_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceRequestView"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          description: not_found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/native/device/requests/{request_id}/approve:
+    post:
+      tags: [native]
+      operationId: nativeApproveDeviceRequest
+      summary: Let the device sign in as this user
+      description: |
+        Needs the step-up token for approve_device, which a successful approval uses up, and the pairing code typed from the screen of the new device.
+        A wrong code spends one of three attempts of the request and the third kills it; a refusal spends no step-up token.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: request_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: X-Step-Up
+          in: header
+          required: false
+          schema:
+            type: string
+          description: The step-up token for approve_device; without a valid one the answer is step_up_required.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeviceApproveRequest"
+      responses:
+        "204":
+          description: Done.
+        "400":
+          description: invalid_proof or invalid_request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          description: step_up_required, so run a step-up for approve_device first.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: not_found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/native/device/requests/{request_id}/deny:
+    post:
+      tags: [native]
+      operationId: nativeDenyDeviceRequest
+      summary: Refuse the request
+      description: |
+        Ends a pending request. It needs a session but no step-up: refusing opens nothing.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: request_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Done.
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          description: not_found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/auth/device/start:
+    post:
+      tags: [browser]
+      operationId: browserStartDeviceSignIn
+      summary: Ask for a session on this device, to be approved on another
+      description: |
+        Called by a page that has no session. Returns the request identifier a QR code should carry and the pairing code the page must show; the poll
+        secret goes to an HttpOnly cookie and the binding cookie is issued when the browser has none. The QR code never holds a secret. The request lives five minutes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrowserDeviceStartRequest"
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BrowserDeviceStartResponse"
+        "400":
+          description: invalid_proof or invalid_request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/auth/device/status:
+    post:
+      tags: [browser]
+      operationId: browserDeviceSignInStatus
+      summary: Ask how the request stands
+      description: |
+        Reports pending, approved, denied, redeemed or expired. The poll secret and the binding are the cookies. An unknown request and a wrong secret are both invalid_proof.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrowserDeviceStatusRequest"
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceStatusResponse"
+        "400":
+          description: invalid_proof or invalid_request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/auth/device/redeem:
+    post:
+      tags: [browser]
+      operationId: browserRedeemDeviceSignIn
+      summary: Take the session of an approved request
+      description: |
+        Gives the page that made an approved request its own session, once: the refresh token goes to its cookie, the body carries only the access token.
+        The approving session must still be open and the user not blocked. Every refusal is invalid_proof.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrowserDeviceRedeemRequest"
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BrowserPasskeyLoginResponse"
+        "400":
+          description: invalid_proof or invalid_request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/device/requests/{request_id}:
+    get:
+      tags: [browser]
+      operationId: browserGetDeviceRequest
+      summary: See who asks to sign in
+      description: |
+        Shows a live pending request to a signed-in user: the label the new device gave itself and the times. The pairing code is not shown here; the person reads it on the new device.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: request_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceRequestView"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          description: not_found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/device/requests/{request_id}/approve:
+    post:
+      tags: [browser]
+      operationId: browserApproveDeviceRequest
+      summary: Let the device sign in as this user
+      description: |
+        Needs the step-up token for approve_device, which a successful approval uses up, and the pairing code typed from the screen of the new device.
+        A wrong code spends one of three attempts of the request and the third kills it; a refusal spends no step-up token.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: request_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: X-Step-Up
+          in: header
+          required: false
+          schema:
+            type: string
+          description: The step-up token for approve_device; without a valid one the answer is step_up_required.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeviceApproveRequest"
+      responses:
+        "204":
+          description: Done.
+        "400":
+          description: invalid_proof or invalid_request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          description: step_up_required, so run a step-up for approve_device first.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: not_found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+  /v1/device/requests/{request_id}/deny:
+    post:
+      tags: [browser]
+      operationId: browserDenyDeviceRequest
+      summary: Refuse the request
+      description: |
+        Ends a pending request. It needs a session but no step-up: refusing opens nothing.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: request_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Done.
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          description: not_found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/TemporarilyUnavailable"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: The access token of an active session.
+  responses:
+    InvalidRequest:
+      description: invalid_request — malformed JSON or a field of the wrong shape.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Unauthenticated:
+      description: unauthenticated — no valid access token of an active session.
+      headers:
+        WWW-Authenticate:
+          required: true
+          schema:
+            type: string
+            enum: [Bearer]
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    PermissionDenied:
+      description: permission_denied — the request came from an origin that is not trusted.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    RateLimited:
+      description: rate_limited.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    TemporarilyUnavailable:
+      description: temporarily_unavailable — an infrastructure failure, independent of the input.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+  schemas:
+    NativeStartRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          maxLength: 254
+          example: alice@example.com
+        client_binding:
+          type: string
+          description: The binding secret received from an earlier start; omit it on the first start.
+    NativeStartResponse:
+      type: object
+      required: [flow_id, expires_at, resend_after]
+      properties:
+        flow_id:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+        resend_after:
+          type: string
+          format: date-time
+        client_binding:
+          type: string
+          description: Present only when this call issued a new binding; store it in secure storage.
+    NativeVerifyRequest:
+      type: object
+      required: [flow_id, code, client_binding]
+      properties:
+        flow_id:
+          type: string
+        code:
+          type: string
+          description: The 8 digits from the email, without spaces.
+          example: "30999009"
+        client_binding:
+          type: string
+    NextStepResponse:
+      type: object
+      required: [next, ticket, expires_at]
+      properties:
+        next:
+          type: string
+          enum: [enroll_passkey, second_factor]
+          description: |
+            `enroll_passkey`: register a passkey with the ticket. `second_factor`: prove a
+            passkey with the ticket, or spend a recovery code.
+        ticket:
+          type: string
+          description: A one-time secret for the next step; short-lived and bound to the client binding.
+        expires_at:
+          type: string
+          format: date-time
+    CeremonyResponse:
+      type: object
+      required: [challenge_id, options]
+      properties:
+        challenge_id:
+          type: string
+          description: Send it back with the result of the ceremony.
+        options:
+          type: object
+          additionalProperties: true
+          description: The WebAuthn options to pass to navigator.credentials.create or .get.
+          x-go-type: stdjson.RawMessage
+          x-go-type-import:
+            name: stdjson
+            path: encoding/json
+    NativePasskeyOptionsRequest:
+      type: object
+      required: [ticket, client_binding]
+      properties:
+        ticket:
+          type: string
+        client_binding:
+          type: string
+    BrowserPasskeyOptionsRequest:
+      type: object
+      required: [ticket]
+      properties:
+        ticket:
+          type: string
+    NativePasskeyRegisterRequest:
+      type: object
+      required: [ticket, client_binding, challenge_id, credential]
+      properties:
+        ticket:
+          type: string
+        client_binding:
+          type: string
+        challenge_id:
+          type: string
+        credential:
+          type: object
+          additionalProperties: true
+          description: The PublicKeyCredential from navigator.credentials.create, as JSON.
+          x-go-type: stdjson.RawMessage
+          x-go-type-import:
+            name: stdjson
+            path: encoding/json
+        name:
+          type: string
+          maxLength: 64
+          description: Optional label of the passkey, such as "Work laptop".
+        device_name:
+          type: string
+          maxLength: 64
+          description: Optional label of the new session.
+    BrowserPasskeyRegisterRequest:
+      type: object
+      required: [ticket, challenge_id, credential]
+      properties:
+        ticket:
+          type: string
+        challenge_id:
+          type: string
+        credential:
+          type: object
+          additionalProperties: true
+          description: The PublicKeyCredential from navigator.credentials.create, as JSON.
+          x-go-type: stdjson.RawMessage
+          x-go-type-import:
+            name: stdjson
+            path: encoding/json
+        name:
+          type: string
+          maxLength: 64
+        device_name:
+          type: string
+          maxLength: 64
+    NativePasskeyRegisterResponse:
+      type: object
+      required: [user, access_token, expires_at, refresh_token, recovery_codes]
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+        access_token:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+          description: Expiry of access_token.
+        refresh_token:
+          type: string
+        recovery_codes:
+          type: array
+          items:
+            type: string
+          description: Shown once. Keep them offline; each works once.
+    BrowserPasskeyRegisterResponse:
+      type: object
+      required: [user, access_token, expires_at, recovery_codes]
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+        access_token:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+          description: Expiry of access_token.
+        recovery_codes:
+          type: array
+          items:
+            type: string
+          description: Shown once. Keep them offline; each works once.
+    NativePasskeyLoginRequest:
+      type: object
+      required: [challenge_id, credential]
+      properties:
+        challenge_id:
+          type: string
+        credential:
+          type: object
+          additionalProperties: true
+          description: The PublicKeyCredential from navigator.credentials.get, as JSON.
+          x-go-type: stdjson.RawMessage
+          x-go-type-import:
+            name: stdjson
+            path: encoding/json
+        ticket:
+          type: string
+          description: The second_factor ticket of a verify; omit for a passkey-only sign-in.
+        client_binding:
+          type: string
+          description: Required with a ticket. Without one a new binding is issued.
+        device_name:
+          type: string
+          maxLength: 64
+    BrowserPasskeyLoginRequest:
+      type: object
+      required: [challenge_id, credential]
+      properties:
+        challenge_id:
+          type: string
+        credential:
+          type: object
+          additionalProperties: true
+          description: The PublicKeyCredential from navigator.credentials.get, as JSON.
+          x-go-type: stdjson.RawMessage
+          x-go-type-import:
+            name: stdjson
+            path: encoding/json
+        ticket:
+          type: string
+          description: The second_factor ticket of a verify; omit for a passkey-only sign-in.
+        device_name:
+          type: string
+          maxLength: 64
+    NativePasskeyLoginResponse:
+      type: object
+      required: [user, access_token, expires_at, refresh_token]
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+        access_token:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+          description: Expiry of access_token.
+        refresh_token:
+          type: string
+        client_binding:
+          type: string
+          description: Present only when this call issued a new binding; store it in secure storage.
+    BrowserPasskeyLoginResponse:
+      type: object
+      required: [user, access_token, expires_at]
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+        access_token:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+          description: Expiry of access_token.
+    NativeRecoveryRequest:
+      type: object
+      required: [ticket, client_binding, code]
+      properties:
+        ticket:
+          type: string
+        client_binding:
+          type: string
+        code:
+          type: string
+          description: A recovery code as shown, with or without dashes.
+    BrowserRecoveryRequest:
+      type: object
+      required: [ticket, code]
+      properties:
+        ticket:
+          type: string
+        code:
+          type: string
+          description: A recovery code as shown, with or without dashes.
+    StepUpOptionsRequest:
+      type: object
+      required: [operation]
+      properties:
+        operation:
+          type: string
+          enum: [add_passkey, delete_passkey, regenerate_recovery_codes, change_email, delete_account, approve_device]
+    StepUpVerifyRequest:
+      type: object
+      required: [challenge_id, credential]
+      properties:
+        challenge_id:
+          type: string
+        credential:
+          type: object
+          additionalProperties: true
+          description: The PublicKeyCredential from navigator.credentials.get, as JSON.
+          x-go-type: stdjson.RawMessage
+          x-go-type-import:
+            name: stdjson
+            path: encoding/json
+    StepUpResponse:
+      type: object
+      required: [step_up_token, operation, expires_at]
+      properties:
+        step_up_token:
+          type: string
+          description: Send it in the X-Step-Up header of the operation; it works once.
+        operation:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+    Passkey:
+      type: object
+      required: [id, name, created_at, backup_eligible, backed_up, transports]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        last_used_at:
+          type: string
+          format: date-time
+          nullable: true
+        backup_eligible:
+          type: boolean
+        backed_up:
+          type: boolean
+        transports:
+          type: array
+          items:
+            type: string
+    PasskeyList:
+      type: object
+      required: [passkeys]
+      properties:
+        passkeys:
+          type: array
+          items:
+            $ref: "#/components/schemas/Passkey"
+    PasskeyRenameRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          maxLength: 64
+    PasskeyAddRequest:
+      type: object
+      required: [challenge_id, credential]
+      properties:
+        challenge_id:
+          type: string
+        credential:
+          type: object
+          additionalProperties: true
+          description: The PublicKeyCredential from navigator.credentials.create, as JSON.
+          x-go-type: stdjson.RawMessage
+          x-go-type-import:
+            name: stdjson
+            path: encoding/json
+        name:
+          type: string
+          maxLength: 64
+    RecoveryCodesResponse:
+      type: object
+      required: [recovery_codes]
+      properties:
+        recovery_codes:
+          type: array
+          items:
+            type: string
+          description: Shown once; the previous set no longer works.
+    NativeRefreshRequest:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token:
+          type: string
+    NativeRefreshResponse:
+      type: object
+      required: [access_token, expires_at, refresh_token]
+      properties:
+        access_token:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+          description: Expiry of access_token.
+        refresh_token:
+          type: string
+    NativeResendRequest:
+      type: object
+      required: [flow_id, client_binding]
+      properties:
+        flow_id:
+          type: string
+        client_binding:
+          type: string
+    BrowserStartRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          maxLength: 254
+          example: alice@example.com
+    BrowserVerifyRequest:
+      type: object
+      required: [flow_id, code]
+      properties:
+        flow_id:
+          type: string
+        code:
+          type: string
+          description: The 8 digits from the email, without spaces.
+          example: "30999009"
+    BrowserResendRequest:
+      type: object
+      required: [flow_id]
+      properties:
+        flow_id:
+          type: string
+    BrowserRefreshResponse:
+      type: object
+      required: [access_token, expires_at]
+      properties:
+        access_token:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+          description: Expiry of access_token.
+    ResendResponse:
+      type: object
+      required: [flow_id, expires_at, resend_after]
+      properties:
+        flow_id:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+        resend_after:
+          type: string
+          format: date-time
+    SignOutRequest:
+      type: object
+      properties:
+        scope:
+          type: string
+          enum: [current, all]
+          default: current
+        forget_client:
+          type: boolean
+          default: false
+          description: Also forget this device (ignored with scope all, which forgets every device).
+    Session:
+      type: object
+      required: [id, device_name, created_at, last_active_at, current]
+      properties:
+        id:
+          type: string
+        device_name:
+          type: string
+          description: The label the client gave; empty when it gave none.
+        created_at:
+          type: string
+          format: date-time
+        last_active_at:
+          type: string
+          format: date-time
+        current:
+          type: boolean
+          description: True for the session of the access token that made the call.
+    MeResponse:
+      type: object
+      required: [user, session]
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+        session:
+          $ref: "#/components/schemas/Session"
+    SessionList:
+      type: object
+      required: [sessions]
+      properties:
+        sessions:
+          type: array
+          items:
+            $ref: "#/components/schemas/Session"
+    ConnectedAppResource:
+      type: object
+      required: [id, name, scopes]
+      properties:
+        id:
+          type: string
+          description: The identifier of the API the grant holds rights of.
+        name:
+          type: string
+        scopes:
+          type: array
+          description: The rights of that API the grant holds; each is a whole scope such as messages:send.
+          items:
+            type: string
+    ConnectedApp:
+      type: object
+      required: [grant_id, client_id, name, scopes, resources, created_at, last_active_at, expires_at]
+      properties:
+        grant_id:
+          type: string
+          description: Names the grant to take back.
+        client_id:
+          type: string
+          description: Names the application, to take back all its grants.
+        name:
+          type: string
+          description: The application's name.
+        scopes:
+          type: array
+          description: What the application may read about the user, such as openid and email.
+          items:
+            type: string
+        resources:
+          type: array
+          description: The APIs the application may call for the user, with the rights held of each.
+          items:
+            $ref: "#/components/schemas/ConnectedAppResource"
+        created_at:
+          type: string
+          format: date-time
+        last_active_at:
+          type: string
+          format: date-time
+          description: When the application last used the grant.
+        expires_at:
+          type: string
+          format: date-time
+          description: When the grant ends if nothing ends it first.
+    ConnectedAppList:
+      type: object
+      required: [apps]
+      properties:
+        apps:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConnectedApp"
+    User:
+      type: object
+      required: [id, email]
+      properties:
+        id:
+          type: string
+          description: The sub claim of access tokens.
+        email:
+          type: string
+    EmailChangeStartRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          maxLength: 254
+          example: new@example.com
+    EmailChangeStartResponse:
+      type: object
+      required: [flow_id, expires_at]
+      properties:
+        flow_id:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+    EmailChangeConfirmRequest:
+      type: object
+      required: [flow_id, code]
+      properties:
+        flow_id:
+          type: string
+        code:
+          type: string
+          description: The 8 digits from the email sent to the new address, without spaces.
+          example: "30999009"
+    EmailChangeResponse:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          description: The address the account has now.
+    Error:
+      type: object
+      required: [code, request_id]
+      properties:
+        code:
+          type: string
+          enum: [invalid_request, invalid_code, invalid_proof, invalid_refresh, unauthenticated, permission_denied, step_up_required, not_found, last_passkey, too_many_passkeys, email_taken, rate_limited, temporarily_unavailable]
+        request_id:
+          type: string
+    JWKS:
+      type: object
+      required: [keys]
+      properties:
+        keys:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+            description: A public EC P-256 key with kid, use=sig and alg=ES256.
+    Health:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok, unavailable]
+
+    NativeDeviceStartRequest:
+      type: object
+      properties:
+        device_name:
+          type: string
+          maxLength: 64
+          description: How the new device is named on the approving one.
+        client_binding:
+          type: string
+          description: The client binding of this device; omit it and one is issued.
+    BrowserDeviceStartRequest:
+      type: object
+      properties:
+        device_name:
+          type: string
+          maxLength: 64
+    NativeDeviceStartResponse:
+      type: object
+      required: [request_id, poll_secret, pairing_code, expires_at]
+      properties:
+        request_id:
+          type: string
+          description: What the QR code carries.
+        poll_secret:
+          type: string
+          description: Keep it; it proves this device owns the request. Never put it in the QR code.
+        pairing_code:
+          type: string
+          description: Six digits to show on this device; the person types them on the approving one.
+        expires_at:
+          type: string
+          format: date-time
+        client_binding:
+          type: string
+          description: Present only when this call issued a new binding; store it in secure storage.
+    BrowserDeviceStartResponse:
+      type: object
+      required: [request_id, pairing_code, expires_at]
+      properties:
+        request_id:
+          type: string
+        pairing_code:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+    NativeDeviceStatusRequest:
+      type: object
+      required: [request_id, poll_secret, client_binding]
+      properties:
+        request_id:
+          type: string
+        poll_secret:
+          type: string
+        client_binding:
+          type: string
+    BrowserDeviceStatusRequest:
+      type: object
+      required: [request_id]
+      properties:
+        request_id:
+          type: string
+    DeviceStatusResponse:
+      type: object
+      required: [state]
+      properties:
+        state:
+          type: string
+          enum: [pending, approved, denied, redeemed, expired]
+    NativeDeviceRedeemRequest:
+      type: object
+      required: [request_id, poll_secret, client_binding]
+      properties:
+        request_id:
+          type: string
+        poll_secret:
+          type: string
+        client_binding:
+          type: string
+    BrowserDeviceRedeemRequest:
+      type: object
+      required: [request_id]
+      properties:
+        request_id:
+          type: string
+    DeviceRequestView:
+      type: object
+      required: [device_name, created_at, expires_at]
+      properties:
+        device_name:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+    DeviceApproveRequest:
+      type: object
+      required: [pairing_code]
+      properties:
+        pairing_code:
+          type: string
+          description: The six digits shown on the new device.

@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: airlance-auth
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app.kubernetes.io/name: airlance-auth}
+  strategy:
+    rollingUpdate: {maxSurge: 1, maxUnavailable: 0}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: airlance-auth}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        # Lets the non-root user read the mounted secret files.
+        fsGroup: 65532
+        seccompProfile: {type: RuntimeDefault}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: {app.kubernetes.io/name: airlance-auth}
+      containers:
+        - name: airlance-auth
+          image: airlance-auth # set in kustomization.yaml (images:)
+          args: ["serve"]
+          # The secret holds the settings of the service (see README.md); the ConfigMap holds the addresses and
+          # wins where both name a key.
+          envFrom:
+            - secretRef: {name: airlance-auth-env}
+            - configMapRef: {name: airlance-auth}
+          ports:
+            - {name: http, containerPort: 8080}
+            - {name: metrics, containerPort: 9090}
+          readinessProbe:
+            httpGet: {path: /health/ready, port: http}
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: {path: /health/alive, port: http}
+            periodSeconds: 10
+            failureThreshold: 6
+          startupProbe:
+            httpGet: {path: /health/ready, port: http}
+            periodSeconds: 2
+            failureThreshold: 30
+          resources:
+            requests: {cpu: 100m, memory: 64Mi}
+            limits: {memory: 256Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: keys, mountPath: /etc/airlance-auth/keys, readOnly: true}
+      volumes:
+        - name: keys
+          secret:
+            secretName: airlance-auth-keys
+            defaultMode: 0440

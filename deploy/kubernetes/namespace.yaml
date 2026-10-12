@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: airlance-auth
+  labels:
+    # The restricted Pod Security Standard: the pods below satisfy it (non-root, no capabilities, read-only root).
+    pod-security.kubernetes.io/enforce: restricted

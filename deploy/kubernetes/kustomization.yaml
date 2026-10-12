@@ -1,0 +1,30 @@
+# kubectl apply -k deploy/kubernetes     (after the secrets and the migration, see README.md)
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: airlance-auth
+
+resources:
+  - namespace.yaml
+  - deployment.yaml
+  - service.yaml
+  - poddisruptionbudget.yaml
+  - networkpolicy.yaml
+  - ingress.yaml
+
+configMapGenerator:
+  - name: airlance-auth
+    literals:
+      - AIRLANCE_AUTH_HTTP_ADDR=0.0.0.0:8080
+      - AIRLANCE_AUTH_METRICS_ADDR=0.0.0.0:9090
+      - AIRLANCE_AUTH_LOG_FORMAT=json
+      # REQUIRED: the networks of your ingress controller's pods, whose X-Forwarded-For the service believes. Without
+      # it the service refuses to start (it listens beyond the loopback). Keep it as narrow as you can; never 0.0.0.0/0.
+      # - AIRLANCE_AUTH_TRUSTED_PROXIES=10.42.0.0/16
+generatorOptions:
+  # The pods restart when the settings change.
+  disableNameSuffixHash: false
+
+images:
+  - name: airlance-auth
+    newName: airlance-auth # your registry, for example registry.example.com/airlance/auth
+    newTag: local

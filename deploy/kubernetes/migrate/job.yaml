@@ -1,0 +1,49 @@
+# Applies the schema migrations as the owner of the schema, so the service itself can run with a role that
+# only reads and writes rows. Apply it, wait for it, then apply the service:
+#   kubectl apply -k deploy/kubernetes/migrate && kubectl -n airlance-auth wait --for=condition=complete job/airlance-auth-migrate
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: airlance-auth-migrate
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: airlance-auth-migrate}
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: migrate
+          image: airlance-auth # set in kustomization.yaml (images:)
+          args: ["migrate", "up"]
+          # The command reads the whole configuration, the keyring included, though it uses only the database. No
+          # listen address is set here, so it needs no trusted proxies.
+          envFrom:
+            - secretRef: {name: airlance-auth-env}
+          env:
+            # Replaces the service's database URL with the owner's.
+            - name: AIRLANCE_AUTH_DATABASE_URL
+              valueFrom:
+                secretKeyRef: {name: airlance-auth-migrate, key: AIRLANCE_AUTH_DATABASE_URL}
+          resources:
+            requests: {cpu: 50m, memory: 32Mi}
+            limits: {memory: 128Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: keys, mountPath: /etc/airlance-auth/keys, readOnly: true}
+      volumes:
+        - name: keys
+          secret:
+            secretName: airlance-auth-keys
+            defaultMode: 0440

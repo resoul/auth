@@ -1,0 +1,114 @@
+# Runner: Linux Docker executor; privileged mode and a Docker socket are not needed.
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS'
+      when: never
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+    - when: never
+
+stages:
+  - test
+
+default:
+  interruptible: true
+
+.go-job:
+  image: golang:1.27.1-bookworm
+  timeout: 30m
+  rules:
+    - when: on_success
+  variables:
+    GOTOOLCHAIN: local
+    GOCACHE: "$CI_PROJECT_DIR/.cache/go-build"
+    GOMODCACHE: "$CI_PROJECT_DIR/.cache/go-mod"
+  cache:
+    key:
+      prefix: go-1.27.1
+      files:
+        - go.sum
+    paths:
+      - .cache/go-build/
+      - .cache/go-mod/
+  before_script:
+    - apt-get update
+    - apt-get install -y --no-install-recommends python3
+
+Check:
+  extends: .go-job
+  stage: test
+  script:
+    - make check generate-check test-scripts vuln
+
+Secrets:
+  image:
+    name: ghcr.io/gitleaks/gitleaks:v8.28.0
+    entrypoint: [""]
+  stage: test
+  variables:
+    # The scan reads the whole history: a secret that was committed and then deleted is still leaked.
+    GIT_DEPTH: "0"
+  rules:
+    - when: on_success
+  script:
+    - gitleaks git . --config .gitleaks.toml --no-banner --redact --verbose
+
+Browser:
+  image: node:24-bookworm
+  stage: test
+  timeout: 15m
+  rules:
+    - when: on_success
+  script:
+    - make test-browser
+
+Alerts:
+  image:
+    name: prom/prometheus:v3.5.0
+    entrypoint: [""]
+  stage: test
+  rules:
+    - when: on_success
+  script:
+    - promtool check rules deploy/alerts.yaml
+    - promtool test rules deploy/alerts_test.yaml
+
+Integration:
+  extends: .go-job
+  stage: test
+  services:
+    - name: postgres:18.6-alpine
+      alias: postgres
+      variables:
+        HEALTHCHECK_TCP_PORT: "5432"
+    - name: axllent/mailpit:v1.31.3
+      alias: mailpit
+      variables:
+        HEALTHCHECK_TCP_PORT: "8025"
+  variables:
+    # These credentials belong only to the throwaway CI service.
+    POSTGRES_USER: airlance_auth
+    POSTGRES_PASSWORD: airlance_auth
+    POSTGRES_DB: airlance_auth
+    DATABASE_URL: "postgres://airlance_auth:airlance_auth@postgres:5432/airlance_auth?sslmode=disable"
+    AIRLANCE_AUTH_E2E_MAILPIT: "http://mailpit:8025"
+    AIRLANCE_AUTH_E2E_SMTP: "mailpit:1025"
+    # The same service for the Mailpit test of `make test-int`.
+    AIRLANCE_AUTH_TEST_MAILPIT_API: "http://mailpit:8025"
+    AIRLANCE_AUTH_TEST_MAILPIT_SMTP: "mailpit:1025"
+  before_script:
+    - apt-get update
+    - apt-get install -y --no-install-recommends python3 postgresql-client
+    - |
+      for attempt in $(seq 1 30); do
+        if pg_isready -h postgres -U airlance_auth -d airlance_auth; then
+          break
+        fi
+        sleep 2
+      done
+      pg_isready -h postgres -U airlance_auth -d airlance_auth
+    - curl --fail --silent --show-error --retry 30 --retry-connrefused --retry-delay 2 "$AIRLANCE_AUTH_E2E_MAILPIT/api/v1/messages" > /dev/null
+  script:
+    - make test-int
+    - make test-e2e

@@ -1,0 +1,12 @@
+# Secret scan of the repository history (the Secrets job in .gitlab-ci.yml, or `make secrets`).
+title = "airlance-auth"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Test fixtures: made-up flow, challenge and ticket identifiers, not credentials"
+paths = [
+  '''_test\.go$''',
+  '''^internal/testutil/''',
+]

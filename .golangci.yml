@@ -1,0 +1,134 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: standard # errcheck, govet, ineffassign, staticcheck, unused
+  exclusions:
+    rules:
+      # Fixtures: made-up passwords and URLs, and int conversions of small constants.
+      - path: (_test\.go|internal/testutil/)
+        linters: [gosec]
+      - path: internal/transport/http/openapi/openapi.gen.go
+        linters: [gosec]
+      # Every cookie is built by cookies.base with Secure and HttpOnly; SameSite is the operator's setting,
+      # which the rule cannot see through the helper.
+      - path: internal/transport/http/cookies.go
+        text: G124
+      # The admin cookie is Secure unless every admin origin is plain http on localhost, which config.loadAdmin
+      # enforces; SameSite is Strict.
+      - path: internal/transport/http/admin/api.go
+        text: G124
+      # The example BFF sets Secure unless the operator asked for plain-http loopback development (InsecureCookies), and its
+      # proxy calls the upstream APIs the operator configured, not an address from a request.
+      - path: examples/bff/bff.go
+        text: G124|G704
+      # Names of environment variables, not credentials.
+      - path: internal/config/config.go
+        text: G101
+      # The type header of a logout token ("logout+jwt"), not a credential.
+      - path: internal/adapter/jwt/oidc.go
+        text: G101
+      # Names of audit event types ("oidc.tokens_issued"), not credentials.
+      - path: internal/application/port/audit.go
+        text: G101
+      # The URL is built from AIRLANCE_AUTH_HTTP_ADDR, the operator's own setting, checked to be an IP literal.
+      - path: cmd/airlance-auth/healthcheck.go
+        text: G704
+      # The OpenAPI generator uses both aliases for encoding/json in generated code.
+      - path: internal/transport/http/openapi/openapi.gen.go
+        text: ST1019
+  enable:
+    - depguard
+    - errorlint
+    - gosec
+    - nolintlint
+  settings:
+    gosec:
+      excludes:
+        # Integer conversions here are bounded by a range check or come from a hash; the rule cannot
+        # see the bound and flags every one. New unbounded conversions are caught in review.
+        - G115
+        - G109
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+    depguard:
+      rules:
+        # Test files are excluded so external test packages may import testutil.
+        domain:
+          list-mode: strict
+          files: ["**/internal/domain/**", "!$test"]
+          allow:
+            - $gostd
+            - airlance.org/auth/internal/domain
+        application:
+          list-mode: strict
+          files: ["**/internal/application/**", "!$test"]
+          allow:
+            - $gostd
+            - airlance.org/auth/internal/domain
+            - airlance.org/auth/internal/application
+        config:
+          list-mode: strict
+          files: ["**/internal/config/**", "!$test"]
+          allow:
+            - $gostd
+        adapter:
+          files: ["**/internal/adapter/**", "!$test"]
+          deny:
+            - pkg: airlance.org/auth/internal/transport
+              desc: adapter must not depend on transport
+            - pkg: airlance.org/auth/internal/bootstrap
+              desc: only cmd depends on bootstrap
+            - pkg: airlance.org/auth/internal/config
+              desc: bootstrap passes config values to adapter constructors
+            - pkg: airlance.org/auth/internal/application/emailauth
+              desc: adapter depends on application/port only
+            - pkg: airlance.org/auth/internal/application/session
+              desc: adapter depends on application/port only
+            - pkg: airlance.org/auth/internal/application/account
+              desc: adapter depends on application/port only
+            - pkg: airlance.org/auth/internal/application/passkey
+              desc: adapter depends on application/port only
+            - pkg: airlance.org/auth/internal/application/deviceauth
+              desc: adapter depends on application/port only
+            - pkg: airlance.org/auth/internal/application/oauth
+              desc: adapter depends on application/port only
+            - pkg: airlance.org/auth/internal/application/admin
+              desc: adapter depends on application/port only
+        transport:
+          files: ["**/internal/transport/**", "!$test"]
+          deny:
+            - pkg: airlance.org/auth/internal/adapter
+              desc: transport reaches adapters only through bootstrap
+            - pkg: airlance.org/auth/internal/bootstrap
+              desc: only cmd depends on bootstrap
+            - pkg: airlance.org/auth/internal/config
+              desc: bootstrap passes config values to transport constructors
+        entrypoint:
+          files: ["**/cmd/**", "!$test"]
+          list-mode: strict
+          allow:
+            - $gostd
+            - github.com/spf13/cobra
+            - airlance.org/auth/internal/bootstrap
+            - airlance.org/auth/internal/config
+        # Production code never imports test support.
+        production:
+          files: ["!$test", "!**/internal/testutil/**"]
+          deny:
+            - pkg: airlance.org/auth/internal/testutil
+              desc: production code must not import testutil
+            - pkg: airlance.org/auth/internal/adapter/memory
+              desc: production code must not import in-memory test adapters
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - airlance.org/auth

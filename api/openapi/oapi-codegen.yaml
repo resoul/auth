@@ -1,0 +1,9 @@
+# Run from the repository root: make generate. The output is committed.
+package: openapi
+output: internal/transport/http/openapi/openapi.gen.go
+generate:
+  models: true
+  std-http-server: true
+  strict-server: true
+output-options:
+  skip-prune: false
