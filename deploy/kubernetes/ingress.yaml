@@ -1,0 +1,24 @@
+# An example for ingress-nginx and cert-manager. Replace the host, and the issuer or the TLS secret, with yours.
+# The ingress controller terminates TLS: the service itself speaks plain HTTP. Its pod addresses are what
+# AIRLANCE_AUTH_TRUSTED_PROXIES must name.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: airlance-auth
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [auth.example.com]
+      secretName: airlance-auth-tls
+  rules:
+    - host: auth.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: airlance-auth
+                port: {name: http}

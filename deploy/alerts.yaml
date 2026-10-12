@@ -1,0 +1,128 @@
+# The scrape job name matches the service target; alert expressions use the service metrics.
+# Thresholds are the first working values; the unit tests in alerts_test.yaml pin their behavior.
+groups:
+  - name: airlance_auth-availability
+    rules:
+      - alert: AirlanceAuthDown
+        expr: up{job="airlance-auth"} == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: "The service is not scraped"
+          description: "Prometheus cannot reach the metrics of the service for 2 minutes, so nobody can sign in."
+
+      - alert: AirlanceAuthDatabaseUnreachable
+        expr: airlance_auth_mail_queue_stats_up == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: "The service cannot read its database"
+          description: "The queue statistics, read from PostgreSQL on every scrape, have failed for 2 minutes."
+
+      - alert: AirlanceAuthServerErrors
+        expr: |
+          sum(rate(airlance_auth_http_requests_total{status_class="5xx"}[5m]))
+            / sum(rate(airlance_auth_http_requests_total[5m])) > 0.02
+          and sum(rate(airlance_auth_http_requests_total[5m])) > 0.1
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "More than 2% of requests fail on the server side"
+          description: "The share of 5xx answers has been above 2% for 5 minutes at more than one request in ten seconds."
+
+      - alert: AirlanceAuthSlowRequests
+        expr: histogram_quantile(0.95, sum by (le) (rate(airlance_auth_http_request_seconds_bucket[5m]))) > 1
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "The 95th percentile of the answer time is above one second"
+          description: "Requests have been slow for 10 minutes; look at the database and at the mail queue first."
+
+  - name: airlance_auth-mail
+    rules:
+      - alert: AirlanceAuthMailQueueStuck
+        expr: max(airlance_auth_mail_oldest_due_wait_seconds) > 120
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "Sign-in emails wait more than two minutes"
+          description: "The oldest due email has waited over 120 seconds for 5 minutes. Without the email nobody signs in."
+
+      - alert: AirlanceAuthMailKeyUnavailable
+        expr: sum(increase(airlance_auth_mail_jobs_total{outcome="key_unavailable"}[10m])) > 0
+        labels: {severity: critical}
+        annotations:
+          summary: "An email cannot be made because its OTP key is missing"
+          description: "The worker found a flow whose OTP key is not in the keyring. Fix the keyring; the jobs go out on a later attempt."
+
+      - alert: AirlanceAuthMailRejected
+        expr: |
+          sum(increase(airlance_auth_mail_jobs_total{outcome=~"rejected|exhausted"}[15m]))
+            / sum(increase(airlance_auth_mail_jobs_total{outcome!="obsolete"}[15m])) > 0.2
+          and sum(increase(airlance_auth_mail_jobs_total{outcome!="obsolete"}[15m])) >= 5
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "A fifth of the delivery attempts are refused or given up"
+          description: "The mail server refuses recipients or the attempts run out. One bad address is normal; a share this high is not."
+
+      - alert: AirlanceAuthMailRetries
+        expr: |
+          sum(increase(airlance_auth_mail_jobs_total{outcome="retried"}[15m]))
+            / sum(increase(airlance_auth_mail_jobs_total{outcome!="obsolete"}[15m])) > 0.3
+          and sum(increase(airlance_auth_mail_jobs_total{outcome!="obsolete"}[15m])) >= 5
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "The mail server keeps failing temporarily"
+          description: "Over 30% of the delivery attempts need a retry for 10 minutes; codes arrive late."
+
+  - name: airlance_auth-security
+    rules:
+      - alert: AirlanceAuthPasskeyCloneSuspected
+        expr: sum(increase(airlance_auth_denied_total{reason="clone_suspected"}[1h])) > 0
+        labels: {severity: critical}
+        annotations:
+          summary: "A passkey presented a counter that did not grow"
+          description: "A key was refused because its signature counter did not increase, which can mean a copied key."
+
+      - alert: AirlanceAuthRefreshReuse
+        expr: sum(increase(airlance_auth_refresh_reuse_total[1h])) > 2
+        labels: {severity: warning}
+        annotations:
+          summary: "Used refresh tokens keep coming back"
+          description: "More than two sessions in an hour were revoked because an already used refresh token was presented. One is a lost response; several can be a stolen token."
+
+      - alert: AirlanceAuthCodeGuessing
+        expr: |
+          sum(rate(airlance_auth_http_requests_total{route=~"POST /v1(/native)?/auth/email/verify", status_class="4xx"}[10m]))
+            / sum(rate(airlance_auth_http_requests_total{route=~"POST /v1(/native)?/auth/email/verify"}[10m])) > 0.5
+          and sum(rate(airlance_auth_http_requests_total{route=~"POST /v1(/native)?/auth/email/verify"}[10m])) > 0.05
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "Most code checks fail"
+          description: "Over half of the email code checks are refused for 10 minutes: guessing, or codes that do not reach people."
+
+      - alert: AirlanceAuthPasskeyRefusals
+        expr: sum(rate(airlance_auth_denied_total{reason=~"ceremony_failed|bad_challenge|bad_ticket|unknown_key"}[10m])) > 0.2
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "Passkey proofs are refused at a high rate"
+          description: "More than one refused passkey proof every five seconds for 10 minutes: an attack, or a client that sends wrong data after a release."
+
+      - alert: AirlanceAuthRecoveryCodeGuessing
+        expr: sum(increase(airlance_auth_denied_total{reason="bad_recovery_code"}[15m])) > 10
+        labels: {severity: warning}
+        annotations:
+          summary: "Recovery codes are being tried"
+          description: "More than ten wrong recovery codes in 15 minutes. Recovery codes open an account without a passkey."
+
+      - alert: AirlanceAuthQuotaRefusals
+        expr: sum(rate(airlance_auth_denied_total{reason="quota"}[10m])) > 0.2
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "Quotas refuse requests steadily"
+          description: "Quota refusals have run above one every five seconds for 10 minutes: an abuse run, or limits that are too tight for real use."

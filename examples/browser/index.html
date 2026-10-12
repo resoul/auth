@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Airlance Auth browser example</title>
+  <style>
+    body { font: 15px/1.4 system-ui, sans-serif; margin: 1.5rem auto; max-width: 46rem; padding: 0 1rem; }
+    fieldset { margin: 0 0 1rem; }
+    input, button { font: inherit; padding: .3rem .6rem; }
+    #state { font-weight: 600; }
+    #deviceQR { display: block; width: min(100%, 18rem); height: auto; image-rendering: pixelated; margin: 1rem 0; }
+    #deviceQR[hidden] { display: none; }
+    #deviceLink { overflow-wrap: anywhere; }
+    #deviceCode { font: bold 1.5rem ui-monospace, monospace; letter-spacing: .15em; }
+    #log { background: #f4f4f4; border: 1px solid #ccc; padding: .6rem; height: 16rem; overflow: auto; white-space: pre-wrap; font: 12px/1.4 ui-monospace, monospace; }
+    @media (prefers-color-scheme: dark) { body { background: #161616; color: #eee; } #log { background: #222; border-color: #444; } #deviceLink { color: #9ecbff; } }
+  </style>
+</head>
+<body>
+  <h1>Airlance Auth browser example</h1>
+  <p>Tab id <code id="tab"></code>. State: <span id="state">signed out</span>.</p>
+
+  <fieldset id="signin">
+    <legend>Sign in</legend>
+    <button id="passkeyLogin">Sign in with a passkey</button>
+    <p>or by email, then a passkey:</p>
+    <input id="email" type="email" placeholder="you@example.com" autocomplete="email">
+    <button id="start">Send code</button>
+    <br><br>
+    <input id="code" inputmode="numeric" maxlength="9" placeholder="1234 5678" autocomplete="one-time-code">
+    <button id="verify">Verify</button>
+    <button id="resend">Resend</button>
+    <p>or with a phone that is already signed in:</p>
+    <button id="deviceStart">Sign in with another device</button>
+    <div id="devicePending" hidden>
+      <p id="deviceMessage" role="status"></p>
+      <div id="deviceDetails" hidden>
+        <canvas id="deviceQR" hidden role="img" aria-label="Scan to open the device approval page"></canvas>
+        <p>On your signed-in device scan the QR code or open <a id="deviceLink"></a>,
+          enter <strong id="deviceCode"></strong> and approve.</p>
+        <p>One sign-in request can wait in this browser at a time. Cancel it here before starting in another tab.</p>
+      </div>
+      <button id="deviceCancel">Cancel</button>
+    </div>
+  </fieldset>
+
+  <fieldset id="next" hidden>
+    <legend id="nextTitle">Next step</legend>
+    <button id="createPasskey" hidden>Create a passkey</button>
+    <button id="usePasskey" hidden>Use my passkey</button>
+    <span id="recoveryBox" hidden>
+      <input id="recoveryCode" placeholder="recovery code" autocomplete="off" spellcheck="false">
+      <button id="useRecovery">Use a recovery code</button>
+    </span>
+  </fieldset>
+
+  <fieldset id="codes" hidden>
+    <legend>Recovery codes: shown once</legend>
+    <p>Keep them offline. Each works once and replaces a lost passkey; a new set replaces this one.</p>
+    <pre id="codeList"></pre>
+    <button id="codesSaved">I saved them</button>
+  </fieldset>
+
+  <fieldset id="session">
+    <legend>Session</legend>
+    <button id="refresh">Refresh now</button>
+    <button id="me">GET /v1/me</button>
+    <button id="sessions">GET /v1/sessions</button>
+    <button id="signout">Sign out</button>
+    <button id="signoutAll">Sign out everywhere</button>
+  </fieldset>
+
+  <fieldset id="keys">
+    <legend>My passkeys</legend>
+    <button id="listKeys">List</button>
+    <button id="addKey">Add a passkey</button>
+    <button id="newCodes">New recovery codes</button>
+    <ul id="keyList"></ul>
+    <p>Adding or deleting a key and new recovery codes ask for a fresh passkey proof (step-up); the
+       last key cannot be deleted.</p>
+  </fieldset>
+
+  <fieldset id="approve">
+    <legend>Approve a device</legend>
+    <input id="deviceRequest" placeholder="request id from the QR code" autocomplete="off" spellcheck="false">
+    <input id="devicePairing" inputmode="numeric" maxlength="6" placeholder="code shown on the new device" autocomplete="off">
+    <br><br>
+    <button id="deviceLook">Look</button>
+    <button id="deviceApprove">Approve</button>
+    <button id="deviceDeny">Refuse</button>
+    <p>Approving asks for a fresh passkey proof (step-up) and the six digits the other device shows. Three wrong codes kill the request.
+       The other device gets a session of its own; this one is not copied.</p>
+  </fieldset>
+
+  <fieldset id="emailChange">
+    <legend>My email</legend>
+    <input id="newEmail" type="email" placeholder="new@example.com" autocomplete="off">
+    <button id="changeEmail">Change email</button>
+    <br><br>
+    <input id="changeCode" inputmode="numeric" maxlength="9" placeholder="code from the new address" autocomplete="one-time-code">
+    <button id="confirmEmail">Confirm</button>
+    <p>Changing the email asks for a fresh passkey proof (step-up), mails a code to the new address and
+       confirms with it; the old address is told after the change. A code cannot be used from another session.</p>
+  </fieldset>
+
+  <fieldset>
+    <legend>Delete account</legend>
+    <p>Deletes all sessions, passkeys, recovery codes and pending account mail. Audit events remain
+       without account links for 90 days. A fresh passkey proof is required.</p>
+    <button id="deleteAccount">Delete my account</button>
+  </fieldset>
+
+  <div id="log" role="log" aria-live="polite"></div>
+  <p>API: <code id="api"></code>. Secrets: the refresh token and the client binding live in HttpOnly
+     cookies this page cannot read; the access token lives in this tab's memory only.</p>
+  <script src="qrcodegen.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

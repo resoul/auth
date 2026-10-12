@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en">
+<body style="font-family: sans-serif; line-height: 1.5;">
+<p>Your sign-in code is</p>
+<p style="font-size: 28px; letter-spacing: 3px;"><strong>{{.Code}}</strong></p>
+<p>It expires in about {{.Minutes}} {{if eq .Minutes 1}}minute{{else}}minutes{{end}}. Enter it in the app where you asked for it.</p>
+<p>If you did not ask for this code, you can ignore this email: nobody can sign in without it.</p>
+</body>
+</html>

@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: airlance-auth
+spec:
+  selector: {app.kubernetes.io/name: airlance-auth}
+  ports:
+    - {name: http, port: 80, targetPort: http}
+---
+# Metrics have no authentication: this Service is for Prometheus inside the cluster, and the NetworkPolicy
+# lets only the monitoring namespace reach the port. Do not route an Ingress to it.
+apiVersion: v1
+kind: Service
+metadata:
+  name: airlance-auth-metrics
+spec:
+  clusterIP: None
+  selector: {app.kubernetes.io/name: airlance-auth}
+  ports:
+    - {name: metrics, port: 9090, targetPort: metrics}

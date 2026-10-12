@@ -1,0 +1,173 @@
+# One-server production stack: PostgreSQL, the schema migration, the service, and a TLS proxy of your choice.
+#
+#   scripts/init_production.sh            # once: secrets, keys, env files, deploy/.env
+#   docker compose -f deploy/compose.prod.yaml up -d --build
+#
+# The service speaks plain HTTP inside the compose network and publishes no port. Pick how it meets the
+# internet with a profile (COMPOSE_PROFILES in deploy/.env, which init_production.sh sets to "caddy"):
+#   caddy        Caddy on ports 80 and 443 with an automatic certificate for AIRLANCE_AUTH_DOMAIN
+#   tunnel       a Cloudflare Tunnel connector; nothing is published on this host
+#   monitoring   Prometheus with the alert rules, on 127.0.0.1:9091
+# Or use none of them and point your own proxy (nginx, Traefik, a load balancer) at airlance-auth:8080 from a
+# container on the "internal" network, or add a `ports:` entry to the service. Whatever it is, it must be inside
+# AIRLANCE_AUTH_SUBNET, which is what the service trusts for X-Forwarded-For. Kubernetes: deploy/kubernetes/.
+#
+# The secrets directory is read by the stack and holds: postgres_password (the schema owner, used by the
+# migration), postgres_app_password (the service's role), airlance_auth.env, airlance_auth_migrate.env,
+# cloudflared.env and keys/. The keys directory is mounted at the same absolute path inside the container, so
+# scripts/rotate_keys.py edits the very files the service reads.
+name: airlance-auth-prod
+
+x-service: &service
+  # The files of the secrets directory belong to whoever made them; the container reads them as that user
+  # (scripts/init_production.sh writes the ids to deploy/.env, next to this file).
+  user: "${AIRLANCE_AUTH_UID:-65532}:${AIRLANCE_AUTH_GID:-65532}"
+  restart: unless-stopped
+  security_opt: [no-new-privileges:true]
+  cap_drop: [ALL]
+  logging:
+    driver: json-file
+    options: {max-size: 10m, max-file: "5"}
+
+services:
+  postgres:
+    <<: *service
+    image: postgres:18.6-alpine
+    environment:
+      POSTGRES_USER: airlance_auth
+      POSTGRES_DB: airlance_auth
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets: [postgres_password, postgres_app_password]
+    volumes:
+      - postgres-data:/var/lib/postgresql
+      # Creates the service's own, unprivileged role when the volume is new.
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
+      - ./sql/app-role.sql:/opt/airlance-auth/app-role.sql:ro
+    # The default capabilities PostgreSQL's entrypoint needs; nothing is published to the host.
+    cap_drop: []
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airlance_auth -d airlance_auth"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [internal]
+
+  migrate:
+    user: "${AIRLANCE_AUTH_UID:-65532}:${AIRLANCE_AUTH_GID:-65532}"
+    image: airlance-auth:${AIRLANCE_AUTH_VERSION:-local}
+    build:
+      context: ..
+      args: {VERSION: "${AIRLANCE_AUTH_VERSION:-local}"}
+    command: ["migrate", "up"]
+    # The second file replaces the database URL: the migration connects as the owner of the schema, the service
+    # as a role that can only read and write rows.
+    env_file:
+      - "${AIRLANCE_AUTH_SECRETS_DIR:?set AIRLANCE_AUTH_SECRETS_DIR to the directory scripts/init_production.sh made}/airlance_auth.env"
+      - "${AIRLANCE_AUTH_SECRETS_DIR}/airlance_auth_migrate.env"
+    # The command reads the whole configuration, the keyring path included, though it uses only the database.
+    volumes:
+      - "${AIRLANCE_AUTH_SECRETS_DIR}/keys:${AIRLANCE_AUTH_SECRETS_DIR}/keys:ro"
+    read_only: true
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    restart: "no"
+    depends_on:
+      postgres: {condition: service_healthy}
+    networks: [internal]
+
+  airlance-auth:
+    <<: *service
+    image: airlance-auth:${AIRLANCE_AUTH_VERSION:-local}
+    env_file: ["${AIRLANCE_AUTH_SECRETS_DIR:?set AIRLANCE_AUTH_SECRETS_DIR}/airlance_auth.env"]
+    environment:
+      # Every interface of the container: the proxy reaches it over the compose network. No port is published.
+      AIRLANCE_AUTH_HTTP_ADDR: 0.0.0.0:8080
+      # Metrics on their own port, so /metrics is never on the port the proxy publishes. No authentication:
+      # it stays inside the compose network.
+      AIRLANCE_AUTH_METRICS_ADDR: 0.0.0.0:9090
+      # The proxies whose X-Forwarded-For is believed: the compose network, where only the proxy runs.
+      AIRLANCE_AUTH_TRUSTED_PROXIES: ${AIRLANCE_AUTH_SUBNET:-172.29.7.0/24}
+    read_only: true
+    volumes:
+      - "${AIRLANCE_AUTH_SECRETS_DIR}/keys:${AIRLANCE_AUTH_SECRETS_DIR}/keys:ro"
+    healthcheck:
+      test: ["CMD", "/airlance-auth", "healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+    depends_on:
+      postgres: {condition: service_healthy}
+      migrate: {condition: service_completed_successfully}
+    networks: [internal]
+
+  caddy:
+    <<: *service
+    profiles: [caddy]
+    image: caddy:2.11.7-alpine
+    # Binds 80 and 443 as a non-root user.
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    environment:
+      AIRLANCE_AUTH_DOMAIN: ${AIRLANCE_AUTH_DOMAIN:-} # init_production.sh writes it to deploy/.env
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp" # HTTP/3
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      airlance-auth: {condition: service_healthy}
+    networks: [internal]
+
+  cloudflared:
+    <<: *service
+    profiles: [tunnel]
+    image: cloudflare/cloudflared:2026.9.3
+    command: ["tunnel", "--no-autoupdate", "run"]
+    env_file: ["${AIRLANCE_AUTH_SECRETS_DIR}/cloudflared.env"]
+    # The public hostname of the tunnel points at http://airlance-auth:8080.
+    depends_on:
+      airlance-auth: {condition: service_healthy}
+    networks: [internal]
+
+  prometheus:
+    <<: *service
+    profiles: [monitoring]
+    # Its own user: the data volume belongs to the image's "nobody", not to the owner of the secrets.
+    user: "65534:65534"
+    image: prom/prometheus:v3.5.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=15d
+      - --web.listen-address=0.0.0.0:9091
+    ports:
+      - "127.0.0.1:9091:9091"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./alerts.yaml:/etc/prometheus/alerts.yaml:ro
+      - prometheus-data:/prometheus
+    depends_on:
+      airlance-auth: {condition: service_healthy}
+    networks: [internal]
+
+networks:
+  internal:
+    ipam:
+      config:
+        - subnet: ${AIRLANCE_AUTH_SUBNET:-172.29.7.0/24}
+
+volumes:
+  postgres-data:
+  prometheus-data:
+  caddy-data:
+  caddy-config:
+
+secrets:
+  postgres_password:
+    file: "${AIRLANCE_AUTH_SECRETS_DIR}/postgres_password"
+  postgres_app_password:
+    file: "${AIRLANCE_AUTH_SECRETS_DIR}/postgres_app_password"

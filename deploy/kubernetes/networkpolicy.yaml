@@ -1,0 +1,22 @@
+# Who may open a connection to the pods. The service trusts X-Forwarded-For from AIRLANCE_AUTH_TRUSTED_PROXIES, so
+# only the ingress controller may reach the API port, or any pod could claim any client address. Adjust the namespace
+# labels to your cluster. Needs a CNI that enforces NetworkPolicy.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: airlance-auth
+spec:
+  podSelector:
+    matchLabels: {app.kubernetes.io/name: airlance-auth}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: ingress-nginx}
+      ports:
+        - {protocol: TCP, port: 8080}
+    - from:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: monitoring}
+      ports:
+        - {protocol: TCP, port: 9090}
