@@ -45,75 +45,97 @@ func (k *keySet) VerifySignature(ctx context.Context, token string) ([]byte, err
 	if err != nil || len(sig.Signatures) != 1 {
 		return nil, errors.New("bff: not a token signed with RS256")
 	}
+
 	kid := sig.Signatures[0].Header.KeyID
 	if kid == "" {
 		return nil, errors.New("bff: the token names no key")
 	}
+
 	key, err := k.key(ctx, kid)
 	if err != nil {
 		return nil, err
 	}
+
 	payload, err := sig.Verify(key.Key)
 	if err != nil {
 		return nil, errors.New("bff: the signature does not verify")
 	}
+
 	return payload, nil
 }
 
 func (k *keySet) key(ctx context.Context, kid string) (jose.JSONWebKey, error) {
 	k.mu.Lock()
 	defer k.mu.Unlock()
+
 	now := k.now()
+
 	stale := k.keys == nil || now.Sub(k.fetchedAt) > k.maxAge
 	if key, ok := k.keys[kid]; ok && !stale {
 		return key, nil
 	}
+
 	fetched := false
 	if k.attemptedAt.IsZero() || now.Sub(k.attemptedAt) >= k.minRefetch {
 		fetched = k.refresh(ctx, now) == nil
 	}
+
 	if key, ok := k.keys[kid]; ok {
 		return key, nil
 	}
+
 	if !fetched {
 		// Asked too recently, or the issuer did not answer: the key may exist, so this is not a refusal.
 		return jose.JSONWebKey{}, ErrKeysUnavailable
 	}
+
 	return jose.JSONWebKey{}, errors.New("bff: the token names a key the issuer does not publish")
 }
 
 func (k *keySet) refresh(ctx context.Context, now time.Time) error {
 	k.attemptedAt = now
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, k.url, nil)
 	if err != nil {
 		return err
 	}
+
 	resp, err := k.client.Do(req)
 	if err != nil {
 		return fmt.Errorf("bff: fetch the key set: %w", err)
 	}
+
 	defer func() { _ = resp.Body.Close() }()
+
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("bff: the key set answered %d", resp.StatusCode)
 	}
+
 	data, err := io.ReadAll(io.LimitReader(resp.Body, maxJWKSBytes+1))
 	if err != nil || len(data) > maxJWKSBytes {
 		return errors.New("bff: the key set is unreadable or too large")
 	}
+
 	var set jose.JSONWebKeySet
 	if err := json.Unmarshal(data, &set); err != nil {
 		return errors.New("bff: the key set is not valid JWKS")
 	}
+
 	keys := map[string]jose.JSONWebKey{}
+
 	for _, key := range set.Keys {
 		if key.KeyID == "" || !key.IsPublic() || key.Use != "" && key.Use != "sig" || key.Algorithm != "" && key.Algorithm != string(jose.RS256) {
 			continue
 		}
+
 		keys[key.KeyID] = key
 	}
+
 	if len(keys) == 0 {
 		return errors.New("bff: the key set holds no usable key")
 	}
+
 	k.keys, k.fetchedAt = keys, now
+
 	return nil
 }

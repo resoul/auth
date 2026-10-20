@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	"airlance.org/auth/internal/application/port"
-	dpasskey "airlance.org/auth/internal/domain/passkey"
+	"go.airlance.org/auth/internal/application/port"
+	dpasskey "go.airlance.org/auth/internal/domain/passkey"
 )
 
 // RedeemRecoveryDeps are the dependencies of RedeemRecovery.
@@ -31,6 +31,7 @@ func NewRedeemRecovery(d RedeemRecoveryDeps) (*RedeemRecovery, error) {
 	if d.UnitOfWork == nil || d.Clock == nil || d.Bindings == nil || d.Tickets == nil || d.Recovery == nil || d.PasskeyIDs == nil {
 		return nil, errors.New("new redeem recovery: all dependencies are required")
 	}
+
 	return &RedeemRecovery{d}, nil
 }
 
@@ -58,32 +59,40 @@ func (u *RedeemRecovery) Execute(ctx context.Context, cmd RedeemRecoveryCommand)
 	denied := func(reason Reason) (RedeemRecoveryResult, error) {
 		return RedeemRecoveryResult{Outcome: OutcomeDenied, Reason: reason}, nil
 	}
+
 	binding, err := u.Bindings.HashBinding(cmd.BindingSecret)
 	if errors.Is(err, port.ErrInvalidBindingSecret) {
 		return denied(ReasonBadBinding)
 	}
+
 	if err != nil {
 		return RedeemRecoveryResult{}, fmt.Errorf("redeem recovery: binding: %w", err)
 	}
+
 	ticketHash, err := u.Tickets.HashTicketSecret(cmd.TicketSecret)
 	if errors.Is(err, port.ErrInvalidTicketSecret) {
 		return denied(ReasonBadTicket)
 	}
+
 	if err != nil {
 		return RedeemRecoveryResult{}, fmt.Errorf("redeem recovery: ticket: %w", err)
 	}
+
 	now := u.Clock.Now()
 
 	var result RedeemRecoveryResult
+
 	err = u.UnitOfWork.Do(ctx, func(ctx context.Context, st port.Stores) error {
 		ticket, err := st.Tickets.GetByHashForUpdate(ctx, ticketHash)
 		if errors.Is(err, port.ErrNotFound) {
 			result, _ = denied(ReasonBadTicket)
 			return nil
 		}
+
 		if err != nil {
 			return fmt.Errorf("load ticket: %w", err)
 		}
+
 		presented := dpasskey.Presented{Kind: dpasskey.TicketSecondFactor, Binding: binding}
 		if ticketDenied(ticket.Use(now, presented)) {
 			result, _ = denied(ReasonBadTicket)
@@ -99,14 +108,17 @@ func (u *RedeemRecovery) Execute(ctx context.Context, cmd RedeemRecoveryCommand)
 			result, _ = denied(ReasonBadRecoveryCode)
 			return refuse(ctx, st, now, ticket.UserID(), ReasonBadRecoveryCode)
 		}
+
 		if err != nil {
 			return fmt.Errorf("hash recovery code: %w", err)
 		}
+
 		code, err := st.Recovery.GetByHashForUpdate(ctx, codeHash)
 		if errors.Is(err, port.ErrNotFound) {
 			result, _ = denied(ReasonBadRecoveryCode)
 			return refuse(ctx, st, now, ticket.UserID(), ReasonBadRecoveryCode)
 		}
+
 		if err != nil {
 			return fmt.Errorf("load recovery code: %w", err)
 		}
@@ -115,6 +127,7 @@ func (u *RedeemRecovery) Execute(ctx context.Context, cmd RedeemRecoveryCommand)
 			result, _ = denied(ReasonBadRecoveryCode)
 			return refuse(ctx, st, now, ticket.UserID(), ReasonBadRecoveryCode)
 		}
+
 		if err := st.Recovery.Save(ctx, code); err != nil {
 			return fmt.Errorf("store recovery code: %w", err)
 		}
@@ -123,29 +136,36 @@ func (u *RedeemRecovery) Execute(ctx context.Context, cmd RedeemRecoveryCommand)
 		if err != nil {
 			return fmt.Errorf("new ticket secret: %w", err)
 		}
+
 		id, err := u.PasskeyIDs.NewPasskeyID()
 		if err != nil {
 			return fmt.Errorf("new ticket id: %w", err)
 		}
+
 		next, err := dpasskey.NewTicket(dpasskey.NewTicketParams{
 			ID: id, Kind: dpasskey.TicketRecoveryEnroll, UserID: ticket.UserID(), Binding: ticket.Binding(), SecretHash: hash, Now: now,
 		})
 		if err != nil {
 			return fmt.Errorf("new ticket: %w", err)
 		}
+
 		if err := st.Tickets.Create(ctx, next); err != nil {
 			return fmt.Errorf("store ticket: %w", err)
 		}
+
 		if err := st.Audit.Record(ctx, port.AuditEvent{
 			Type: port.AuditRecoveryCodeUsed, Result: port.AuditSuccess, UserID: ticket.UserID(), At: now,
 		}); err != nil {
 			return fmt.Errorf("record audit event: %w", err)
 		}
+
 		result = RedeemRecoveryResult{Outcome: OutcomeOK, TicketSecret: secret, TicketExpiresAt: next.ExpiresAt()}
+
 		return nil
 	})
 	if err != nil {
 		return RedeemRecoveryResult{}, fmt.Errorf("redeem recovery: %w", err)
 	}
+
 	return result, nil
 }

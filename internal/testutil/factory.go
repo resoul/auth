@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/domain/identity"
 )
 
 // DefaultBindingSecret is the client binding secret of flows built without BindingSecret.
@@ -29,9 +29,11 @@ func NewFactory(t testing.TB, now time.Time) *Factory {
 // BindingHash returns the stored hash for a client binding secret.
 func BindingHash(secret string) identity.BindingHash {
 	sum := sha256.Sum256([]byte(secret))
+
 	hash, err := identity.NewBindingHash(sum[:])
 	if err != nil {
 		panic(err) // unreachable: SHA-256 has the required length
 	}
+
 	return hash
 }

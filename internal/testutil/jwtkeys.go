@@ -24,23 +24,28 @@ type SigningKeyPEM struct {
 // NewSigningKeyPEM generates a P-256 key pair.
 func NewSigningKeyPEM(t testing.TB) SigningKeyPEM {
 	t.Helper()
+
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		t.Fatalf("generate signing key: %v", err)
 	}
+
 	return pemOf(t, key)
 }
 
 func pemOf(t testing.TB, key *ecdsa.PrivateKey) SigningKeyPEM {
 	t.Helper()
+
 	private, err := x509.MarshalPKCS8PrivateKey(key)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	public, err := x509.MarshalPKIXPublicKey(&key.PublicKey)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	return SigningKeyPEM{
 		Private: pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: private}),
 		Public:  pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: public}),
@@ -50,10 +55,12 @@ func pemOf(t testing.TB, key *ecdsa.PrivateKey) SigningKeyPEM {
 // WriteFile writes content under a fresh temporary directory and returns the path.
 func WriteFile(t testing.TB, name string, content []byte) string {
 	t.Helper()
+
 	path := filepath.Join(t.TempDir(), name)
 	if err := os.WriteFile(path, content, 0o600); err != nil {
 		t.Fatal(err)
 	}
+
 	return path
 }
 
@@ -71,21 +78,26 @@ func NewRSAKeyPEM(t testing.TB) SigningKeyPEM {
 		if err != nil {
 			t.Fatalf("generate rsa key: %v", err)
 		}
+
 		private, err := x509.MarshalPKCS8PrivateKey(key)
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		public, err := x509.MarshalPKIXPublicKey(&key.PublicKey)
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		rsaPEM = SigningKeyPEM{
 			Private: pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: private}),
 			Public:  pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: public}),
 		}
 	})
+
 	if rsaPEM.Private == nil {
 		t.Fatal("the shared rsa key could not be generated")
 	}
+
 	return rsaPEM
 }

@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	appoidc "airlance.org/auth/internal/application/oidc"
-	"airlance.org/auth/internal/application/port"
-	doidc "airlance.org/auth/internal/domain/oidc"
+	appoidc "go.airlance.org/auth/internal/application/oidc"
+	"go.airlance.org/auth/internal/application/port"
+	doidc "go.airlance.org/auth/internal/domain/oidc"
 )
 
 func TestSignInOnceAndEnterTwoApplications(t *testing.T) {
@@ -27,17 +27,21 @@ func TestSignInOnceAndEnterTwoApplications(t *testing.T) {
 	if claims["iss"] != issuer || claims["sub"] != alice.user.ID().String() || claims["nonce"] != first.nonce {
 		t.Errorf("id token claims = %v", claims)
 	}
+
 	if aud, _ := claims["aud"].(string); aud != "panels-web" {
 		t.Errorf("aud = %v, want only the client", claims["aud"])
 	}
+
 	if claims["email"] != alice.user.Email().String() || claims["email_verified"] != true {
 		t.Errorf("email claims = %v, %v", claims["email"], claims["email_verified"])
 	}
+
 	for _, name := range []string{"auth_time", "amr", "sid", "iat", "exp"} {
 		if claims[name] == nil {
 			t.Errorf("id token has no %s", name)
 		}
 	}
+
 	if got.Scope != "openid email" || got.AccessToken == "" || got.RefreshToken == "" || got.ExpiresIn != 300 {
 		t.Errorf("token response = %+v", got)
 	}
@@ -45,20 +49,24 @@ func TestSignInOnceAndEnterTwoApplications(t *testing.T) {
 	// UserInfo agrees with the ID token about who this is.
 	info, err := e.userinfo.Execute(context.Background(), got.AccessToken)
 	must(t, err)
+
 	if info.Claims == nil || info.Claims.Subject != claims["sub"] || !info.Claims.HasEmail || info.Claims.Email != alice.user.Email().String() {
 		t.Fatalf("userinfo = %+v", info)
 	}
 
 	// The second application: the cookie of the first sign-in is enough. No passkey, no sign-in page.
 	second := e.newFlow(other)
+
 	again := e.authorizeWith(second.command(sso))
 	if again.Kind != appoidc.AuthorizeRedirect {
 		t.Fatalf("authorize with the shared sign-in = %+v, want a code at once", again)
 	}
+
 	otherTokens := e.exchange(second, e.codeOf(second, again.Location))
 	if otherTokens.Response == nil {
 		t.Fatalf("exchange = %+v", otherTokens.Failure)
 	}
+
 	otherClaims := e.idClaims(otherTokens.Response.IDToken)
 	if otherClaims["sub"] != claims["sub"] || otherClaims["sid"] != claims["sid"] || otherClaims["aud"] != "other-app" {
 		t.Errorf("the second application sees %v, want the same user and sign-in under its own audience", otherClaims)
@@ -85,6 +93,7 @@ func TestEveryRefusalOfAnAuthorizeRequest(t *testing.T) {
 	for name, mutate := range page {
 		cmd := f.command("")
 		mutate(&cmd)
+
 		if got := e.authorizeWith(cmd); got.Kind != appoidc.AuthorizeFailure || got.Location != "" {
 			t.Errorf("%s: %+v, want an error page and no redirect", name, got)
 		}
@@ -117,15 +126,18 @@ func TestEveryRefusalOfAnAuthorizeRequest(t *testing.T) {
 	for name, tc := range back {
 		cmd := f.command("")
 		tc.mutate(&cmd)
+
 		got := e.authorizeWith(cmd)
 		if got.Kind != appoidc.AuthorizeRedirect {
 			t.Errorf("%s: %+v, want a redirect with an error", name, got)
 			continue
 		}
+
 		q := e.query(got.Location, appCallback)
 		if q.Get("error") != tc.code || q.Get("iss") != issuer || q.Get("code") != "" {
 			t.Errorf("%s: redirect %q, want error %s and the issuer, and no code", name, got.Location, tc.code)
 		}
+
 		if cmd.State != "" && q.Get("state") != cmd.State {
 			t.Errorf("%s: the state was not returned unchanged", name)
 		}
@@ -134,6 +146,7 @@ func TestEveryRefusalOfAnAuthorizeRequest(t *testing.T) {
 	// A scope the client was not registered for is refused even though the provider offers it.
 	narrow := e.register("narrow-app", appTwo, "openid")
 	nf := e.newFlow(narrow)
+
 	got := e.authorizeWith(nf.command(""))
 	if q := e.query(got.Location, appTwo); q.Get("error") != appoidc.ErrInvalidScope {
 		t.Errorf("a scope the client may not ask for: %q", got.Location)
@@ -148,24 +161,30 @@ func TestPromptsAndMaxAgeDecideWhetherTheSharedSignInIsEnough(t *testing.T) {
 
 	// Later, with the cookie.
 	e.clock.Advance(10 * time.Minute)
+
 	ask := func(mutate func(c *appoidc.AuthorizeCommand)) appoidc.AuthorizeResult {
 		f := e.newFlow(app)
 		cmd := f.command(sso)
 		mutate(&cmd)
+
 		return e.authorizeWith(cmd)
 	}
 	if got := ask(func(*appoidc.AuthorizeCommand) {}); got.Kind != appoidc.AuthorizeRedirect || !strings.Contains(got.Location, "code=") {
 		t.Errorf("plain request = %+v, want a code", got)
 	}
+
 	if got := ask(func(c *appoidc.AuthorizeCommand) { c.Prompt = "none" }); got.Kind != appoidc.AuthorizeRedirect || !strings.Contains(got.Location, "code=") {
 		t.Errorf("prompt=none with a session = %+v, want a code and no screen", got)
 	}
+
 	if got := ask(func(c *appoidc.AuthorizeCommand) { c.Prompt = "login" }); got.Kind != appoidc.AuthorizeLogin {
 		t.Errorf("prompt=login = %+v, want a fresh sign-in", got)
 	}
+
 	if got := ask(func(c *appoidc.AuthorizeCommand) { c.MaxAge = "0" }); got.Kind != appoidc.AuthorizeLogin {
 		t.Errorf("max_age=0 = %+v, want a fresh sign-in", got)
 	}
+
 	if got := ask(func(c *appoidc.AuthorizeCommand) { c.MaxAge = "3600" }); got.Kind != appoidc.AuthorizeRedirect {
 		t.Errorf("max_age above the age of the sign-in = %+v, want a code", got)
 	}
@@ -188,6 +207,7 @@ func TestTheSharedSignInEndsWhenItIsTooOldOrIdle(t *testing.T) {
 	policy := doidc.DefaultPolicy()
 
 	e.clock.Advance(policy.OPSessionIdle + time.Minute)
+
 	if got := e.authorizeWith(e.newFlow(app).command(sso)); got.Kind != appoidc.AuthorizeLogin {
 		t.Errorf("after the idle time = %+v, want a sign-in", got)
 	}
@@ -196,14 +216,18 @@ func TestTheSharedSignInEndsWhenItIsTooOldOrIdle(t *testing.T) {
 	_, sso = e.signedIn(e.newFlow(app), alice)
 	for elapsed := time.Duration(0); elapsed < policy.OPSessionAbsolute; elapsed += 12 * time.Hour {
 		e.clock.Advance(12 * time.Hour)
+
 		if got := e.authorizeWith(e.newFlow(app).command(sso)); got.Kind == appoidc.AuthorizeLogin {
 			if elapsed+12*time.Hour < policy.OPSessionAbsolute {
 				t.Fatalf("the sign-in ended after %v, before its absolute time", elapsed+12*time.Hour)
 			}
+
 			return
 		}
 	}
+
 	e.clock.Advance(time.Hour)
+
 	if got := e.authorizeWith(e.newFlow(app).command(sso)); got.Kind != appoidc.AuthorizeLogin {
 		t.Errorf("past the absolute time = %+v, want a sign-in however recently it was used", got)
 	}
@@ -219,10 +243,12 @@ func TestACodeIsOneTimeAndTiedToItsClientRedirectAndVerifier(t *testing.T) {
 		f := e.newFlow(app)
 		code, _ := e.signedIn(f, alice)
 		bad := f
+
 		bad.verifier, _, _ = e.secrets.NewOIDCSecret()
 		if got := e.exchange(bad, code); got.Failure == nil || got.Failure.Code != appoidc.ErrInvalidGrant {
 			t.Errorf("wrong verifier = %+v", got)
 		}
+
 		if got := e.exchange(f, code); got.Response != nil {
 			t.Error("a code that was presented with a wrong verifier still worked")
 		}
@@ -230,13 +256,16 @@ func TestACodeIsOneTimeAndTiedToItsClientRedirectAndVerifier(t *testing.T) {
 
 	t.Run("no verifier, and a plain challenge used as a verifier", func(t *testing.T) {
 		f := e.newFlow(app)
+
 		code, _ := e.signedIn(f, alice)
 		for name, verifier := range map[string]string{"empty": "", "the challenge itself": doidc.Challenge(f.verifier), "short": "abc"} {
 			bad := f
+
 			bad.verifier = verifier
 			if got := e.exchange(bad, code); got.Response != nil {
 				t.Errorf("%s: the exchange worked", name)
 			}
+
 			code, _ = e.signedIn(f, alice) // the previous one is spent
 		}
 	})
@@ -249,6 +278,7 @@ func TestACodeIsOneTimeAndTiedToItsClientRedirectAndVerifier(t *testing.T) {
 			RedirectURI: appTwo, CodeVerifier: f.verifier,
 		})
 		must(t, err)
+
 		if got.Response != nil || got.Failure.Code != appoidc.ErrInvalidGrant {
 			t.Errorf("another redirect = %+v", got)
 		}
@@ -258,6 +288,7 @@ func TestACodeIsOneTimeAndTiedToItsClientRedirectAndVerifier(t *testing.T) {
 		f := e.newFlow(app)
 		code, _ := e.signedIn(f, alice)
 		stolen := f
+
 		stolen.client = other
 		if got := e.exchange(stolen, code); got.Response != nil {
 			t.Fatal("another client exchanged a code that was not its own")
@@ -272,6 +303,7 @@ func TestACodeIsOneTimeAndTiedToItsClientRedirectAndVerifier(t *testing.T) {
 		f := e.newFlow(app)
 		code, _ := e.signedIn(f, alice)
 		e.clock.Advance(doidc.DefaultPolicy().CodeTTL + time.Second)
+
 		if got := e.exchange(f, code); got.Response != nil {
 			t.Error("an expired code was exchanged")
 		}
@@ -279,10 +311,12 @@ func TestACodeIsOneTimeAndTiedToItsClientRedirectAndVerifier(t *testing.T) {
 
 	t.Run("a made-up code", func(t *testing.T) {
 		f := e.newFlow(app)
+
 		fake, _, _ := e.secrets.NewOIDCSecret()
 		if got := e.exchange(f, fake); got.Response != nil || got.Failure.Code != appoidc.ErrInvalidGrant {
 			t.Errorf("made-up code = %+v", got)
 		}
+
 		if got := e.exchange(f, "not-a-secret"); got.Response != nil {
 			t.Error("a malformed code was exchanged")
 		}
@@ -304,6 +338,7 @@ func TestClientAuthentication(t *testing.T) {
 	} {
 		bad := f
 		mutate(&bad.client)
+
 		if got := e.exchange(bad, code); got.Response != nil || got.Failure.Code != appoidc.ErrInvalidClient {
 			t.Errorf("%s: %+v, want invalid_client", name, got)
 		}
@@ -317,16 +352,21 @@ func TestClientAuthentication(t *testing.T) {
 	f2 := e.newFlow(app)
 	tokens, _ := e.tokens(f2, alice)
 	must(t, e.clients.SetActive(context.Background(), app.id, false))
+
 	if got := e.refresh(app, tokens.RefreshToken); got.Response != nil || got.Failure.Code != appoidc.ErrInvalidClient {
 		t.Errorf("disabled client refreshes = %+v", got)
 	}
+
 	if info, _ := e.userinfo.Execute(context.Background(), tokens.AccessToken); info.Claims != nil {
 		t.Error("the access token of a disabled client still works")
 	}
+
 	if got := e.authorizeWith(e.newFlow(app).command("")); got.Kind != appoidc.AuthorizeFailure {
 		t.Errorf("authorize for a disabled client = %+v", got)
 	}
+
 	must(t, e.clients.SetActive(context.Background(), app.id, true))
+
 	if got := e.refresh(app, tokens.RefreshToken); got.Response != nil {
 		t.Error("enabling the client again revived a grant that was revoked")
 	}
@@ -349,10 +389,13 @@ func TestOnlyFirstPartyClientsCanBeRegistered(t *testing.T) {
 			t.Errorf("%s: the registration was accepted", name)
 		}
 	}
+
 	if _, err := e.clients.Register(context.Background(), appoidc.RegisterCommand{ID: "dev-app", Name: "x", RedirectURIs: []string{"http://localhost:3000/cb"}}); err != nil {
 		t.Errorf("a localhost development client: %v", err)
 	}
+
 	e.register("taken-id", appCallback, "openid")
+
 	if _, err := e.clients.Register(context.Background(), appoidc.RegisterCommand{ID: "taken-id", Name: "x", RedirectURIs: []string{appCallback}}); err == nil {
 		t.Error("a client ID was registered twice")
 	}
@@ -370,21 +413,26 @@ func TestRotatingASecretKeepsTheOldOneForTheOverlapOnly(t *testing.T) {
 		c.secret = secret
 		f := e.newFlow(c)
 		code, _ := e.signedIn(f, alice)
+
 		return e.exchange(f, code).Response != nil
 	}
 	if !useSecret(app.secret) || !useSecret(next) {
 		t.Fatal("during the overlap both secrets should work")
 	}
+
 	e.clock.Advance(time.Hour + time.Minute)
+
 	if useSecret(app.secret) {
 		t.Error("the old secret works after the overlap")
 	}
+
 	if !useSecret(next) {
 		t.Error("the new secret stopped working")
 	}
 	// A second rotation retires the leftovers of the first at once.
 	third, err := e.clients.RotateSecret(context.Background(), app.id, time.Hour)
 	must(t, err)
+
 	if !useSecret(next) || !useSecret(third) {
 		t.Error("the previous and the new secret should both work during the second overlap")
 	}
@@ -401,6 +449,7 @@ func TestCompleteLoginRefusals(t *testing.T) {
 		if asked.Kind != appoidc.AuthorizeLogin {
 			t.Fatalf("authorize = %+v", asked)
 		}
+
 		return asked
 	}
 	complete := func(a appoidc.AuthorizeResult, mutate func(c *appoidc.CompleteLoginCommand)) appoidc.CompleteLoginResult {
@@ -408,10 +457,12 @@ func TestCompleteLoginRefusals(t *testing.T) {
 		mutate(&cmd)
 		got, err := e.login.Execute(context.Background(), cmd)
 		must(t, err)
+
 		return got
 	}
 	refused := func(name string, got appoidc.CompleteLoginResult) {
 		t.Helper()
+
 		if got.Failure == nil || got.SSOSecret != "" || got.Location != "" {
 			t.Errorf("%s: %+v, want a refusal that opens nothing", name, got)
 		}
@@ -419,6 +470,7 @@ func TestCompleteLoginRefusals(t *testing.T) {
 
 	a := begin()
 	other, _, _ := e.secrets.NewOIDCSecret()
+
 	refused("another browser", complete(a, func(c *appoidc.CompleteLoginCommand) { c.BindingSecret = other }))
 	refused("no binding", complete(a, func(c *appoidc.CompleteLoginCommand) { c.BindingSecret = "" }))
 	refused("another request id", complete(a, func(c *appoidc.CompleteLoginCommand) { c.RequestSecret = other }))
@@ -436,25 +488,31 @@ func TestCompleteLoginRefusals(t *testing.T) {
 	if got := complete(a, func(c *appoidc.CompleteLoginCommand) {}); got.Failure != nil || got.SSOSecret == "" {
 		t.Fatalf("the genuine completion = %+v", got)
 	}
+
 	refused("a second completion", complete(a, func(c *appoidc.CompleteLoginCommand) {}))
 
 	// It expires.
 	b := begin()
+
 	e.clock.Advance(doidc.DefaultPolicy().RequestTTL + time.Second)
 	refused("an expired request", complete(b, func(c *appoidc.CompleteLoginCommand) { c.AccessToken = e.signIn(mallory) }))
 
 	// A blocked user is sent back with access_denied and gets no sign-in.
 	c := begin()
+
 	e.do(func(ctx context.Context, st port.Stores) error {
 		u, err := st.Users.GetForUpdate(ctx, alice.user.ID())
 		if err != nil {
 			return err
 		}
+
 		if err := u.Block(e.clock.Now()); err != nil {
 			return err
 		}
+
 		return st.Users.SetBlocked(ctx, u)
 	})
+
 	got := complete(c, func(c *appoidc.CompleteLoginCommand) {})
 	if got.SSOSecret != "" || !strings.Contains(got.Location, "error=access_denied") {
 		t.Errorf("a blocked user = %+v", got)
@@ -474,12 +532,14 @@ func TestAFreshLoginIsRequiredWhenAsked(t *testing.T) {
 	asked := e.authorizeWith(cmd)
 	got, err := e.login.Execute(context.Background(), appoidc.CompleteLoginCommand{RequestSecret: asked.RequestID, BindingSecret: asked.BindingSecret, AccessToken: old})
 	must(t, err)
+
 	if got.Failure == nil || got.Failure.Code != appoidc.ErrLoginRequired || got.SSOSecret != "" {
 		t.Errorf("a proof from before the request, for prompt=login = %+v", got)
 	}
 	// The same request with a proof made after it is accepted.
 	got, err = e.login.Execute(context.Background(), appoidc.CompleteLoginCommand{RequestSecret: asked.RequestID, BindingSecret: asked.BindingSecret, AccessToken: e.signIn(alice)})
 	must(t, err)
+
 	if got.Failure != nil || got.SSOSecret == "" {
 		t.Errorf("a fresh proof = %+v", got)
 	}

@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/domain/identity"
 )
 
 // RecognizedClientRepository stores the records that give a client its own quota class.

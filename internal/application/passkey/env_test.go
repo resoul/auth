@@ -7,17 +7,17 @@ import (
 	"testing"
 	"time"
 
-	"airlance.org/auth/internal/adapter/crypto"
-	"airlance.org/auth/internal/adapter/jwt"
-	"airlance.org/auth/internal/adapter/memory"
-	apasskey "airlance.org/auth/internal/adapter/passkey"
-	"airlance.org/auth/internal/application/passkey"
-	"airlance.org/auth/internal/application/port"
-	appsession "airlance.org/auth/internal/application/session"
-	"airlance.org/auth/internal/domain/identity"
-	dpasskey "airlance.org/auth/internal/domain/passkey"
-	"airlance.org/auth/internal/domain/session"
-	"airlance.org/auth/internal/testutil"
+	"go.airlance.org/auth/internal/adapter/crypto"
+	"go.airlance.org/auth/internal/adapter/jwt"
+	"go.airlance.org/auth/internal/adapter/memory"
+	apasskey "go.airlance.org/auth/internal/adapter/passkey"
+	"go.airlance.org/auth/internal/application/passkey"
+	"go.airlance.org/auth/internal/application/port"
+	appsession "go.airlance.org/auth/internal/application/session"
+	"go.airlance.org/auth/internal/domain/identity"
+	dpasskey "go.airlance.org/auth/internal/domain/passkey"
+	"go.airlance.org/auth/internal/domain/session"
+	"go.airlance.org/auth/internal/testutil"
 )
 
 const (
@@ -41,6 +41,7 @@ func (f *faults) Do(ctx context.Context, fn func(ctx context.Context, s port.Sto
 		if f.wrap != nil {
 			s = f.wrap(s)
 		}
+
 		return fn(ctx, s)
 	})
 }
@@ -94,31 +95,40 @@ func newEnvWith(t *testing.T, web port.WebAuthn, wrapSigner func(port.AccessSign
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		web = service
 	}
+
 	keys := testutil.NewSigningKeyPEM(t)
+
 	ring, err := jwt.LoadRing("sign-a", map[string]string{"sign-a": testutil.WriteFile(t, "a.pem", keys.Private)})
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	var signer port.AccessSigner
+
 	signer, err = jwt.NewSigner(ring, e.clock, "https://auth.example.test", "example", 5*time.Minute)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if wrapSigner != nil {
 		signer = wrapSigner(signer)
 	}
+
 	e.verify, err = jwt.NewVerifier(ring.PublicKeys(), e.clock, "https://auth.example.test", "example", 30*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	issuer, err := appsession.NewIssuer(appsession.IssuerDeps{
 		SessionIDs: factory.IDs, TokenIDs: factory.IDs, Secrets: crypto.Refresh{}, Policy: session.DefaultPolicy(),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	sessions := passkey.SessionDeps{Sessions: issuer, Signer: signer}
 
 	e.beginEnroll, err = passkey.NewBeginEnroll(passkey.BeginEnrollDeps{
@@ -162,11 +172,13 @@ func newEnvWith(t *testing.T, web port.WebAuthn, wrapSigner func(port.AccessSign
 		UnitOfWork: e.faults, Clock: e.clock, Tickets: e.tickets, Recovery: crypto.Recovery{}, PasskeyIDs: factory.IDs,
 	})
 	must(t, err)
+
 	return e
 }
 
 func must(t *testing.T, err error) {
 	t.Helper()
+
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,6 +194,7 @@ func (e *env) newBinding() bindingSecret {
 	e.t.Helper()
 	secret, hash, err := e.binding.NewBinding()
 	must(e.t, err)
+
 	return bindingSecret{secret: secret, hash: hash}
 }
 
@@ -199,6 +212,7 @@ func (e *env) newUser() *identity.User {
 		_, _, err := st.Users.Ensure(ctx, user)
 		return err
 	})
+
 	return user
 }
 
@@ -214,6 +228,7 @@ func (e *env) ticketFor(user *identity.User, kind dpasskey.TicketKind, b binding
 	})
 	must(e.t, err)
 	e.do(func(ctx context.Context, st port.Stores) error { return st.Tickets.Create(ctx, ticket) })
+
 	return secret
 }
 
@@ -232,10 +247,12 @@ func (e *env) enroll() enrolled {
 	user := e.newUser()
 	b := e.newBinding()
 	auth := testutil.NewSoftAuthenticator(e.t, rpID, origin)
+
 	got := e.enrollWith(user, auth, e.ticketFor(user, dpasskey.TicketEnroll, b), b)
 	if got.Outcome != passkey.OutcomeOK {
 		e.t.Fatalf("enrollment refused: %+v", got)
 	}
+
 	return enrolled{user: user, auth: auth, codes: got.RecoveryCodes, actor: appsession.Actor{UserID: user.ID(), SessionID: got.Session.ID()}}
 }
 
@@ -243,14 +260,17 @@ func (e *env) enrollWith(user *identity.User, auth *testutil.SoftAuthenticator, 
 	e.t.Helper()
 	begun, err := e.beginEnroll.Execute(context.Background(), passkey.BeginEnrollCommand{TicketSecret: ticket, BindingSecret: b.secret})
 	must(e.t, err)
+
 	if begun.Outcome != passkey.OutcomeOK {
 		return passkey.FinishEnrollResult{Outcome: begun.Outcome, Reason: begun.Reason}
 	}
+
 	got, err := e.finishEnroll.Execute(context.Background(), passkey.FinishEnrollCommand{
 		TicketSecret: ticket, BindingSecret: b.secret, ChallengeID: begun.ChallengeID, Response: auth.Register(begun.Options),
 		CredentialName: "Laptop", DeviceName: "test",
 	})
 	must(e.t, err)
+
 	return got
 }
 
@@ -264,6 +284,7 @@ func (e *env) signIn(auth *testutil.SoftAuthenticator, ticket string, b bindingS
 		DeviceName: "test", ClientIP: clientAddr,
 	})
 	must(e.t, err)
+
 	return got
 }
 
@@ -272,23 +293,33 @@ var clientAddr = netip.MustParseAddr("203.0.113.7")
 
 func (e *env) credentials(user *identity.User) []*dpasskey.Credential {
 	e.t.Helper()
+
 	var list []*dpasskey.Credential
+
 	e.do(func(ctx context.Context, st port.Stores) error {
 		var err error
+
 		list, err = st.Credentials.ListByUser(ctx, user.ID())
+
 		return err
 	})
+
 	return list
 }
 
 func (e *env) unusedCodes(user *identity.User) int {
 	e.t.Helper()
+
 	var n int
+
 	e.do(func(ctx context.Context, st port.Stores) error {
 		var err error
+
 		n, err = st.Recovery.CountUnused(ctx, user.ID())
+
 		return err
 	})
+
 	return n
 }
 
@@ -302,6 +333,7 @@ func (s *switchSigner) SignAccess(c port.AccessClaims) (port.AccessToken, error)
 	if s.fail {
 		return port.AccessToken{}, errBoom
 	}
+
 	return s.inner.SignAccess(c)
 }
 

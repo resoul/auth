@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"airlance.org/auth/internal/application/port"
+	"go.airlance.org/auth/internal/application/port"
 )
 
 // Policy holds the timing of delivery.
@@ -38,11 +38,13 @@ func (p Policy) Validate() error {
 	if p.PollInterval <= 0 || p.Lease <= 0 || len(p.Backoff) == 0 {
 		return errors.New("oidc logout policy: a poll interval, a lease and a backoff are required")
 	}
+
 	for _, d := range p.Backoff {
 		if d <= 0 {
 			return errors.New("oidc logout policy: every backoff step must be positive")
 		}
 	}
+
 	return nil
 }
 
@@ -79,9 +81,11 @@ func NewWorker(d Deps) (*Worker, error) {
 	if d.UnitOfWork == nil || d.Clock == nil || d.Signer == nil || d.HTTP == nil || d.Logger == nil {
 		return nil, errors.New("new oidc logout worker: all dependencies are required")
 	}
+
 	if err := d.Policy.Validate(); err != nil {
 		return nil, fmt.Errorf("new oidc logout worker: %w", err)
 	}
+
 	return &Worker{d}, nil
 }
 
@@ -93,12 +97,15 @@ func (w *Worker) Run(ctx context.Context) error {
 		if ctx.Err() != nil {
 			return nil
 		}
+
 		if err != nil {
 			w.Logger.ErrorContext(ctx, "logout notice worker failed to process a notice", "error", err)
 		}
+
 		if processed && err == nil {
 			continue
 		}
+
 		select {
 		case <-ctx.Done():
 			return nil
@@ -111,24 +118,30 @@ func (w *Worker) Run(ctx context.Context) error {
 // be recorded; the lease then runs out and the notice is tried again.
 func (w *Worker) ProcessNext(ctx context.Context) (bool, error) {
 	now := w.Clock.Now()
+
 	var notice *port.ClaimedLogout
+
 	err := w.UnitOfWork.Do(ctx, func(ctx context.Context, st port.Stores) error {
 		var err error
+
 		notice, err = st.OIDCLogout.Claim(ctx, now, now.Add(w.Policy.Lease))
 		if errors.Is(err, port.ErrNotFound) {
 			notice = nil
 			return nil
 		}
+
 		return err
 	})
 	if err != nil {
 		return false, fmt.Errorf("claim logout notice: %w", err)
 	}
+
 	if notice == nil {
 		return false, nil
 	}
 
 	reason, retry := w.deliver(ctx, notice, now)
+
 	err = w.UnitOfWork.Do(ctx, func(ctx context.Context, st port.Stores) error {
 		switch {
 		case reason == reasonDelivered:
@@ -138,6 +151,7 @@ func (w *Worker) ProcessNext(ctx context.Context) (bool, error) {
 			if next.After(notice.ExpiresAt) {
 				return st.OIDCLogout.Abandon(ctx, notice.ID, reasonExhausted)
 			}
+
 			return st.OIDCLogout.Retry(ctx, notice.ID, next, reason)
 		case retry:
 			return st.OIDCLogout.Abandon(ctx, notice.ID, reasonExhausted)
@@ -148,7 +162,9 @@ func (w *Worker) ProcessNext(ctx context.Context) (bool, error) {
 	if err != nil {
 		return true, fmt.Errorf("record logout notice outcome: %w", err)
 	}
+
 	w.Logger.InfoContext(ctx, "logout notice processed", "client", notice.ClientID, "outcome", reason, "attempt", notice.Attempts)
+
 	return true, nil
 }
 
@@ -157,9 +173,11 @@ func (w *Worker) backoff(attempts int) time.Duration {
 	if i < 0 {
 		i = 0
 	}
+
 	if i >= len(w.Policy.Backoff) {
 		i = len(w.Policy.Backoff) - 1
 	}
+
 	return w.Policy.Backoff[i]
 }
 
@@ -168,29 +186,38 @@ func (w *Worker) deliver(ctx context.Context, n *port.ClaimedLogout, now time.Ti
 	if n.BackchannelURI == "" {
 		return reasonNoEndpoint, false
 	}
+
 	if !now.Before(n.ExpiresAt) {
 		return reasonExpired, false
 	}
+
 	token, err := w.Signer.SignLogoutToken(port.LogoutClaims{Subject: n.UserID, ClientID: n.ClientID, SessionID: n.SessionID, JTI: n.ID})
 	if err != nil {
 		w.Logger.ErrorContext(ctx, "sign logout token", "error", err)
 		return reasonUnreachable, true
 	}
+
 	form := url.Values{"logout_token": {token.Value}}
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, n.BackchannelURI, strings.NewReader(form.Encode()))
 	if err != nil {
 		return reasonNoEndpoint, false
 	}
+
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Cache-Control", "no-store")
+
 	resp, err := w.HTTP.Do(req)
 	if err != nil {
 		if errors.Is(err, errBlocked) {
 			return reasonBlocked, false
 		}
+
 		return reasonUnreachable, true
 	}
+
 	defer func() { _ = resp.Body.Close() }()
+
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4<<10)) // nothing in the answer is used
 	switch {
 	case resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNoContent:

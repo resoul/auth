@@ -8,11 +8,11 @@ import (
 	"testing"
 	"time"
 
-	"airlance.org/auth/internal/adapter/crypto"
-	"airlance.org/auth/internal/application/port"
-	"airlance.org/auth/internal/domain/session"
-	"airlance.org/auth/internal/testutil"
-	httpapi "airlance.org/auth/internal/transport/http"
+	"go.airlance.org/auth/internal/adapter/crypto"
+	"go.airlance.org/auth/internal/application/port"
+	"go.airlance.org/auth/internal/domain/session"
+	"go.airlance.org/auth/internal/testutil"
+	httpapi "go.airlance.org/auth/internal/transport/http"
 )
 
 type sessionBody struct {
@@ -43,19 +43,23 @@ var protected = []struct{ method, path string }{
 
 func (e *env) call(method, path, token, body string) *httptest.ResponseRecorder {
 	e.t.Helper()
+
 	req := httptest.NewRequest(method, path, strings.NewReader(body))
 	if body != "" {
 		req.Header.Set("Content-Type", "application/json")
 	}
+
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
+
 	return e.do(req)
 }
 
 func (e *env) wantUnauthenticated(rec *httptest.ResponseRecorder) {
 	e.t.Helper()
 	wantProblem(e.t, rec, http.StatusUnauthorized, "unauthenticated")
+
 	if got := rec.Header().Get("WWW-Authenticate"); got != "Bearer" {
 		e.t.Errorf("WWW-Authenticate = %q", got)
 	}
@@ -63,34 +67,42 @@ func (e *env) wantUnauthenticated(rec *httptest.ResponseRecorder) {
 
 func (e *env) recognized(email, bindingSecret string) bool {
 	e.t.Helper()
+
 	hash, err := crypto.Binding{}.HashBinding(bindingSecret)
 	if err != nil {
 		e.t.Fatal(err)
 	}
+
 	found := false
+
 	err = e.store.Do(context.Background(), func(ctx context.Context, st port.Stores) error {
 		_, err := st.Recognized.FindActive(ctx, mustEmail(e.t, email), hash, e.clock.Now())
 		found = err == nil
+
 		return nil
 	})
 	if err != nil {
 		e.t.Fatal(err)
 	}
+
 	return found
 }
 
 func (e *env) sessionOf(token string) session.ID {
 	e.t.Helper()
+
 	claims, err := e.verifier.VerifyAccess(token)
 	if err != nil {
 		e.t.Fatal(err)
 	}
+
 	return claims.SessionID
 }
 
 func (e *env) revoked(id session.ID) bool {
 	e.t.Helper()
 	s, ok := e.store.Session(id)
+
 	return ok && !s.RevokedAt().IsZero()
 }
 
@@ -104,11 +116,13 @@ func TestMeReturnsTheUserAndTheCurrentSessionInBothProfiles(t *testing.T) {
 
 	for _, path := range []string{"/v1/me", "/v1/native/me"} {
 		rec := e.call(http.MethodGet, path, signedIn.AccessToken, "")
+
 		me := decode[meBody](t, rec, http.StatusOK)
 		if me.User.ID != signedIn.User.ID || me.User.Email != "alice@example.test" ||
 			me.Session.ID != e.sessionOf(signedIn.AccessToken).String() || !me.Session.Current || me.Session.DeviceName != "Alice's phone" {
 			t.Errorf("%s = %+v", path, me)
 		}
+
 		if !me.Session.CreatedAt.Equal(t0) || rec.Header().Get("Cache-Control") != "no-store" {
 			t.Errorf("%s: created %v, Cache-Control %q", path, me.Session.CreatedAt, rec.Header().Get("Cache-Control"))
 		}
@@ -119,6 +133,7 @@ func TestEveryProtectedRouteRefusesAnythingButAValidBearerTokenOfALiveSession(t 
 	e := newEnv(t)
 	old, _ := e.signIn("alice@example.test")
 	expired := old.AccessToken // signed an hour ago with a five minute life
+
 	e.clock.Advance(time.Hour)
 	// A token that is valid now: each case below is refused for its form alone.
 	signedIn, _ := e.signIn("alice@example.test")
@@ -154,6 +169,7 @@ func TestEveryProtectedRouteRefusesAnythingButAValidBearerTokenOfALiveSession(t 
 			})
 		}
 	}
+
 	if e.revoked(goodSession) {
 		t.Error("a refused request revoked a session")
 	}
@@ -171,6 +187,7 @@ func TestARevokedSessionStopsWorkingAtOnceDespiteAValidToken(t *testing.T) {
 	for _, op := range protected[4:7] {
 		e.wantUnauthenticated(e.call(op.method, op.path, signedIn.AccessToken, ""))
 	}
+
 	wantProblem(t, e.refresh(signedIn.RefreshToken), http.StatusUnauthorized, "invalid_refresh")
 }
 
@@ -183,6 +200,7 @@ func TestListShowsOnlyTheCallersActiveSessionsWithoutSecrets(t *testing.T) {
 	phoneID := e.sessionOf(phone.AccessToken).String()
 	e.signIn("bob@example.test")
 	e.clock.Advance(time.Hour)
+
 	tablet, _ := e.signIn("alice@example.test")
 	if rec := e.call(http.MethodPost, "/v1/native/signout", tablet.AccessToken, ""); rec.Code != http.StatusNoContent {
 		t.Fatal(rec.Code)
@@ -192,13 +210,16 @@ func TestListShowsOnlyTheCallersActiveSessionsWithoutSecrets(t *testing.T) {
 
 	for _, path := range []string{"/v1/sessions", "/v1/native/sessions"} {
 		rec := e.call(http.MethodGet, path, phone.AccessToken, "")
+
 		list := decode[listBody](t, rec, http.StatusOK)
 		if len(list.Sessions) != 2 || list.Sessions[0].ID != phoneID || list.Sessions[1].ID != laptopID {
 			t.Fatalf("%s = %+v, want the phone then the laptop", path, list.Sessions)
 		}
+
 		if !list.Sessions[0].Current || list.Sessions[1].Current {
 			t.Errorf("%s: current flags = %v, %v", path, list.Sessions[0].Current, list.Sessions[1].Current)
 		}
+
 		raw := strings.ToLower(rec.Body.String())
 		for _, leak := range []string{"hash", "binding", "refresh", "secret", "token", "alice@example.test"} {
 			if strings.Contains(raw, leak) {
@@ -219,9 +240,11 @@ func TestRevokingAnotherSessionEndsItAndKeepsTheCaller(t *testing.T) {
 			t.Fatalf("DELETE %s = %d %q", path, rec.Code, rec.Body)
 		}
 	}
+
 	if !e.revoked(e.sessionOf(phone.AccessToken)) {
 		t.Fatal("the session was not revoked")
 	}
+
 	e.wantUnauthenticated(e.call(http.MethodGet, "/v1/native/me", phone.AccessToken, ""))
 	wantProblem(t, e.refresh(phone.RefreshToken), http.StatusUnauthorized, "invalid_refresh")
 	decode[meBody](t, e.call(http.MethodGet, "/v1/native/me", laptop.AccessToken, ""), http.StatusOK)
@@ -235,20 +258,24 @@ func TestRevokingAForeignOrMissingSessionLooksLikeSuccessAndChangesNothing(t *te
 	aliceID := e.sessionOf(alice.AccessToken).String()
 
 	answers := map[string]int{}
+
 	for name, id := range map[string]string{
 		"someone else's session": aliceID,
 		"unknown session":        "00000000-0000-4000-8000-0000000000ff",
 		"malformed id":           "nope",
 	} {
 		rec := e.call(http.MethodDelete, "/v1/native/sessions/"+id, mallory.AccessToken, "")
+
 		answers[name] = rec.Code
 		if rec.Code != http.StatusNoContent || rec.Body.Len() != 0 {
 			t.Errorf("%s: %d %q", name, rec.Code, rec.Body)
 		}
 	}
+
 	if e.revoked(e.sessionOf(alice.AccessToken)) || e.revoked(e.sessionOf(mallory.AccessToken)) {
 		t.Error("a foreign revoke ended a session")
 	}
+
 	decode[tokenResponse](t, e.refresh(alice.RefreshToken), http.StatusOK)
 }
 
@@ -261,12 +288,15 @@ func TestSignOutOfTheCurrentSessionKeepsTheDeviceRecognized(t *testing.T) {
 	if rec := e.call(http.MethodPost, "/v1/native/signout", laptop.AccessToken, ""); rec.Code != http.StatusNoContent {
 		t.Fatalf("sign out = %d %s", rec.Code, rec.Body)
 	}
+
 	if !e.revoked(e.sessionOf(laptop.AccessToken)) || e.revoked(e.sessionOf(phone.AccessToken)) {
 		t.Error("the wrong sessions are revoked")
 	}
+
 	if !e.recognized("alice@example.test", laptopBinding) {
 		t.Error("an ordinary sign-out forgot the device")
 	}
+
 	wantProblem(t, e.refresh(laptop.RefreshToken), http.StatusUnauthorized, "invalid_refresh")
 	decode[tokenResponse](t, e.refresh(phone.RefreshToken), http.StatusOK)
 }
@@ -280,6 +310,7 @@ func TestSignOutWithForgetClientForgetsThisDeviceOnly(t *testing.T) {
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("sign out = %d %s", rec.Code, rec.Body)
 	}
+
 	if e.recognized("alice@example.test", laptopBinding) || !e.recognized("alice@example.test", phoneBinding) {
 		t.Error("forget_client did not forget exactly this device")
 	}
@@ -294,15 +325,19 @@ func TestSignOutEverywhereEndsEverySessionAndForgetsEveryDevice(t *testing.T) {
 	if rec := e.call(http.MethodPost, "/v1/signout", laptop.AccessToken, `{"scope": "all"}`); rec.Code != http.StatusNoContent {
 		t.Fatalf("sign out = %d %s", rec.Code, rec.Body)
 	}
+
 	for name, tok := range map[string]tokenResponse{"laptop": laptop, "phone": phone} {
 		if !e.revoked(e.sessionOf(tok.AccessToken)) {
 			t.Errorf("the %s session survived", name)
 		}
+
 		wantProblem(t, e.refresh(tok.RefreshToken), http.StatusUnauthorized, "invalid_refresh")
 	}
+
 	if e.recognized("alice@example.test", laptopBinding) || e.recognized("alice@example.test", phoneBinding) {
 		t.Error("a device stayed recognized")
 	}
+
 	if e.revoked(e.sessionOf(bob.AccessToken)) || !e.recognized("bob@example.test", bobBinding) {
 		t.Error("another user was affected")
 	}
@@ -310,10 +345,12 @@ func TestSignOutEverywhereEndsEverySessionAndForgetsEveryDevice(t *testing.T) {
 
 func TestSignOutRefusesAnUnknownScope(t *testing.T) {
 	e := newEnv(t)
+
 	signedIn, _ := e.signIn("alice@example.test")
 	for _, body := range []string{`{"scope": "everything"}`, `{"scope": 1}`, `{"forget_client": "yes"}`, `[`} {
 		wantProblem(t, e.call(http.MethodPost, "/v1/native/signout", signedIn.AccessToken, body), http.StatusBadRequest, "invalid_request")
 	}
+
 	if e.revoked(e.sessionOf(signedIn.AccessToken)) {
 		t.Error("a malformed sign-out ended the session")
 	}
@@ -335,15 +372,19 @@ func TestBrowserSignOutClearsTheCookies(t *testing.T) {
 			access := b.signIn(strings.ReplaceAll(name, " ", "-") + "@example.test")
 			req := b.request(http.MethodPost, "/v1/signout", tc.body)
 			req.Header.Set("Authorization", "Bearer "+access.AccessToken)
+
 			rec := b.send(req)
 			if rec.Code != http.StatusNoContent {
 				t.Fatalf("sign out = %d %s", rec.Code, rec.Body)
 			}
+
 			cookies := setCookies(rec)
+
 			refresh := cookies[httpapi.RefreshCookieName]
 			if refresh == nil || refresh.MaxAge >= 0 || refresh.Value != "" || refresh.Path != "/v1/token" || !refresh.Secure || !refresh.HttpOnly {
 				t.Errorf("the refresh cookie was not cleared: %+v", refresh)
 			}
+
 			binding := cookies[httpapi.BindingCookieName]
 			if tc.clearBinder != (binding != nil) || (binding != nil && (binding.MaxAge >= 0 || binding.Path != "/v1/auth")) {
 				t.Errorf("binding cookie = %+v, want cleared = %v", binding, tc.clearBinder)
@@ -360,10 +401,12 @@ func TestRevokingOwnSessionInTheBrowserClearsTheRefreshCookie(t *testing.T) {
 	access := b.signIn("alice@example.test")
 	req := b.request(http.MethodDelete, "/v1/sessions/"+e.sessionOf(access.AccessToken).String(), "")
 	req.Header.Set("Authorization", "Bearer "+access.AccessToken)
+
 	rec := b.send(req)
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("status = %d", rec.Code)
 	}
+
 	if ck := setCookies(rec)[httpapi.RefreshCookieName]; ck == nil || ck.MaxAge >= 0 {
 		t.Errorf("the refresh cookie was not cleared: %+v", ck)
 	}
@@ -372,6 +415,7 @@ func TestRevokingOwnSessionInTheBrowserClearsTheRefreshCookie(t *testing.T) {
 func TestStateChangingSessionRoutesRejectForeignPages(t *testing.T) {
 	e := newEnv(t)
 	signedIn, _ := e.signIn("alice@example.test")
+
 	for _, op := range []struct{ method, path string }{
 		{http.MethodPost, "/v1/signout"}, {http.MethodDelete, "/v1/sessions/00000000-0000-4000-8000-000000000001"},
 		{http.MethodPost, "/v1/native/signout"}, {http.MethodDelete, "/v1/native/sessions/00000000-0000-4000-8000-000000000001"},
@@ -382,6 +426,7 @@ func TestStateChangingSessionRoutesRejectForeignPages(t *testing.T) {
 		req.Header.Set("Sec-Fetch-Site", "cross-site")
 		wantProblem(t, e.do(req), http.StatusForbidden, "permission_denied")
 	}
+
 	if e.revoked(e.sessionOf(signedIn.AccessToken)) {
 		t.Error("a foreign page ended the session")
 	}
@@ -390,6 +435,7 @@ func TestStateChangingSessionRoutesRejectForeignPages(t *testing.T) {
 func TestPreflightAllowsDeleteAndAuthorizationForTrustedOrigins(t *testing.T) {
 	e := newEnvWithOrigins(t, appOrigin)
 	rec := e.preflight("/v1/sessions/00000000-0000-4000-8000-000000000001", appOrigin)
+
 	h := rec.Header()
 	if rec.Code != http.StatusNoContent || !strings.Contains(h.Get("Access-Control-Allow-Methods"), "DELETE") || !strings.Contains(h.Get("Access-Control-Allow-Headers"), "Authorization") {
 		t.Errorf("preflight = %d %v", rec.Code, h)
@@ -402,6 +448,7 @@ func TestSessionRoutesLeaveNoTokensInTheLogs(t *testing.T) {
 	e.call(http.MethodGet, "/v1/native/me", signedIn.AccessToken, "")
 	e.call(http.MethodGet, "/v1/native/me", "forged."+signedIn.AccessToken, "")
 	e.call(http.MethodPost, "/v1/native/signout", signedIn.AccessToken, "")
+
 	logs := e.logs.String()
 	for _, secret := range []string{signedIn.AccessToken, signedIn.RefreshToken, "Bearer"} {
 		if strings.Contains(logs, secret) {
@@ -416,9 +463,11 @@ func TestATechnicalFailureOfASessionRouteIsTemporarilyUnavailable(t *testing.T) 
 	e.faults.wrap = func(s port.Stores) port.Stores { s.Sessions = failingSessions{s.Sessions}; return s }
 	rec := e.call(http.MethodGet, "/v1/native/me", signedIn.AccessToken, "")
 	wantProblem(t, rec, http.StatusServiceUnavailable, "temporarily_unavailable")
+
 	if strings.Contains(rec.Body.String(), "boom") {
 		t.Errorf("the response leaks the failure: %s", rec.Body)
 	}
+
 	e.faults.wrap = nil
 	decode[meBody](t, e.call(http.MethodGet, "/v1/native/me", signedIn.AccessToken, ""), http.StatusOK)
 }

@@ -3,8 +3,8 @@ package http
 import (
 	"context"
 
-	"airlance.org/auth/internal/application/account"
-	"airlance.org/auth/internal/transport/http/openapi"
+	"go.airlance.org/auth/internal/application/account"
+	"go.airlance.org/auth/internal/transport/http/openapi"
 )
 
 func (a *API) deleteAccount(ctx context.Context, token *string) (account.DeleteAccountResult, error) {
@@ -12,9 +12,11 @@ func (a *API) deleteAccount(ctx context.Context, token *string) (account.DeleteA
 	if err != nil {
 		return account.DeleteAccountResult{}, err
 	}
+
 	if !ok {
 		return account.DeleteAccountResult{Outcome: account.OutcomeDenied}, nil
 	}
+
 	return a.deleteAccountUC.Execute(ctx, account.DeleteAccountCommand{Actor: actor, StepUpSecret: stepUpToken(token)})
 }
 
@@ -24,10 +26,12 @@ func (a *API) BrowserDeleteAccount(ctx context.Context, req openapi.BrowserDelet
 	if err != nil {
 		return nil, err
 	}
+
 	switch res.Outcome {
 	case account.OutcomeOK:
 		setCookie(ctx, a.cookies.clearRefresh())
 		setCookie(ctx, a.cookies.clearBinding())
+
 		return openapi.BrowserDeleteAccount204Response{}, nil
 	case account.OutcomeStepUpRequired:
 		return openapi.BrowserDeleteAccount403JSONResponse(stepUpRequired(ctx)), nil
@@ -42,6 +46,7 @@ func (a *API) NativeDeleteAccount(ctx context.Context, req openapi.NativeDeleteA
 	if err != nil {
 		return nil, err
 	}
+
 	switch res.Outcome {
 	case account.OutcomeOK:
 		return openapi.NativeDeleteAccount204Response{}, nil

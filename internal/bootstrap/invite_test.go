@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"airlance.org/auth/internal/bootstrap"
-	"airlance.org/auth/internal/config"
+	"go.airlance.org/auth/internal/bootstrap"
+	"go.airlance.org/auth/internal/config"
 )
 
 func TestInviteRequiresTheDatabaseBeforeAnythingElse(t *testing.T) {
@@ -21,6 +21,7 @@ func TestInviteRequiresTheDatabaseBeforeAnythingElse(t *testing.T) {
 
 func TestInviteRefusesABadAddressWithoutOpeningTheDatabase(t *testing.T) {
 	cfg := config.Config{Database: config.DatabaseConfig{URL: config.NewSecret("postgres://u:p@127.0.0.1:1/db")}}
+
 	for _, action := range []bootstrap.InviteAction{bootstrap.InviteCreate, bootstrap.InviteRevoke} {
 		for _, bad := range []string{"", "not an address", "two@@example.test", "a b@example.test"} {
 			err := bootstrap.Invite(t.Context(), cfg, bootstrap.InviteRequest{Action: action, Email: bad, TTL: time.Hour}, &bytes.Buffer{})

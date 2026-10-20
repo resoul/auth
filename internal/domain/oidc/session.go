@@ -3,7 +3,7 @@ package oidc
 import (
 	"time"
 
-	"airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/domain/identity"
 )
 
 // OPSession is the sign-in shared by every application: proved once, remembered by a cookie of the auth host only. It
@@ -56,6 +56,7 @@ func GrantExpiry(now time.Time, p Policy, session *OPSession) time.Time {
 	if session.ExpiresAt.Before(end) {
 		end = session.ExpiresAt
 	}
+
 	return end
 }
 

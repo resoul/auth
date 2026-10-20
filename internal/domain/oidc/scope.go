@@ -21,15 +21,18 @@ func ParseScopes(raw string) ([]string, error) {
 	if raw == "" || strings.TrimSpace(raw) != raw || strings.Contains(raw, "  ") {
 		return nil, ErrInvalidScope
 	}
+
 	scopes := strings.Split(raw, " ")
 	for i, s := range scopes {
 		if !slices.Contains(SupportedScopes(), s) || slices.Contains(scopes[:i], s) {
 			return nil, ErrInvalidScope
 		}
 	}
+
 	if !slices.Contains(scopes, ScopeOpenID) {
 		return nil, ErrInvalidScope
 	}
+
 	return scopes, nil
 }
 

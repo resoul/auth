@@ -7,8 +7,8 @@ import (
 	"log/slog"
 	"time"
 
-	"airlance.org/auth/internal/application/port"
-	"airlance.org/auth/internal/domain/authflow"
+	"go.airlance.org/auth/internal/application/port"
+	"go.airlance.org/auth/internal/domain/authflow"
 )
 
 // DeliveryPolicy holds the worker's timing and retry limits. The values follow
@@ -50,6 +50,7 @@ func (p DeliveryPolicy) Validate() error {
 	case p.PollInterval <= 0:
 		return errors.New("delivery policy: a positive poll interval is required")
 	}
+
 	return nil
 }
 
@@ -59,9 +60,11 @@ func (p DeliveryPolicy) backoff(attempt int) time.Duration {
 	for i := 1; i < attempt && delay < p.MaxDelay; i++ {
 		delay *= 2
 	}
+
 	if delay > p.MaxDelay {
 		delay = p.MaxDelay
 	}
+
 	return delay
 }
 
@@ -102,9 +105,11 @@ func NewWorker(d WorkerDeps) (*Worker, error) {
 	if d.UnitOfWork == nil || d.Clock == nil || d.OTP == nil || d.Sender == nil || d.Metrics == nil || d.Logger == nil {
 		return nil, errors.New("new mail worker: all dependencies are required")
 	}
+
 	if err := d.Policy.Validate(); err != nil {
 		return nil, fmt.Errorf("new mail worker: %w", err)
 	}
+
 	return &Worker{d}, nil
 }
 
@@ -117,12 +122,15 @@ func (w *Worker) Run(ctx context.Context) error {
 		if ctx.Err() != nil {
 			return nil
 		}
+
 		if err != nil {
 			w.Logger.ErrorContext(ctx, "mail worker failed to process a job", "error", err)
 		}
+
 		if processed && err == nil {
 			continue
 		}
+
 		select {
 		case <-ctx.Done():
 			return nil
@@ -136,15 +144,20 @@ func (w *Worker) Run(ctx context.Context) error {
 // expires and the job is tried again.
 func (w *Worker) ProcessNext(ctx context.Context) (bool, error) {
 	claimedAt := w.Clock.Now()
+
 	var job port.ClaimedMail
+
 	err := w.UnitOfWork.Do(ctx, func(ctx context.Context, st port.Stores) error {
 		var err error
+
 		job, err = st.Outbox.Claim(ctx, claimedAt, w.Policy.Lease)
+
 		return err
 	})
 	if errors.Is(err, port.ErrNotFound) {
 		return false, nil
 	}
+
 	if err != nil {
 		return false, fmt.Errorf("claim mail job: %w", err)
 	}
@@ -152,13 +165,16 @@ func (w *Worker) ProcessNext(ctx context.Context) (bool, error) {
 	// From here on the job is ours: cancelling the worker must not abandon it half way.
 	jobCtx := context.WithoutCancel(ctx)
 	queueDelay := max(claimedAt.Sub(job.AvailableAt), 0)
+
 	outcome, sendTime, err := w.deliver(jobCtx, job)
 	if err != nil {
 		return true, fmt.Errorf("finish mail job: %w", err)
 	}
+
 	w.Metrics.MailProcessed(job.QuotaClass, outcome, queueDelay, sendTime)
 	w.Logger.InfoContext(ctx, "mail job processed",
 		"job_id", job.ID.String(), "quota_class", string(job.QuotaClass), "outcome", string(outcome), "attempts", job.Attempts)
+
 	return true, nil
 }
 
@@ -186,43 +202,55 @@ func (w *Worker) prepare(ctx context.Context, job port.ClaimedMail) (preparation
 	if job.Kind == port.JobInvitation {
 		return w.prepareInvitation(ctx, job)
 	}
+
 	if job.Kind == port.JobNewDevice {
 		return w.prepareNewDevice(ctx, job)
 	}
+
 	result := ready
+
 	var mail port.Mail
+
 	err := w.UnitOfWork.Do(ctx, func(ctx context.Context, st port.Stores) error {
 		flow, err := st.Flows.Get(ctx, job.FlowID)
 		if errors.Is(err, port.ErrNotFound) {
 			result = flowMissing
 			return nil
 		}
+
 		if err != nil {
 			return err
 		}
+
 		if job.Kind == port.JobEmailChanged {
 			mail = port.Mail{Kind: port.MailEmailChanged, To: job.Recipient}
 			return nil
 		}
+
 		if !flow.CanDeliver(job.Generation, w.Clock.Now()) {
 			result = obsolete
 			return nil
 		}
+
 		code, err := w.OTP.Code(flow)
 		if err != nil {
 			result = keyUnavailable
 			return nil
 		}
+
 		kind := port.MailSignIn
 		if flow.Purpose() == authflow.PurposeChangeEmail {
 			kind = port.MailConfirmEmail
 		}
+
 		mail = port.Mail{Kind: kind, To: flow.Email(), Code: code, ExpiresAt: flow.ExpiresAt()}
+
 		return nil
 	})
 	if err != nil {
 		return 0, port.Mail{}, fmt.Errorf("load flow: %w", err)
 	}
+
 	return result, mail, nil
 }
 
@@ -232,23 +260,30 @@ func (w *Worker) prepareInvitation(ctx context.Context, job port.ClaimedMail) (p
 	if w.InvitationURL == "" {
 		return noInvitationURL, port.Mail{}, nil
 	}
+
 	result := ready
+
 	var mail port.Mail
+
 	err := w.UnitOfWork.Do(ctx, func(ctx context.Context, st port.Stores) error {
 		inv, err := st.Invitations.FindActive(ctx, job.Recipient, w.Clock.Now())
 		if errors.Is(err, port.ErrNotFound) {
 			result = invitationGone
 			return nil
 		}
+
 		if err != nil {
 			return err
 		}
+
 		mail = port.Mail{Kind: port.MailInvitation, To: job.Recipient, Link: w.InvitationURL, ExpiresAt: inv.ExpiresAt()}
+
 		return nil
 	})
 	if err != nil {
 		return 0, port.Mail{}, fmt.Errorf("load invitation: %w", err)
 	}
+
 	return result, mail, nil
 }
 
@@ -257,26 +292,33 @@ func (w *Worker) prepareInvitation(ctx context.Context, job port.ClaimedMail) (p
 // account.
 func (w *Worker) prepareNewDevice(ctx context.Context, job port.ClaimedMail) (preparation, port.Mail, error) {
 	result := ready
+
 	var mail port.Mail
+
 	err := w.UnitOfWork.Do(ctx, func(ctx context.Context, st port.Stores) error {
 		user, err := st.Users.Get(ctx, job.UserID)
 		if errors.Is(err, port.ErrNotFound) {
 			result = userGone
 			return nil
 		}
+
 		if err != nil {
 			return err
 		}
+
 		if user.Blocked() {
 			result = userGone
 			return nil
 		}
+
 		mail = port.Mail{Kind: port.MailNewDevice, To: user.Email(), DeviceName: job.DeviceName, ClientIP: job.ClientIP, At: job.EventAt}
+
 		return nil
 	})
 	if err != nil {
 		return 0, port.Mail{}, fmt.Errorf("load user: %w", err)
 	}
+
 	return result, mail, nil
 }
 
@@ -286,6 +328,7 @@ func (w *Worker) deliver(ctx context.Context, job port.ClaimedMail) (port.MailOu
 	if err != nil {
 		return "", 0, err
 	}
+
 	switch state {
 	case flowMissing:
 		return port.MailObsolete, 0, w.abandon(ctx, job, reasonFlowMissing)
@@ -306,6 +349,7 @@ func (w *Worker) deliver(ctx context.Context, job port.ClaimedMail) (port.MailOu
 
 	sendCtx, cancel := context.WithTimeout(ctx, w.Policy.SendTimeout)
 	defer cancel()
+
 	started := w.Clock.Now()
 	sendErr := w.Sender.Send(sendCtx, mail)
 	sendTime := w.Clock.Now().Sub(started)
@@ -318,6 +362,7 @@ func (w *Worker) deliver(ctx context.Context, job port.ClaimedMail) (port.MailOu
 		if errors.Is(err, port.ErrNotFound) {
 			err = nil // another worker finished it after our lease expired
 		}
+
 		return port.MailSent, sendTime, err
 	case errors.Is(sendErr, port.ErrMailRejected):
 		return port.MailRejected, sendTime, w.abandon(ctx, job, reasonSMTPRejected)
@@ -332,13 +377,16 @@ func (w *Worker) failed(ctx context.Context, job port.ClaimedMail, reason port.M
 	if job.Attempts >= w.Policy.MaxAttempts {
 		return port.MailExhausted, 0, w.abandon(ctx, job, reasonRetriesExceeded)
 	}
+
 	retryAt := w.Clock.Now().Add(w.Policy.backoff(job.Attempts))
+
 	err := w.UnitOfWork.Do(ctx, func(ctx context.Context, st port.Stores) error {
 		return st.Outbox.Retry(ctx, job.ID, retryAt, reason)
 	})
 	if errors.Is(err, port.ErrNotFound) {
 		err = nil
 	}
+
 	return outcome, 0, err
 }
 
@@ -349,5 +397,6 @@ func (w *Worker) abandon(ctx context.Context, job port.ClaimedMail, reason port.
 	if errors.Is(err, port.ErrNotFound) {
 		return nil
 	}
+
 	return err
 }

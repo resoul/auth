@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"net/url"
 
-	appoidc "airlance.org/auth/internal/application/oidc"
+	appoidc "go.airlance.org/auth/internal/application/oidc"
 )
 
 // logoutParams are the single-valued parameters of RP-initiated logout.
@@ -38,37 +38,46 @@ type field struct{ Name, Value string }
 // it gets here.
 func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
 	var values url.Values
+
 	repeated := false
+
 	if r.Method == http.MethodPost {
 		if err := r.ParseForm(); err != nil || r.URL.RawQuery != "" {
 			repeated = true
 		}
+
 		values = r.PostForm
 	} else {
 		values = r.URL.Query()
 	}
+
 	for _, name := range logoutParams {
 		if len(values[name]) > 1 {
 			repeated = true
 		}
 	}
+
 	if len(values["confirm"]) > 1 {
 		repeated = true
 	}
+
 	if repeated {
 		h.errorPage(w, http.StatusBadRequest, "The request is not valid.")
 		return
 	}
+
 	cmd := appoidc.LogoutCommand{
 		IDTokenHint: values.Get("id_token_hint"), ClientID: values.Get("client_id"),
 		PostLogoutRedirectURI: values.Get("post_logout_redirect_uri"), State: values.Get("state"),
 		SSOSecret: cookieValue(r, ssoCookie), Confirm: r.Method == http.MethodPost, ConfirmToken: values.Get("confirm"),
 	}
+
 	got, err := h.d.Logout.Execute(r.Context(), cmd)
 	if err != nil {
 		h.serverErrorPage(w, r, err)
 		return
 	}
+
 	switch got.Kind {
 	case appoidc.LogoutFailure:
 		h.d.Requests.AuthDenied("oidc_logout", got.Failure.Code)
@@ -76,12 +85,15 @@ func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
 	case appoidc.LogoutConfirm:
 		pageSecurity(w)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+
 		var fields []field
+
 		for _, name := range logoutParams {
 			if v := values.Get(name); v != "" {
 				fields = append(fields, field{name, v})
 			}
 		}
+
 		_ = confirmTemplate.Execute(w, struct {
 			Token  string
 			Fields []field
@@ -91,6 +103,7 @@ func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
 		http.SetCookie(w, &http.Cookie{Name: ssoCookie, Value: "", Path: "/", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: -1})
 		pageSecurity(w)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+
 		message := "You are not signed in here."
 		if got.SignedOut {
 			message = "You are signed out of every application you opened with this sign-in."

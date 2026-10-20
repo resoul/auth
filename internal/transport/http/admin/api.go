@@ -10,10 +10,10 @@ import (
 	"net/url"
 	"time"
 
-	appadmin "airlance.org/auth/internal/application/admin"
-	"airlance.org/auth/internal/application/port"
-	"airlance.org/auth/internal/domain/operator"
-	httpapi "airlance.org/auth/internal/transport/http"
+	appadmin "go.airlance.org/auth/internal/application/admin"
+	"go.airlance.org/auth/internal/application/port"
+	"go.airlance.org/auth/internal/domain/operator"
+	httpapi "go.airlance.org/auth/internal/transport/http"
 )
 
 // Names and limits of the admin transport.
@@ -62,18 +62,22 @@ func New(d Deps) (http.Handler, error) {
 	if d.Auth == nil || d.Users == nil || d.Invitations == nil || d.Audit == nil || d.Logger == nil {
 		return nil, errors.New("new admin api: all dependencies are required")
 	}
+
 	if len(d.Origins) == 0 {
 		return nil, errors.New("new admin api: at least one origin is required")
 	}
+
 	if d.Requests == nil {
 		d.Requests = discardRequests{}
 	}
+
 	h := &handler{Deps: d, origins: map[string]bool{}, secure: true}
 	for _, o := range d.Origins {
 		u, err := url.Parse(o)
 		if err != nil || u.Host == "" || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || u.User != nil {
 			return nil, fmt.Errorf("new admin api: %q is not an origin", o)
 		}
+
 		h.origins[o] = true
 		if u.Scheme == "http" {
 			// Only localhost may be plain http (config checks it); its cookie cannot be Secure.
@@ -98,6 +102,7 @@ func New(d Deps) (http.Handler, error) {
 	mux.HandleFunc("POST "+apiPrefix+"/invitations", h.authed(h.createInvitation))
 	mux.HandleFunc("POST "+apiPrefix+"/invitations/revoke", h.authed(h.revokeInvitation))
 	mux.HandleFunc("GET "+apiPrefix+"/audit", h.authed(h.listAudit))
+
 	if d.UI != nil {
 		// Exactly the page and its assets: a broader pattern would answer an unknown API path with the page.
 		mux.Handle("GET /admin/{$}", d.UI)
@@ -105,6 +110,7 @@ func New(d Deps) (http.Handler, error) {
 		mux.Handle("GET /admin/assets/", d.UI)
 		mux.Handle("GET /admin", http.RedirectHandler("/admin/", http.StatusMovedPermanently))
 	}
+
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) { writeError(w, r, http.StatusNotFound, "not_found", "") })
 
 	return httpapi.WithRequestID(h.baseline(httpapi.LogRequests(d.Logger, d.Requests, mux))), nil
@@ -117,10 +123,12 @@ func (h *handler) baseline(next http.Handler) http.Handler {
 		hd.Set("X-Content-Type-Options", "nosniff")
 		hd.Set("Referrer-Policy", "no-referrer")
 		hd.Set("X-Frame-Options", "DENY")
+
 		if len(r.URL.Path) >= len(apiPrefix) && r.URL.Path[:len(apiPrefix)] == apiPrefix {
 			hd.Set("Cache-Control", "no-store")
 			hd.Set("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'")
 		}
+
 		r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
 		next.ServeHTTP(w, r)
 	})
@@ -146,6 +154,7 @@ func (h *handler) sessionCookie(secret string) *http.Cookie {
 func (h *handler) clearedCookie() *http.Cookie {
 	c := h.sessionCookie("")
 	c.MaxAge = -1
+
 	return c
 }
 

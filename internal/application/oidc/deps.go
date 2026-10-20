@@ -8,8 +8,8 @@ import (
 	"net/url"
 	"strings"
 
-	"airlance.org/auth/internal/application/port"
-	doidc "airlance.org/auth/internal/domain/oidc"
+	"go.airlance.org/auth/internal/application/port"
+	doidc "go.airlance.org/auth/internal/domain/oidc"
 )
 
 // Deps are the dependencies every use case of the provider shares.
@@ -31,9 +31,11 @@ func (d Deps) validate(name string) error {
 	if d.UnitOfWork == nil || d.Clock == nil || d.Secrets == nil || d.IDs == nil || d.Signer == nil || d.Verifier == nil || d.Issuer == "" {
 		return errors.New("new " + name + ": all dependencies are required")
 	}
+
 	if err := d.Policy.Validate(); err != nil {
 		return errors.New("new " + name + ": " + err.Error())
 	}
+
 	return nil
 }
 
@@ -74,13 +76,17 @@ func redirectTo(redirectURI string, params map[string]string) string {
 	if err != nil {
 		return redirectURI // a registered URI always parses; it never comes from a request
 	}
+
 	q := u.Query()
+
 	for k, v := range params {
 		if v != "" {
 			q.Set(k, v)
 		}
 	}
+
 	u.RawQuery = q.Encode()
+
 	return u.String()
 }
 

@@ -11,8 +11,8 @@ import (
 	texttemplate "text/template"
 	"time"
 
-	"airlance.org/auth/internal/application/port"
-	"airlance.org/auth/internal/domain/session"
+	"go.airlance.org/auth/internal/application/port"
+	"go.airlance.org/auth/internal/domain/session"
 )
 
 //go:embed templates/*.tmpl
@@ -59,6 +59,7 @@ func validLink(raw string) bool {
 	if err != nil || u.User != nil || u.Host == "" || u.Fragment != "" {
 		return false
 	}
+
 	switch u.Scheme {
 	case "https":
 		return true
@@ -66,6 +67,7 @@ func validLink(raw string) bool {
 		host := u.Hostname()
 		return host == "localhost" || host == "127.0.0.1" || host == "::1"
 	}
+
 	return false
 }
 
@@ -73,6 +75,7 @@ func validLink(raw string) bool {
 // code need an eight-digit one; the notice has none and must not be given one.
 func render(m port.Mail, now time.Time) (subject, text, html string, err error) {
 	var msg message
+
 	switch m.Kind {
 	case port.MailSignIn:
 		msg = signInMessage
@@ -87,7 +90,9 @@ func render(m port.Mail, now time.Time) (subject, text, html string, err error) 
 	default:
 		return "", "", "", fmt.Errorf("render mail: unknown kind %q", m.Kind)
 	}
+
 	data := loginData{}
+
 	switch m.Kind {
 	case port.MailEmailChanged:
 		if m.Code != "" {
@@ -97,21 +102,26 @@ func render(m port.Mail, now time.Time) (subject, text, html string, err error) 
 		if m.Code != "" {
 			return "", "", "", errors.New("render mail: an invitation carries no code")
 		}
+
 		if !validLink(m.Link) || m.ExpiresAt.IsZero() {
 			return "", "", "", errors.New("render mail: an invitation needs a valid link and an end")
 		}
+
 		data = loginData{Link: m.Link, Until: m.ExpiresAt.UTC().Format("2006-01-02 15:04 UTC")}
 	case port.MailNewDevice:
 		if m.Code != "" {
 			return "", "", "", errors.New("render mail: a notice carries no code")
 		}
+
 		if m.At.IsZero() || !session.ValidDeviceName(m.DeviceName) {
 			return "", "", "", errors.New("render mail: a new device notice needs a time and a valid device name")
 		}
+
 		data = loginData{Device: m.DeviceName, Address: "unknown", When: m.At.UTC().Format("2006-01-02 15:04 UTC")}
 		if data.Device == "" {
 			data.Device = "not named"
 		}
+
 		if m.ClientIP.IsValid() {
 			data.Address = m.ClientIP.Unmap().String()
 		}
@@ -119,6 +129,7 @@ func render(m port.Mail, now time.Time) (subject, text, html string, err error) 
 		if len(m.Code) != 8 {
 			return "", "", "", errors.New("render mail: code must have 8 digits")
 		}
+
 		minutes := max(int(math.Ceil(m.ExpiresAt.Sub(now).Minutes())), 1)
 		data = loginData{Code: m.Code[:4] + " " + m.Code[4:], Minutes: minutes}
 	}
@@ -127,8 +138,10 @@ func render(m port.Mail, now time.Time) (subject, text, html string, err error) 
 	if err := msg.text.Execute(&t, data); err != nil {
 		return "", "", "", fmt.Errorf("render mail text: %w", err)
 	}
+
 	if err := msg.html.Execute(&h, data); err != nil {
 		return "", "", "", fmt.Errorf("render mail html: %w", err)
 	}
+
 	return msg.subject, t.String(), h.String(), nil
 }

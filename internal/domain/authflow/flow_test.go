@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"airlance.org/auth/internal/domain/authflow"
-	"airlance.org/auth/internal/domain/identity"
-	"airlance.org/auth/internal/testutil"
+	"go.airlance.org/auth/internal/domain/authflow"
+	"go.airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/testutil"
 )
 
 var (
@@ -25,18 +25,23 @@ func TestStartCreatesPendingGenerationOne(t *testing.T) {
 	if flow.State() != authflow.StatePending || flow.Generation() != 1 || flow.Attempts() != 0 {
 		t.Errorf("state=%s generation=%d attempts=%d", flow.State(), flow.Generation(), flow.Attempts())
 	}
+
 	if flow.Email().String() != "alice@example.com" || flow.Purpose() != authflow.PurposeLogin {
 		t.Errorf("email=%q purpose=%q", flow.Email(), flow.Purpose())
 	}
+
 	if want := start.Add(10 * time.Minute); !flow.ExpiresAt().Equal(want) {
 		t.Errorf("ExpiresAt = %v, want %v", flow.ExpiresAt(), want)
 	}
+
 	if want := start.Add(60 * time.Second); !flow.ResendAfter().Equal(want) {
 		t.Errorf("ResendAfter = %v, want %v", flow.ResendAfter(), want)
 	}
+
 	if len(flow.Salt()) != authflow.SaltLength || flow.KeyID() != testutil.DefaultKeyID {
 		t.Errorf("salt len=%d keyID=%q", len(flow.Salt()), flow.KeyID())
 	}
+
 	if flow.QuotaClass() != authflow.QuotaUnknown || !flow.RecognizedClientID().IsZero() {
 		t.Errorf("quota=%q recognized=%q", flow.QuotaClass(), flow.RecognizedClientID())
 	}
@@ -44,10 +49,12 @@ func TestStartCreatesPendingGenerationOne(t *testing.T) {
 
 func TestStartKeepsRecognizedClientForRecognizedClass(t *testing.T) {
 	f := testutil.NewFactory(t, start)
+
 	clientID, err := f.IDs.NewRecognizedClientID()
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	flow := f.Flow(testutil.FlowSpec{QuotaClass: authflow.QuotaRecognized, RecognizedClientID: clientID})
 
 	if flow.QuotaClass() != authflow.QuotaRecognized || flow.RecognizedClientID() != clientID {
@@ -87,8 +94,10 @@ func TestStartRejectsInvalidInput(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			p := params()
+
 			p.Salt = append([]byte(nil), good.Salt...)
 			tt.mutate(&p)
+
 			if _, err := authflow.Start(p, start, policy); err == nil {
 				t.Error("Start accepted invalid input")
 			}
@@ -98,6 +107,7 @@ func TestStartRejectsInvalidInput(t *testing.T) {
 	if _, err := authflow.Start(params(), time.Time{}, policy); err == nil {
 		t.Error("Start accepted zero time")
 	}
+
 	for name, bad := range map[string]authflow.Policy{
 		"zero ttl": {MaxAttempts: 5}, "zero attempts": {TTL: time.Minute}, "negative pause": {TTL: time.Minute, MaxAttempts: 1, ResendPause: -1},
 	} {
@@ -109,25 +119,31 @@ func TestStartRejectsInvalidInput(t *testing.T) {
 
 func TestChangeEmailFlowKeepsItsUserThroughStorage(t *testing.T) {
 	f := testutil.NewFactory(t, start)
+
 	userID, err := f.IDs.NewUserID()
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	flow := f.Flow(testutil.FlowSpec{Purpose: authflow.PurposeChangeEmail, UserID: userID})
 	if flow.UserID() != userID || flow.Record().UserID != userID {
 		t.Fatalf("user = %s, record %s, want %s", flow.UserID(), flow.Record().UserID, userID)
 	}
+
 	restored, err := authflow.Restore(flow.Record())
 	if err != nil || restored.UserID() != userID {
 		t.Fatalf("Restore = %v, %v", restored, err)
 	}
 	// A record that lost its user, or a login flow that gained one, never existed.
 	lost := flow.Record()
+
 	lost.UserID = identity.UserID{}
 	if _, err := authflow.Restore(lost); err == nil {
 		t.Error("Restore accepted a change_email flow without a user")
 	}
+
 	login := f.Flow(testutil.FlowSpec{}).Record()
+
 	login.UserID = userID
 	if _, err := authflow.Restore(login); err == nil {
 		t.Error("Restore accepted a login flow with a user")
@@ -143,6 +159,7 @@ func TestFlowDoesNotAliasCallerSalt(t *testing.T) {
 	salt[0] ^= 0xff
 	got := flow.Salt()
 	got[1] ^= 0xff
+
 	if !bytes.Equal(flow.Salt(), want) {
 		t.Error("flow salt changed through caller slices")
 	}
@@ -156,12 +173,15 @@ func TestVerifySuccessConsumesFlowOnce(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Reserve: %v", err)
 	}
+
 	if attempt.FlowID() != flow.ID() || attempt.Generation() != 1 || flow.Attempts() != 1 {
 		t.Errorf("attempt=%+v attempts=%d", attempt, flow.Attempts())
 	}
+
 	if err := flow.Accept(attempt, start.Add(time.Minute)); err != nil {
 		t.Fatalf("Accept: %v", err)
 	}
+
 	if flow.State() != authflow.StateConsumed || len(flow.Salt()) != 0 {
 		t.Errorf("state=%s salt=%d bytes", flow.State(), len(flow.Salt()))
 	}
@@ -170,6 +190,7 @@ func TestVerifySuccessConsumesFlowOnce(t *testing.T) {
 	if err := flow.Accept(attempt, start.Add(time.Minute)); !errors.Is(err, authflow.ErrClosed) {
 		t.Errorf("second Accept error = %v, want ErrClosed", err)
 	}
+
 	if _, err := flow.Reserve(start.Add(time.Minute), authflow.PurposeLogin, binding(), policy); !errors.Is(err, authflow.ErrClosed) {
 		t.Errorf("Reserve after consume error = %v, want ErrClosed", err)
 	}
@@ -183,13 +204,16 @@ func TestTwoAttemptsOneSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	second, err := flow.Reserve(now, authflow.PurposeLogin, binding(), policy)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if err := flow.Accept(first, now); err != nil {
 		t.Fatalf("first Accept: %v", err)
 	}
+
 	if err := flow.Accept(second, now); !errors.Is(err, authflow.ErrClosed) {
 		t.Errorf("second Accept error = %v, want ErrClosed", err)
 	}
@@ -204,20 +228,25 @@ func TestWrongCodeKeepsFlowPendingUntilAttemptsRunOut(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Reserve %d: %v", i, err)
 		}
+
 		if err := flow.Reject(attempt, now, policy); err != nil {
 			t.Fatalf("Reject %d: %v", i, err)
 		}
+
 		wantState := authflow.StatePending
 		if i == policy.MaxAttempts {
 			wantState = authflow.StateLocked
 		}
+
 		if flow.State() != wantState {
 			t.Fatalf("after attempt %d state = %s, want %s", i, flow.State(), wantState)
 		}
 	}
+
 	if len(flow.Salt()) != 0 {
 		t.Error("locked flow keeps its salt")
 	}
+
 	if _, err := flow.Reserve(now, authflow.PurposeLogin, binding(), policy); !errors.Is(err, authflow.ErrClosed) {
 		t.Errorf("Reserve on locked flow error = %v, want ErrClosed", err)
 	}
@@ -228,21 +257,26 @@ func TestLastReservedAttemptCanStillSucceed(t *testing.T) {
 	now := start.Add(time.Minute)
 
 	var last authflow.Attempt
+
 	for i := 0; i < policy.MaxAttempts; i++ {
 		var err error
 		if last, err = flow.Reserve(now, authflow.PurposeLogin, binding(), policy); err != nil {
 			t.Fatalf("Reserve %d: %v", i+1, err)
 		}
 	}
+
 	if flow.State() != authflow.StatePending {
 		t.Fatalf("reserving the last attempt moved the flow to %s", flow.State())
 	}
+
 	if _, err := flow.Reserve(now, authflow.PurposeLogin, binding(), policy); !errors.Is(err, authflow.ErrAttemptsExhausted) {
 		t.Fatalf("extra Reserve error = %v, want ErrAttemptsExhausted", err)
 	}
+
 	if flow.State() != authflow.StatePending || flow.Attempts() != policy.MaxAttempts {
 		t.Errorf("denied Reserve changed flow: state=%s attempts=%d", flow.State(), flow.Attempts())
 	}
+
 	if err := flow.Accept(last, now); err != nil {
 		t.Errorf("Accept of the last attempt: %v", err)
 	}
@@ -257,13 +291,16 @@ func TestWrongBindingOrPurposeSpendsNothing(t *testing.T) {
 		if _, err := flow.Reserve(now, authflow.PurposeLogin, other, policy); !errors.Is(err, authflow.ErrBindingMismatch) {
 			t.Fatalf("wrong binding error = %v, want ErrBindingMismatch", err)
 		}
+
 		if _, err := flow.Reserve(now, authflow.PurposeStepUp, binding(), policy); !errors.Is(err, authflow.ErrPurposeMismatch) {
 			t.Fatalf("wrong purpose error = %v, want ErrPurposeMismatch", err)
 		}
 	}
+
 	if _, err := flow.Reserve(now, authflow.PurposeLogin, identity.BindingHash{}, policy); !errors.Is(err, authflow.ErrBindingMismatch) {
 		t.Errorf("zero binding error = %v, want ErrBindingMismatch", err)
 	}
+
 	if flow.Attempts() != 0 || flow.State() != authflow.StatePending {
 		t.Errorf("attempts=%d state=%s", flow.Attempts(), flow.State())
 	}
@@ -272,17 +309,21 @@ func TestWrongBindingOrPurposeSpendsNothing(t *testing.T) {
 func TestPurposesAreNotInterchangeable(t *testing.T) {
 	f := testutil.NewFactory(t, start)
 	purposes := []authflow.Purpose{authflow.PurposeLogin, authflow.PurposeStepUp, authflow.PurposeChangeEmail}
+
 	userID, err := f.IDs.NewUserID()
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	for _, flowPurpose := range purposes {
 		for _, requested := range purposes {
 			spec := testutil.FlowSpec{Purpose: flowPurpose}
 			if flowPurpose == authflow.PurposeChangeEmail {
 				spec.UserID = userID
 			}
+
 			flow := f.Flow(spec)
+
 			_, err := flow.Reserve(start, requested, binding(), policy)
 			if (flowPurpose == requested) != (err == nil) {
 				t.Errorf("flow %s, request %s: error = %v", flowPurpose, requested, err)
@@ -304,9 +345,11 @@ func TestExpiryBoundary(t *testing.T) {
 	if _, err := flow.Reserve(expires, authflow.PurposeLogin, binding(), policy); !errors.Is(err, authflow.ErrExpired) {
 		t.Fatalf("Reserve at expiry error = %v, want ErrExpired", err)
 	}
+
 	if flow.State() != authflow.StateExpired || len(flow.Salt()) != 0 {
 		t.Errorf("state=%s salt=%d bytes", flow.State(), len(flow.Salt()))
 	}
+
 	if _, err := flow.Reserve(expires, authflow.PurposeLogin, binding(), policy); !errors.Is(err, authflow.ErrClosed) {
 		t.Errorf("Reserve on expired flow error = %v, want ErrClosed", err)
 	}
@@ -323,13 +366,16 @@ func TestExpiryDoesNotDependOnPurposeOrBinding(t *testing.T) {
 
 func TestResultAfterExpiryIsDenied(t *testing.T) {
 	flow := testutil.NewFactory(t, start).Flow(testutil.FlowSpec{})
+
 	attempt, err := flow.Reserve(start.Add(policy.TTL-time.Second), authflow.PurposeLogin, binding(), policy)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if err := flow.Accept(attempt, start.Add(policy.TTL)); !errors.Is(err, authflow.ErrExpired) {
 		t.Fatalf("Accept after expiry error = %v, want ErrExpired", err)
 	}
+
 	if flow.State() != authflow.StateExpired {
 		t.Errorf("state = %s", flow.State())
 	}
@@ -341,18 +387,22 @@ func TestExpireIfDue(t *testing.T) {
 	if flow.ExpireIfDue(start.Add(policy.TTL - time.Nanosecond)) {
 		t.Error("ExpireIfDue changed a live flow")
 	}
+
 	if !flow.ExpireIfDue(start.Add(policy.TTL)) || flow.State() != authflow.StateExpired {
 		t.Errorf("ExpireIfDue did not expire the flow: state=%s", flow.State())
 	}
+
 	if flow.ExpireIfDue(start.Add(time.Hour)) {
 		t.Error("ExpireIfDue changed an expired flow again")
 	}
 
 	consumed := testutil.NewFactory(t, start).Flow(testutil.FlowSpec{})
+
 	attempt, _ := consumed.Reserve(start, authflow.PurposeLogin, binding(), policy)
 	if err := consumed.Accept(attempt, start); err != nil {
 		t.Fatal(err)
 	}
+
 	if consumed.ExpireIfDue(start.Add(time.Hour)) || consumed.State() != authflow.StateConsumed {
 		t.Error("ExpireIfDue rewrote a consumed flow")
 	}
@@ -367,6 +417,7 @@ func TestResendStartsNewGenerationWithoutExtendingFlow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	oldSalt := flow.Salt()
 	expires := flow.ExpiresAt()
 	newSalt := f.Salt()
@@ -374,15 +425,19 @@ func TestResendStartsNewGenerationWithoutExtendingFlow(t *testing.T) {
 	if err := flow.Resend(now, authflow.PurposeLogin, binding(), newSalt, "otp-b", policy); err != nil {
 		t.Fatalf("Resend: %v", err)
 	}
+
 	if flow.Generation() != 2 || flow.KeyID() != "otp-b" || bytes.Equal(flow.Salt(), oldSalt) || !bytes.Equal(flow.Salt(), newSalt) {
 		t.Errorf("generation=%d keyID=%q salt changed=%v", flow.Generation(), flow.KeyID(), !bytes.Equal(flow.Salt(), oldSalt))
 	}
+
 	if !flow.ExpiresAt().Equal(expires) {
 		t.Errorf("Resend moved ExpiresAt: %v -> %v", expires, flow.ExpiresAt())
 	}
+
 	if flow.Attempts() != 1 {
 		t.Errorf("Resend reset attempts to %d", flow.Attempts())
 	}
+
 	if want := now.Add(policy.ResendPause); !flow.ResendAfter().Equal(want) {
 		t.Errorf("ResendAfter = %v, want %v", flow.ResendAfter(), want)
 	}
@@ -391,9 +446,11 @@ func TestResendStartsNewGenerationWithoutExtendingFlow(t *testing.T) {
 	if err := flow.Accept(attempt, now); !errors.Is(err, authflow.ErrStaleAttempt) {
 		t.Errorf("Accept of stale attempt error = %v, want ErrStaleAttempt", err)
 	}
+
 	if err := flow.Reject(attempt, now, policy); !errors.Is(err, authflow.ErrStaleAttempt) {
 		t.Errorf("Reject of stale attempt error = %v, want ErrStaleAttempt", err)
 	}
+
 	if flow.State() != authflow.StatePending {
 		t.Errorf("stale result changed state to %s", flow.State())
 	}
@@ -402,6 +459,7 @@ func TestResendStartsNewGenerationWithoutExtendingFlow(t *testing.T) {
 	if err != nil || fresh.Generation() != 2 {
 		t.Fatalf("Reserve after resend = %+v, %v", fresh, err)
 	}
+
 	if err := flow.Accept(fresh, now); err != nil {
 		t.Errorf("Accept of new generation: %v", err)
 	}
@@ -415,12 +473,15 @@ func TestResendPauseBoundary(t *testing.T) {
 	if !errors.Is(err, authflow.ErrResendTooSoon) {
 		t.Fatalf("early Resend error = %v, want ErrResendTooSoon", err)
 	}
+
 	if flow.Generation() != 1 {
 		t.Errorf("denied Resend changed generation to %d", flow.Generation())
 	}
+
 	if err := flow.Resend(start.Add(policy.ResendPause), authflow.PurposeLogin, binding(), f.Salt(), "otp-a", policy); err != nil {
 		t.Errorf("Resend at the pause boundary: %v", err)
 	}
+
 	if err := flow.Resend(start.Add(policy.ResendPause), authflow.PurposeLogin, binding(), f.Salt(), "otp-a", policy); !errors.Is(err, authflow.ErrResendTooSoon) {
 		t.Errorf("immediate second Resend error = %v, want ErrResendTooSoon", err)
 	}
@@ -432,6 +493,7 @@ func TestResendDenials(t *testing.T) {
 
 	t.Run("wrong binding", func(t *testing.T) {
 		flow := f.Flow(testutil.FlowSpec{})
+
 		err := flow.Resend(now, authflow.PurposeLogin, testutil.BindingHash("x"), f.Salt(), "otp-a", policy)
 		if !errors.Is(err, authflow.ErrBindingMismatch) || flow.Generation() != 1 {
 			t.Errorf("error = %v, generation = %d", err, flow.Generation())
@@ -439,6 +501,7 @@ func TestResendDenials(t *testing.T) {
 	})
 	t.Run("wrong purpose", func(t *testing.T) {
 		flow := f.Flow(testutil.FlowSpec{})
+
 		err := flow.Resend(now, authflow.PurposeChangeEmail, binding(), f.Salt(), "otp-a", policy)
 		if !errors.Is(err, authflow.ErrPurposeMismatch) {
 			t.Errorf("error = %v", err)
@@ -446,6 +509,7 @@ func TestResendDenials(t *testing.T) {
 	})
 	t.Run("expired", func(t *testing.T) {
 		flow := f.Flow(testutil.FlowSpec{})
+
 		err := flow.Resend(start.Add(policy.TTL), authflow.PurposeLogin, binding(), f.Salt(), "otp-a", policy)
 		if !errors.Is(err, authflow.ErrExpired) || flow.State() != authflow.StateExpired {
 			t.Errorf("error = %v, state = %s", err, flow.State())
@@ -453,10 +517,12 @@ func TestResendDenials(t *testing.T) {
 	})
 	t.Run("consumed", func(t *testing.T) {
 		flow := f.Flow(testutil.FlowSpec{})
+
 		attempt, _ := flow.Reserve(start, authflow.PurposeLogin, binding(), policy)
 		if err := flow.Accept(attempt, start); err != nil {
 			t.Fatal(err)
 		}
+
 		err := flow.Resend(now, authflow.PurposeLogin, binding(), f.Salt(), "otp-a", policy)
 		if !errors.Is(err, authflow.ErrClosed) || flow.Generation() != 1 {
 			t.Errorf("error = %v, generation = %d", err, flow.Generation())
@@ -470,6 +536,7 @@ func TestResendDenials(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
+
 		err := flow.Resend(now, authflow.PurposeLogin, binding(), f.Salt(), "otp-a", policy)
 		if !errors.Is(err, authflow.ErrClosed) {
 			t.Errorf("error = %v, want ErrClosed", err)
@@ -480,9 +547,11 @@ func TestResendDenials(t *testing.T) {
 		if err := flow.Resend(now, authflow.PurposeLogin, binding(), nil, "otp-a", policy); err == nil {
 			t.Error("Resend accepted nil salt")
 		}
+
 		if err := flow.Resend(now, authflow.PurposeLogin, binding(), f.Salt(), "", policy); err == nil {
 			t.Error("Resend accepted empty key id")
 		}
+
 		if flow.Generation() != 1 {
 			t.Errorf("rejected Resend changed generation to %d", flow.Generation())
 		}
@@ -501,6 +570,7 @@ func TestResendCannotExtendFlowIndefinitely(t *testing.T) {
 			t.Fatalf("Resend: %v", err)
 		}
 	}
+
 	if !flow.ExpiresAt().Equal(expires) {
 		t.Errorf("ExpiresAt moved to %v", flow.ExpiresAt())
 	}
@@ -514,10 +584,12 @@ func TestPolicyOverridesLimits(t *testing.T) {
 	if want := start.Add(time.Minute); !flow.ExpiresAt().Equal(want) {
 		t.Errorf("ExpiresAt = %v, want %v", flow.ExpiresAt(), want)
 	}
+
 	attempt, err := flow.Reserve(start, authflow.PurposeLogin, binding(), tight)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if err := flow.Reject(attempt, start, tight); err != nil || flow.State() != authflow.StateLocked {
 		t.Errorf("Reject error = %v, state = %s", err, flow.State())
 	}

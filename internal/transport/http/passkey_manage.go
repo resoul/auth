@@ -5,9 +5,9 @@ import (
 	"errors"
 	"strings"
 
-	"airlance.org/auth/internal/application/passkey"
-	dpasskey "airlance.org/auth/internal/domain/passkey"
-	"airlance.org/auth/internal/transport/http/openapi"
+	"go.airlance.org/auth/internal/application/passkey"
+	dpasskey "go.airlance.org/auth/internal/domain/passkey"
+	"go.airlance.org/auth/internal/transport/http/openapi"
 )
 
 // The routes of a signed-in user's passkeys. Each one authenticates first and answers
@@ -29,6 +29,7 @@ func stepUpToken(values *string) string {
 	if values == nil {
 		return ""
 	}
+
 	return strings.TrimSpace(*values)
 }
 
@@ -40,10 +41,12 @@ func apiPasskey(c passkey.CredentialSummary) openapi.Passkey {
 	if out.Transports == nil {
 		out.Transports = []string{}
 	}
+
 	if !c.LastUsedAt.IsZero() {
 		t := c.LastUsedAt.UTC()
 		out.LastUsedAt = &t
 	}
+
 	return out
 }
 
@@ -53,7 +56,9 @@ func (a *API) stepUpOptions(ctx context.Context, operation string) (res passkey.
 	if err != nil || !ok {
 		return passkey.CeremonyResult{}, !ok, err
 	}
+
 	res, err = a.beginStepUpUC.Execute(ctx, passkey.BeginStepUpCommand{Actor: actor, Operation: dpasskey.Operation(operation), ClientIP: clientIP(ctx)})
+
 	return res, false, err
 }
 
@@ -62,7 +67,9 @@ func (a *API) stepUpVerify(ctx context.Context, challengeID string, credential [
 	if err != nil || !ok {
 		return passkey.FinishStepUpResult{}, !ok, err
 	}
+
 	res, err = a.finishStepUpUC.Execute(ctx, passkey.FinishStepUpCommand{Actor: actor, ChallengeID: challengeID, Response: credential})
+
 	return res, false, err
 }
 
@@ -75,17 +82,21 @@ func (a *API) listPasskeys(ctx context.Context) (body openapi.PasskeyList, unaut
 	if err != nil || !ok {
 		return openapi.PasskeyList{}, !ok, err
 	}
+
 	res, err := a.listKeysUC.Execute(ctx, actor)
 	if err != nil {
 		return openapi.PasskeyList{}, false, err
 	}
+
 	if res.Outcome != passkey.OutcomeOK {
 		return openapi.PasskeyList{}, true, nil
 	}
+
 	body.Passkeys = make([]openapi.Passkey, 0, len(res.Credentials))
 	for _, c := range res.Credentials {
 		body.Passkeys = append(body.Passkeys, apiPasskey(c))
 	}
+
 	return body, false, nil
 }
 
@@ -94,13 +105,16 @@ func (a *API) renamePasskey(ctx context.Context, id, name string) (res passkey.R
 	if err != nil || !ok {
 		return passkey.RenameResult{}, !ok, false, err
 	}
+
 	res, err = a.renameKeyUC.Execute(ctx, passkey.RenameCommand{Actor: actor, ID: id, Name: name})
 	if errors.Is(err, passkey.ErrInvalidName) {
 		return passkey.RenameResult{}, false, true, nil
 	}
+
 	if err == nil && res.Outcome == passkey.OutcomeDenied {
 		return passkey.RenameResult{}, true, false, nil
 	}
+
 	return res, false, false, err
 }
 
@@ -109,7 +123,9 @@ func (a *API) beginAddPasskey(ctx context.Context, token *string) (res passkey.C
 	if err != nil || !ok {
 		return passkey.CeremonyResult{}, !ok, err
 	}
+
 	res, err = a.beginAddKeyUC.Execute(ctx, passkey.BeginAddCommand{Actor: actor, StepUpSecret: stepUpToken(token), ClientIP: clientIP(ctx)})
+
 	return res, false, err
 }
 
@@ -118,12 +134,14 @@ func (a *API) finishAddPasskey(ctx context.Context, token *string, body openapi.
 	if err != nil || !ok {
 		return passkey.FinishAddResult{}, !ok, false, err
 	}
+
 	res, err = a.finishAddKeyUC.Execute(ctx, passkey.FinishAddCommand{
 		Actor: actor, StepUpSecret: stepUpToken(token), ChallengeID: body.ChallengeId, Response: body.Credential, Name: optional(body.Name),
 	})
 	if errors.Is(err, passkey.ErrInvalidName) {
 		return passkey.FinishAddResult{}, false, true, nil
 	}
+
 	return res, false, false, err
 }
 
@@ -132,7 +150,9 @@ func (a *API) deletePasskey(ctx context.Context, id string, token *string) (res 
 	if err != nil || !ok {
 		return passkey.DeleteResult{}, !ok, err
 	}
+
 	res, err = a.deleteKeyUC.Execute(ctx, passkey.DeleteCommand{Actor: actor, StepUpSecret: stepUpToken(token), ID: id})
+
 	return res, false, err
 }
 
@@ -141,7 +161,9 @@ func (a *API) regenerateCodes(ctx context.Context, token *string) (res passkey.R
 	if err != nil || !ok {
 		return passkey.RegenerateResult{}, !ok, err
 	}
+
 	res, err = a.newCodesUC.Execute(ctx, passkey.RegenerateCommand{Actor: actor, StepUpSecret: stepUpToken(token)})
+
 	return res, false, err
 }
 
@@ -160,6 +182,7 @@ func (a *API) NativeBeginStepUp(ctx context.Context, req openapi.NativeBeginStep
 		a.denied(ctx, "step_up_options", string(res.Reason))
 		return openapi.NativeBeginStepUp400JSONResponse(invalidProof(ctx)), nil
 	}
+
 	return openapi.NativeBeginStepUp200JSONResponse(ceremony(res)), nil
 }
 
@@ -175,6 +198,7 @@ func (a *API) NativeFinishStepUp(ctx context.Context, req openapi.NativeFinishSt
 		a.denied(ctx, "step_up", string(res.Reason))
 		return openapi.NativeFinishStepUp400JSONResponse(invalidProof(ctx)), nil
 	}
+
 	return openapi.NativeFinishStepUp200JSONResponse(stepUpResponse(res)), nil
 }
 
@@ -187,6 +211,7 @@ func (a *API) NativeListPasskeys(ctx context.Context, _ openapi.NativeListPasske
 	case unauth:
 		return openapi.NativeListPasskeys401JSONResponse{UnauthenticatedJSONResponse: unauthenticated(ctx)}, nil
 	}
+
 	return openapi.NativeListPasskeys200JSONResponse(body), nil
 }
 
@@ -204,6 +229,7 @@ func (a *API) NativeRenamePasskey(ctx context.Context, req openapi.NativeRenameP
 		a.denied(ctx, "rename_passkey", "not_found")
 		return openapi.NativeRenamePasskey404JSONResponse(notFound(ctx)), nil
 	}
+
 	return openapi.NativeRenamePasskey200JSONResponse(apiPasskey(res.Credential)), nil
 }
 
@@ -228,6 +254,7 @@ func (a *API) NativeBeginAddPasskey(ctx context.Context, req openapi.NativeBegin
 		a.denied(ctx, "add_passkey_options", string(res.Reason))
 		return openapi.NativeBeginAddPasskey401JSONResponse{UnauthenticatedJSONResponse: unauthenticated(ctx)}, nil
 	}
+
 	return openapi.NativeBeginAddPasskey200JSONResponse(ceremony(res)), nil
 }
 
@@ -251,6 +278,7 @@ func (a *API) NativeFinishAddPasskey(ctx context.Context, req openapi.NativeFini
 		a.denied(ctx, "add_passkey", string(res.Reason))
 		return openapi.NativeFinishAddPasskey400JSONResponse(invalidProof(ctx)), nil
 	}
+
 	return openapi.NativeFinishAddPasskey201JSONResponse(apiPasskey(res.Credential)), nil
 }
 
@@ -275,6 +303,7 @@ func (a *API) NativeDeletePasskey(ctx context.Context, req openapi.NativeDeleteP
 		a.denied(ctx, "delete_passkey", string(res.Reason))
 		return openapi.NativeDeletePasskey401JSONResponse{UnauthenticatedJSONResponse: unauthenticated(ctx)}, nil
 	}
+
 	return openapi.NativeDeletePasskey204Response{}, nil
 }
 
@@ -293,6 +322,7 @@ func (a *API) NativeRegenerateRecoveryCodes(ctx context.Context, req openapi.Nat
 		a.denied(ctx, "regenerate_recovery_codes", string(res.Reason))
 		return openapi.NativeRegenerateRecoveryCodes401JSONResponse{UnauthenticatedJSONResponse: unauthenticated(ctx)}, nil
 	}
+
 	return openapi.NativeRegenerateRecoveryCodes200JSONResponse(openapi.RecoveryCodesResponse{RecoveryCodes: res.Codes}), nil
 }
 
@@ -311,6 +341,7 @@ func (a *API) BrowserBeginStepUp(ctx context.Context, req openapi.BrowserBeginSt
 		a.denied(ctx, "step_up_options", string(res.Reason))
 		return openapi.BrowserBeginStepUp400JSONResponse(invalidProof(ctx)), nil
 	}
+
 	return openapi.BrowserBeginStepUp200JSONResponse(ceremony(res)), nil
 }
 
@@ -326,6 +357,7 @@ func (a *API) BrowserFinishStepUp(ctx context.Context, req openapi.BrowserFinish
 		a.denied(ctx, "step_up", string(res.Reason))
 		return openapi.BrowserFinishStepUp400JSONResponse(invalidProof(ctx)), nil
 	}
+
 	return openapi.BrowserFinishStepUp200JSONResponse(stepUpResponse(res)), nil
 }
 
@@ -338,6 +370,7 @@ func (a *API) BrowserListPasskeys(ctx context.Context, _ openapi.BrowserListPass
 	case unauth:
 		return openapi.BrowserListPasskeys401JSONResponse{UnauthenticatedJSONResponse: unauthenticated(ctx)}, nil
 	}
+
 	return openapi.BrowserListPasskeys200JSONResponse(body), nil
 }
 
@@ -355,6 +388,7 @@ func (a *API) BrowserRenamePasskey(ctx context.Context, req openapi.BrowserRenam
 		a.denied(ctx, "rename_passkey", "not_found")
 		return openapi.BrowserRenamePasskey404JSONResponse(notFound(ctx)), nil
 	}
+
 	return openapi.BrowserRenamePasskey200JSONResponse(apiPasskey(res.Credential)), nil
 }
 
@@ -379,6 +413,7 @@ func (a *API) BrowserBeginAddPasskey(ctx context.Context, req openapi.BrowserBeg
 		a.denied(ctx, "add_passkey_options", string(res.Reason))
 		return openapi.BrowserBeginAddPasskey401JSONResponse{UnauthenticatedJSONResponse: unauthenticated(ctx)}, nil
 	}
+
 	return openapi.BrowserBeginAddPasskey200JSONResponse(ceremony(res)), nil
 }
 
@@ -402,6 +437,7 @@ func (a *API) BrowserFinishAddPasskey(ctx context.Context, req openapi.BrowserFi
 		a.denied(ctx, "add_passkey", string(res.Reason))
 		return openapi.BrowserFinishAddPasskey400JSONResponse(invalidProof(ctx)), nil
 	}
+
 	return openapi.BrowserFinishAddPasskey201JSONResponse(apiPasskey(res.Credential)), nil
 }
 
@@ -426,6 +462,7 @@ func (a *API) BrowserDeletePasskey(ctx context.Context, req openapi.BrowserDelet
 		a.denied(ctx, "delete_passkey", string(res.Reason))
 		return openapi.BrowserDeletePasskey401JSONResponse{UnauthenticatedJSONResponse: unauthenticated(ctx)}, nil
 	}
+
 	return openapi.BrowserDeletePasskey204Response{}, nil
 }
 
@@ -444,5 +481,6 @@ func (a *API) BrowserRegenerateRecoveryCodes(ctx context.Context, req openapi.Br
 		a.denied(ctx, "regenerate_recovery_codes", string(res.Reason))
 		return openapi.BrowserRegenerateRecoveryCodes401JSONResponse{UnauthenticatedJSONResponse: unauthenticated(ctx)}, nil
 	}
+
 	return openapi.BrowserRegenerateRecoveryCodes200JSONResponse(openapi.RecoveryCodesResponse{RecoveryCodes: res.Codes}), nil
 }

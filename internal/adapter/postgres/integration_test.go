@@ -16,7 +16,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgconn"
 
-	"airlance.org/auth/internal/adapter/postgres"
+	"go.airlance.org/auth/internal/adapter/postgres"
 )
 
 const (
@@ -34,18 +34,22 @@ const (
 // so tests do not see each other's tables.
 func schemaDSN(t *testing.T) string {
 	t.Helper()
+
 	base := os.Getenv("AIRLANCE_AUTH_TEST_DATABASE_URL")
 	if base == "" {
 		t.Fatal("AIRLANCE_AUTH_TEST_DATABASE_URL is not set; run `make up` and `make test-int`")
 	}
+
 	admin, err := postgres.OpenMigrationDB(base)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	schema := fmt.Sprintf("test_%d_%d", time.Now().UnixNano(), os.Getpid())
 	if _, err := admin.Exec(`CREATE SCHEMA ` + schema); err != nil {
 		t.Fatalf("create schema: %v", err)
 	}
+
 	t.Cleanup(func() {
 		_, _ = admin.Exec(`DROP SCHEMA ` + schema + ` CASCADE`)
 		_ = admin.Close()
@@ -55,33 +59,41 @@ func schemaDSN(t *testing.T) string {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	q := u.Query()
 	q.Set("search_path", schema)
 	u.RawQuery = q.Encode()
+
 	return u.String()
 }
 
 func openDB(t *testing.T, dsn string) *sql.DB {
 	t.Helper()
+
 	db, err := postgres.OpenMigrationDB(dsn)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	t.Cleanup(func() { _ = db.Close() })
+
 	return db
 }
 
 func migratedDB(t *testing.T) *sql.DB {
 	t.Helper()
+
 	db := openDB(t, schemaDSN(t))
 	if _, err := postgres.MigrateUp(context.Background(), db); err != nil {
 		t.Fatalf("MigrateUp: %v", err)
 	}
+
 	return db
 }
 
 func exec(t *testing.T, db *sql.DB, query string, args ...any) {
 	t.Helper()
+
 	if _, err := db.Exec(query, args...); err != nil {
 		t.Fatalf("%s\n%v", query, err)
 	}
@@ -90,11 +102,14 @@ func exec(t *testing.T, db *sql.DB, query string, args ...any) {
 // mustViolate runs query and requires it to fail on the named constraint.
 func mustViolate(t *testing.T, db *sql.DB, constraint, query string, args ...any) {
 	t.Helper()
+
 	_, err := db.Exec(query, args...)
+
 	var pgErr *pgconn.PgError
 	if !errors.As(err, &pgErr) {
 		t.Fatalf("expected a violation of %s, got %v\n%s", constraint, err, query)
 	}
+
 	if pgErr.ConstraintName != constraint {
 		t.Fatalf("violated %q (%s), want %q\n%s", pgErr.ConstraintName, pgErr.Message, constraint, query)
 	}
@@ -102,30 +117,38 @@ func mustViolate(t *testing.T, db *sql.DB, constraint, query string, args ...any
 
 func count(t *testing.T, db *sql.DB, table string) int {
 	t.Helper()
+
 	var n int
 	if err := db.QueryRow(`SELECT count(*) FROM ` + table).Scan(&n); err != nil {
 		t.Fatal(err)
 	}
+
 	return n
 }
 
 func columnExists(t *testing.T, db *sql.DB, table, column string) bool {
 	t.Helper()
+
 	var exists bool
+
 	err := db.QueryRow(`SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = $1 AND column_name = $2)`, table, column).Scan(&exists)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	return exists
 }
 
 func tableExists(t *testing.T, db *sql.DB, table string) bool {
 	t.Helper()
+
 	var exists bool
+
 	err := db.QueryRow(`SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = $1)`, table).Scan(&exists)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	return exists
 }
 
@@ -136,6 +159,7 @@ var tables = []string{"users", "recognized_clients", "auth_flows", "outbox", "se
 func TestMigrateUpDownUp(t *testing.T) {
 	ctx := context.Background()
 	db := openDB(t, schemaDSN(t))
+
 	known, err := postgres.KnownMigrations()
 	if err != nil {
 		t.Fatal(err)
@@ -145,20 +169,24 @@ func TestMigrateUpDownUp(t *testing.T) {
 	if err != nil || len(steps) != len(known) {
 		t.Fatalf("MigrateUp = %+v, %v; want %d migrations", steps, err, len(known))
 	}
+
 	for _, table := range tables {
 		if !tableExists(t, db, table) {
 			t.Errorf("table %s missing after up", table)
 		}
 	}
+
 	status, err := postgres.MigrationStatus(ctx, db)
 	if err != nil || len(status) != len(known) {
 		t.Fatalf("status after up = %+v, %v", status, err)
 	}
+
 	for _, s := range status {
 		if s.AppliedAt.IsZero() {
 			t.Errorf("%s is not applied after up", s.Name)
 		}
 	}
+
 	if again, err := postgres.MigrateUp(ctx, db); err != nil || len(again) != 0 {
 		t.Errorf("second MigrateUp = %+v, %v; want a no-op", again, err)
 	}
@@ -169,6 +197,7 @@ func TestMigrateUpDownUp(t *testing.T) {
 		if err != nil || !rolledBack || step.Version != version {
 			t.Fatalf("MigrateDown to below %d = %+v, %v, %v", version, step, rolledBack, err)
 		}
+
 		switch version {
 		case 12:
 			for _, column := range []string{"user_id", "device_name", "client_ip", "event_at"} {
@@ -176,9 +205,11 @@ func TestMigrateUpDownUp(t *testing.T) {
 					t.Errorf("the rollback of the new device mail migration left outbox.%s", column)
 				}
 			}
+
 			if _, err := db.Exec(`INSERT INTO outbox (id, flow_id, generation, quota_class, kind, available_at) VALUES ($1, NULL, 1, 'recognized', 'new_device', now())`, job1); err == nil {
 				t.Error("outbox still accepts a new device job after the rollback")
 			}
+
 			if !tableExists(t, db, "device_requests") || !columnExists(t, db, "outbox", "recipient") {
 				t.Error("the rollback of the new device mail migration removed more than its own")
 			}
@@ -191,6 +222,7 @@ func TestMigrateUpDownUp(t *testing.T) {
 				VALUES ('0199c0de-0000-7000-8000-0000000000a1', 'step_up', NULL, '\x01', now(), now() + interval '1 minute', NULL, 'approve_device')`); err == nil {
 				t.Error("passkey_challenges still accepts approve_device after the rollback")
 			}
+
 			if !tableExists(t, db, "operators") || !tableExists(t, db, "passkey_challenges") {
 				t.Error("the rollback of the device migration removed more than its own")
 			}
@@ -200,9 +232,11 @@ func TestMigrateUpDownUp(t *testing.T) {
 					t.Errorf("the rollback of the admin migration left %s", table)
 				}
 			}
+
 			if columnExists(t, db, "users", "blocked_at") || columnExists(t, db, "audit_events", "operator_id") {
 				t.Error("the rollback of the admin migration left a column")
 			}
+
 			if !tableExists(t, db, "invitations") || !tableExists(t, db, "audit_events") || !tableExists(t, db, "users") {
 				t.Error("the rollback of the admin migration removed more than its own")
 			}
@@ -211,6 +245,7 @@ func TestMigrateUpDownUp(t *testing.T) {
 			if err := db.QueryRow(`SELECT is_nullable FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'outbox' AND column_name = 'flow_id'`).Scan(&nullable); err != nil || nullable != "NO" {
 				t.Errorf("outbox.flow_id is nullable after the rollback of the invitation mail migration: %q, %v", nullable, err)
 			}
+
 			if !tableExists(t, db, "invitations") {
 				t.Error("the rollback of the invitation mail migration removed the invitations table")
 			}
@@ -218,6 +253,7 @@ func TestMigrateUpDownUp(t *testing.T) {
 			if tableExists(t, db, "invitations") {
 				t.Error("the rollback of the invitations migration left the table")
 			}
+
 			if !tableExists(t, db, "users") || !columnExists(t, db, "auth_flows", "user_id") {
 				t.Error("the invitations rollback removed more than its table")
 			}
@@ -226,9 +262,11 @@ func TestMigrateUpDownUp(t *testing.T) {
 			if err := db.QueryRow("SELECT EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname = current_schema() AND indexname = 'auth_flows_email')").Scan(&exists); err != nil {
 				t.Fatal(err)
 			}
+
 			if exists {
 				t.Error("account deletion index survived rollback")
 			}
+
 			if !columnExists(t, db, "auth_flows", "user_id") {
 				t.Error("index rollback removed email-change schema")
 			}
@@ -239,6 +277,7 @@ func TestMigrateUpDownUp(t *testing.T) {
 					t.Errorf("the first rollback left %s.%s", c[0], c[1])
 				}
 			}
+
 			if !tableExists(t, db, "passkey_credentials") || !tableExists(t, db, "outbox") {
 				t.Error("the first rollback must remove only the newest migration's changes")
 			}
@@ -248,16 +287,19 @@ func TestMigrateUpDownUp(t *testing.T) {
 					t.Errorf("the rollback of the passkey migration left %s", table)
 				}
 			}
+
 			if !tableExists(t, db, "quota_events") || !tableExists(t, db, "audit_events") {
 				t.Error("the rollback of the passkey migration must remove only its tables")
 			}
 		}
 	}
+
 	for _, table := range tables {
 		if tableExists(t, db, table) {
 			t.Errorf("table %s survived the rollbacks", table)
 		}
 	}
+
 	if _, rolledBack, err := postgres.MigrateDown(ctx, db); err != nil || rolledBack {
 		t.Errorf("MigrateDown on an empty schema = %v, %v; want nothing to roll back", rolledBack, err)
 	}
@@ -269,28 +311,37 @@ func TestMigrateUpDownUp(t *testing.T) {
 
 func TestConcurrentMigrateUpIsSafe(t *testing.T) {
 	dsn := schemaDSN(t)
+
 	const runners = 4
+
 	var wg sync.WaitGroup
+
 	errs := make([]error, runners)
 	for i := range errs {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+
 			db, err := postgres.OpenMigrationDB(dsn)
 			if err != nil {
 				errs[i] = err
 				return
 			}
+
 			defer func() { _ = db.Close() }()
+
 			_, errs[i] = postgres.MigrateUp(context.Background(), db)
 		}()
 	}
+
 	wg.Wait()
+
 	for i, err := range errs {
 		if err != nil {
 			t.Errorf("runner %d: %v", i, err)
 		}
 	}
+
 	db := openDB(t, dsn)
 	if !tableExists(t, db, "users") {
 		t.Error("schema was not created")
@@ -310,6 +361,7 @@ func insertClient(t *testing.T, db *sql.DB, id, user, email, bindingExpr string)
 func TestEmailChangeConstraints(t *testing.T) {
 	db := migratedDB(t)
 	insertUser(t, db, userID, "alice@example.test")
+
 	flow := func(id, purpose string, user any) (string, []any) {
 		return `INSERT INTO auth_flows (id, email, purpose, generation, salt, key_id, binding_hash, state, created_at, expires_at, attempts, resend_after, quota_class, user_id)
 			VALUES ($1, 'new@example.test', $2, 1, ` + salt + `, 'otp-a', ` + binding + `, 'pending', now(), now() + interval '10 minutes', 0, now() + interval '1 minute', 'unknown', $3)`,
@@ -331,6 +383,7 @@ func TestEmailChangeConstraints(t *testing.T) {
 	}
 	q, args = notice(job1, "email_changed", "old@example.test")
 	exec(t, db, q, args...)
+
 	other := "8f1b7c0e-5d2a-4b8e-9c61-0a1b2c3d4e5f"
 	q, args = notice(other, "email_changed", "again@example.test")
 	mustViolate(t, db, "outbox_flow_generation_kind_unique", q, args...)
@@ -348,6 +401,7 @@ func TestEmailChangeConstraints(t *testing.T) {
 
 	// Deleting the account takes its change flows and their jobs with it: no address stays behind.
 	exec(t, db, `DELETE FROM users WHERE id = $1`, userID)
+
 	if count(t, db, "auth_flows") != 0 || count(t, db, "outbox") != 0 {
 		t.Errorf("flows = %d, jobs = %d after the account was deleted", count(t, db, "auth_flows"), count(t, db, "outbox"))
 	}
@@ -355,10 +409,12 @@ func TestEmailChangeConstraints(t *testing.T) {
 
 func insertFlow(t *testing.T, db *sql.DB, id, class, clientID string) {
 	t.Helper()
+
 	var client any
 	if clientID != "" {
 		client = clientID
 	}
+
 	exec(t, db, `INSERT INTO auth_flows (id, email, purpose, generation, salt, key_id, binding_hash, state, created_at, expires_at, attempts, resend_after, quota_class, recognized_client_id)
 		VALUES ($1, 'a@example.test', 'login', 1, `+salt+`, 'otp-a', `+binding+`, 'pending', now(), now() + interval '10 minutes', 0, now() + interval '1 minute', $2, $3)`, id, class, client)
 }
@@ -388,6 +444,7 @@ func TestRecognizedClientConstraints(t *testing.T) {
 		`INSERT INTO recognized_clients (id, user_id, email, binding_hash, verified_at, expires_at) VALUES ($1, $2, 'ALICE@example.test', decode(repeat('ef', 32), 'hex'), now(), now() + interval '1 day')`, client2, userID)
 
 	var fkErr *pgconn.PgError
+
 	_, err := db.Exec(`INSERT INTO recognized_clients (id, user_id, email, binding_hash, verified_at, expires_at) VALUES ($1, $2, 'x@example.test', decode(repeat('ef', 32), 'hex'), now(), now() + interval '1 day')`, client2, userID2)
 	if !errors.As(err, &fkErr) || fkErr.Code != "23503" {
 		t.Errorf("a client of a missing user was accepted: %v", err)
@@ -463,6 +520,7 @@ func TestFlowConstraints(t *testing.T) {
 func TestOutboxConstraints(t *testing.T) {
 	db := migratedDB(t)
 	insertFlow(t, db, flowID, "unknown", "")
+
 	insertJob := func(id string, generation int, status string) (string, []any) {
 		return `INSERT INTO outbox (id, flow_id, generation, quota_class, status, available_at) VALUES ($1, $2, $3, 'unknown', $4, now())`, []any{id, flowID, generation, status}
 	}
@@ -480,6 +538,7 @@ func TestOutboxConstraints(t *testing.T) {
 	exec(t, db, `UPDATE outbox SET last_error = 'smtp_timeout', attempts = 1 WHERE id = $1`, job1)
 
 	var fkErr *pgconn.PgError
+
 	_, err := db.Exec(`INSERT INTO outbox (id, flow_id, generation, quota_class, available_at) VALUES ($1, 'ZZECAwQFBgcICQoLDA0ODw', 1, 'unknown', now())`, "9f1b7c0e-5d2a-4b8e-9c61-0a1b2c3d4e5f")
 	if !errors.As(err, &fkErr) || fkErr.Code != "23503" {
 		t.Errorf("a job of a missing flow was accepted: %v", err)
@@ -496,6 +555,7 @@ func TestDeletionCascadesFollowTheRetentionPolicy(t *testing.T) {
 
 	t.Run("deleting a flow deletes its jobs", func(t *testing.T) {
 		exec(t, db, `DELETE FROM auth_flows WHERE id = 'GGECAwQFBgcICQoLDA0ODw'`)
+
 		if count(t, db, "auth_flows") != 1 {
 			t.Error("deleted the wrong flow")
 		}
@@ -503,6 +563,7 @@ func TestDeletionCascadesFollowTheRetentionPolicy(t *testing.T) {
 
 	t.Run("deleting a user deletes recognition, its flows and their jobs", func(t *testing.T) {
 		exec(t, db, `DELETE FROM users WHERE id = $1`, userID)
+
 		for _, table := range []string{"users", "recognized_clients", "auth_flows", "outbox"} {
 			if n := count(t, db, table); n != 0 {
 				t.Errorf("%s still has %d rows", table, n)
@@ -513,6 +574,7 @@ func TestDeletionCascadesFollowTheRetentionPolicy(t *testing.T) {
 
 func TestRetentionIndexesExist(t *testing.T) {
 	db := migratedDB(t)
+
 	for _, index := range []string{
 		"auth_flows_expires_at", "recognized_clients_expires_at", "recognized_clients_revoked_at",
 		"recognized_clients_lookup", "outbox_ready", "auth_flows_recognized_client",
@@ -521,6 +583,7 @@ func TestRetentionIndexesExist(t *testing.T) {
 		"audit_events_occurred_at", "audit_events_user_id", "audit_events_session_id",
 	} {
 		var exists bool
+
 		err := db.QueryRow(`SELECT EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname = current_schema() AND indexname = $1)`, index).Scan(&exists)
 		if err != nil || !exists {
 			t.Errorf("index %s missing (%v)", index, err)
@@ -531,6 +594,7 @@ func TestRetentionIndexesExist(t *testing.T) {
 func TestInvitationMailConstraints(t *testing.T) {
 	db := migratedDB(t)
 	insertFlow(t, db, flowID, "unknown", "")
+
 	job := func(id, kind string, flow, recipient any) (string, []any) {
 		return `INSERT INTO outbox (id, flow_id, generation, quota_class, kind, recipient, available_at) VALUES ($1, $2, 1, 'unknown', $3, $4, now())`,
 			[]any{id, flow, kind, recipient}
@@ -562,6 +626,7 @@ func TestNewDeviceMailConstraints(t *testing.T) {
 	db := migratedDB(t)
 	insertFlow(t, db, flowID, "unknown", "")
 	insertUser(t, db, userID, "owner@example.test")
+
 	job := func(id string, kind string, flow, user, at, name, ip any) (string, []any) {
 		return `INSERT INTO outbox (id, flow_id, generation, quota_class, kind, available_at, user_id, event_at, device_name, client_ip)
 			VALUES ($1, $2, 1, 'recognized', $3, now(), $4, $5, $6, $7)`, []any{id, flow, kind, user, at, name, ip}
@@ -592,6 +657,7 @@ func TestNewDeviceMailConstraints(t *testing.T) {
 	mustViolate(t, db, "outbox_new_device", q, args...)
 
 	exec(t, db, `DELETE FROM users WHERE id = $1`, userID)
+
 	if n := count(t, db, "outbox"); n != 0 {
 		t.Errorf("%d new device jobs outlived their user", n)
 	}
@@ -608,6 +674,7 @@ const (
 func TestAdminConstraints(t *testing.T) {
 	db := migratedDB(t)
 	hash := `decode(repeat('ab', 32), 'hex')`
+
 	exec(t, db, `INSERT INTO operators (id, email, created_at) VALUES ($1, 'ops@example.test', now())`, operatorID)
 
 	t.Run("operators", func(t *testing.T) {
@@ -618,6 +685,7 @@ func TestAdminConstraints(t *testing.T) {
 
 	t.Run("users", func(t *testing.T) {
 		exec(t, db, `INSERT INTO users (id, email, email_verified_at, created_at, updated_at) VALUES ($1, 'u@example.test', now(), now(), now())`, userID)
+
 		var blocked sql.NullTime
 		if err := db.QueryRow(`SELECT blocked_at FROM users WHERE id = $1`, userID).Scan(&blocked); err != nil || blocked.Valid {
 			t.Errorf("a new user's blocked_at = %v, %v; want NULL", blocked, err)
@@ -641,6 +709,7 @@ func TestAdminConstraints(t *testing.T) {
 		exec(t, db, q, args...)
 		q, args = insert(rowID3, "login", nil, nil)
 		exec(t, db, q, args...)
+
 		for name, c := range map[string]struct {
 			purpose              string
 			operator, enrollment any
@@ -656,6 +725,7 @@ func TestAdminConstraints(t *testing.T) {
 				t.Errorf("%s was accepted", name)
 			}
 		}
+
 		mustViolate(t, db, "operator_challenges_data", `INSERT INTO operator_challenges (id, purpose, operator_id, enrollment_id, data, created_at, expires_at) VALUES ($1, 'login', NULL, NULL, '\x', now(), now() + interval '5 minutes')`, "0199c0de-0000-7000-8000-0000000000fe")
 	})
 
@@ -685,6 +755,7 @@ func TestAdminConstraints(t *testing.T) {
 	t.Run("deleting an operator removes theirs and keeps the audit trail", func(t *testing.T) {
 		exec(t, db, `INSERT INTO audit_events (id, operator_id, event, result, occurred_at) VALUES ($1, $2, 'admin.action', 'success', now())`, rowID1, operatorID)
 		exec(t, db, `DELETE FROM operators WHERE id = $1`, operatorID)
+
 		for _, table := range []string{"operator_credentials", "operator_enrollments", "operator_sessions"} {
 			if n := count(t, db, table); n != 0 {
 				t.Errorf("%s keeps %d rows of a deleted operator", table, n)
@@ -695,6 +766,7 @@ func TestAdminConstraints(t *testing.T) {
 		if err := db.QueryRow(`SELECT count(*) FROM operator_challenges WHERE purpose = 'registration'`).Scan(&registrations); err != nil || registrations != 0 {
 			t.Errorf("%d registration challenges of a deleted operator remain, %v", registrations, err)
 		}
+
 		var operator sql.NullString
 		if err := db.QueryRow(`SELECT operator_id FROM audit_events WHERE id = $1`, rowID1).Scan(&operator); err != nil || operator.Valid {
 			t.Errorf("the audit event after the operator went: operator_id = %v, %v; want it cleared and the event kept", operator, err)
@@ -704,6 +776,7 @@ func TestAdminConstraints(t *testing.T) {
 
 func TestUserSearchUsesThePrefixIndex(t *testing.T) {
 	db := migratedDB(t)
+
 	var found int
 	if err := db.QueryRow(`SELECT count(*) FROM pg_indexes WHERE schemaname = current_schema() AND indexname = 'users_email_prefix'`).Scan(&found); err != nil || found != 1 {
 		t.Errorf("users_email_prefix: %d, %v", found, err)
@@ -712,10 +785,12 @@ func TestUserSearchUsesThePrefixIndex(t *testing.T) {
 
 func TestDeviceRequestConstraints(t *testing.T) {
 	db := migratedDB(t)
+
 	const (
 		id1 = "AAECAwQFBgcICQoLDA0ODw"
 		id2 = "AAECAwQFBgcICQoLDA0ODx"
 	)
+
 	pending := func(id string, extra string) string {
 		return `INSERT INTO device_requests (id, poll_hash, binding_hash, device_name, pairing_code, state, attempts, created_at, expires_at` + extra + `)`
 	}
@@ -725,10 +800,12 @@ func TestDeviceRequestConstraints(t *testing.T) {
 	}
 	q, args := insert(id1, "laptop", "123456", "pending", 0)
 	exec(t, db, q, args...)
+
 	q, args = insert(id1, "laptop", "123456", "pending", 0)
 	if _, err := db.Exec(q, args...); err == nil {
 		t.Error("a repeated request id was accepted")
 	}
+
 	for name, c := range map[string]struct {
 		id, name, code, state string
 		attempts              int
@@ -746,8 +823,10 @@ func TestDeviceRequestConstraints(t *testing.T) {
 	} {
 		q, args := insert(c.id, c.name, c.code, c.state, c.attempts)
 		mustViolate(t, db, c.constraint, q, args...)
+
 		_ = name
 	}
+
 	mustViolate(t, db, "device_requests_poll_hash", `INSERT INTO device_requests (id, poll_hash, binding_hash, device_name, pairing_code, state, created_at, expires_at)
 		VALUES ($1, '\x00', decode(repeat('cd', 32), 'hex'), 'x', '123456', 'pending', now(), now() + interval '5 minutes')`, id2)
 	mustViolate(t, db, "device_requests_period", `INSERT INTO device_requests (id, poll_hash, binding_hash, device_name, pairing_code, state, created_at, expires_at)
@@ -764,6 +843,7 @@ func TestDeviceRequestConstraints(t *testing.T) {
 
 	// Deleting the approving user removes the request, and only theirs.
 	exec(t, db, `DELETE FROM users WHERE id = $1`, userID)
+
 	if n := count(t, db, "device_requests"); n != 1 {
 		t.Errorf("%d requests after the approver was deleted, want only the pending one", n)
 	}

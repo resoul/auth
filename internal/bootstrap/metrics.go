@@ -7,8 +7,8 @@ import (
 	"net"
 	"net/http"
 
-	"airlance.org/auth/internal/adapter/metrics"
-	httpapi "airlance.org/auth/internal/transport/http"
+	"go.airlance.org/auth/internal/adapter/metrics"
+	httpapi "go.airlance.org/auth/internal/transport/http"
 )
 
 // newMetricsServer serves GET /metrics on its own listener, so the route is not reachable through the port
@@ -19,15 +19,18 @@ func newMetricsServer(addr string, logger *slog.Logger, registry *metrics.Regist
 	if err != nil {
 		return component{}, nil, err
 	}
+
 	mux := http.NewServeMux()
 	mux.Handle("GET /metrics", registry.Handler())
 	srv := httpapi.NewServer(mux, logger)
+
 	return component{
 		name: "metrics",
 		run: func(context.Context) error {
 			if err := srv.Serve(ln); !errors.Is(err, http.ErrServerClosed) {
 				return err
 			}
+
 			return nil
 		},
 		stop: srv.Shutdown,

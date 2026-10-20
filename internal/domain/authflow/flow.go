@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/domain/identity"
 )
 
 // Flow is one email proof procedure. Fields change only through its operations.
@@ -60,6 +60,7 @@ func Restore(r Record) (*Flow, error) {
 	if err := f.validate(); err != nil {
 		return nil, fmt.Errorf("restore flow: %w", err)
 	}
+
 	return f, nil
 }
 
@@ -94,6 +95,7 @@ func (f *Flow) validate() error {
 	case f.state != StatePending && len(f.salt) != 0:
 		return errors.New("closed flow must not keep a salt")
 	}
+
 	return nil
 }
 
@@ -166,7 +168,9 @@ func (f *Flow) ExpireIfDue(now time.Time) bool {
 	if f.state != StatePending || now.Before(f.expiresAt) {
 		return false
 	}
+
 	f.close(StateExpired)
+
 	return true
 }
 
@@ -180,9 +184,11 @@ func (f *Flow) checkOpen(now time.Time) error {
 	if f.state != StatePending {
 		return ErrClosed
 	}
+
 	if f.ExpireIfDue(now) {
 		return ErrExpired
 	}
+
 	return nil
 }
 
@@ -191,8 +197,10 @@ func (f *Flow) checkCaller(purpose Purpose, binding identity.BindingHash) error 
 	if purpose != f.purpose {
 		return ErrPurposeMismatch
 	}
+
 	if !f.bindingHash.Equal(binding) {
 		return ErrBindingMismatch
 	}
+
 	return nil
 }

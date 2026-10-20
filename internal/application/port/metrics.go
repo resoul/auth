@@ -3,7 +3,7 @@ package port
 import (
 	"time"
 
-	"airlance.org/auth/internal/domain/authflow"
+	"go.airlance.org/auth/internal/domain/authflow"
 )
 
 // MailOutcome is what happened to one delivery attempt. The set is closed so that it

@@ -3,7 +3,7 @@ package account
 import (
 	"errors"
 
-	"airlance.org/auth/internal/domain/authflow"
+	"go.airlance.org/auth/internal/domain/authflow"
 )
 
 // Outcome is the externally visible result class of a use case.
@@ -60,6 +60,7 @@ func denial(err error) (Reason, bool) {
 	case errors.Is(err, authflow.ErrStaleAttempt):
 		return ReasonStaleAttempt, true
 	}
+
 	return "", false
 }
 

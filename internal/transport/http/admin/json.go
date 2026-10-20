@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"time"
 
-	appadmin "airlance.org/auth/internal/application/admin"
-	httpapi "airlance.org/auth/internal/transport/http"
+	appadmin "go.airlance.org/auth/internal/application/admin"
+	httpapi "go.airlance.org/auth/internal/transport/http"
 )
 
 type errorBody struct {
@@ -34,21 +34,27 @@ func decode(w http.ResponseWriter, r *http.Request, v any) bool {
 		writeError(w, r, http.StatusUnsupportedMediaType, "unsupported_media_type", "send application/json")
 		return false
 	}
+
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
+
 	if err := dec.Decode(v); err != nil {
 		var tooBig *http.MaxBytesError
 		if errors.As(err, &tooBig) {
 			writeError(w, r, http.StatusRequestEntityTooLarge, "too_large", "")
 			return false
 		}
+
 		writeError(w, r, http.StatusBadRequest, "invalid_request", "the body is not the JSON this endpoint takes")
+
 		return false
 	}
+
 	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
 		writeError(w, r, http.StatusBadRequest, "invalid_request", "the body holds more than one JSON value")
 		return false
 	}
+
 	return true
 }
 
@@ -58,6 +64,7 @@ func (h *handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 		writeError(w, r, http.StatusBadRequest, "invalid_request", err.Error())
 		return
 	}
+
 	h.Logger.ErrorContext(r.Context(), "admin request failed", "error", err)
 	writeError(w, r, http.StatusInternalServerError, "internal", "")
 }
@@ -83,6 +90,7 @@ func (h *handler) outcome(w http.ResponseWriter, r *http.Request, operation stri
 		if reason != "" {
 			code = string(reason)
 		}
+
 		writeError(w, r, http.StatusConflict, code, "")
 	case appadmin.OutcomeDenied:
 		// Every refusal of a sign-in or an enrollment looks the same; the reason goes to the metrics only.
@@ -92,6 +100,7 @@ func (h *handler) outcome(w http.ResponseWriter, r *http.Request, operation stri
 		h.Logger.ErrorContext(r.Context(), "admin request: unexpected outcome", "outcome", string(o))
 		writeError(w, r, http.StatusInternalServerError, "internal", "")
 	}
+
 	return true
 }
 
@@ -100,6 +109,8 @@ func timeOrNil(t time.Time) *time.Time {
 	if t.IsZero() {
 		return nil
 	}
+
 	u := t.UTC()
+
 	return &u
 }

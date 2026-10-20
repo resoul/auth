@@ -109,6 +109,7 @@ func NewMemoryStore(now func() time.Time) *MemoryStore {
 	if now == nil {
 		now = time.Now
 	}
+
 	return &MemoryStore{
 		logins: map[string]LoginTx{}, users: map[string]string{}, sessions: map[string]*Session{}, locks: map[string]*sync.Mutex{},
 		seen: map[string]time.Time{}, ended: map[string]time.Time{}, now: now,
@@ -121,13 +122,16 @@ var _ Store = (*MemoryStore)(nil)
 func (m *MemoryStore) PutLogin(_ context.Context, tx LoginTx) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
 	now := m.now()
 	for k, t := range m.logins {
 		if !now.Before(t.ExpiresAt) {
 			delete(m.logins, k)
 		}
 	}
+
 	m.logins[tx.Key] = tx
+
 	return nil
 }
 
@@ -135,11 +139,14 @@ func (m *MemoryStore) PutLogin(_ context.Context, tx LoginTx) error {
 func (m *MemoryStore) TakeLogin(_ context.Context, key string, now time.Time) (LoginTx, bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
 	tx, ok := m.logins[key]
 	delete(m.logins, key)
+
 	if !ok || !now.Before(tx.ExpiresAt) {
 		return LoginTx{}, false, nil
 	}
+
 	return tx, true, nil
 }
 
@@ -147,13 +154,16 @@ func (m *MemoryStore) TakeLogin(_ context.Context, key string, now time.Time) (L
 func (m *MemoryStore) UpsertUser(_ context.Context, issuer, subject string) (string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
 	key := issuer + "\x00" + subject
 	if id, ok := m.users[key]; ok {
 		return id, nil
 	}
+
 	m.next++
 	id := "user-" + itoa(m.next)
 	m.users[key] = id
+
 	return id, nil
 }
 
@@ -161,10 +171,12 @@ func itoa(n int) string {
 	if n == 0 {
 		return "0"
 	}
+
 	var b []byte
 	for ; n > 0; n /= 10 {
 		b = append([]byte{byte('0' + n%10)}, b...)
 	}
+
 	return string(b)
 }
 
@@ -176,8 +188,10 @@ func (m *MemoryStore) CreateSession(_ context.Context, s Session) error {
 	if at, ok := m.ended[s.Issuer+"\x00"+s.ProviderSession]; ok && !s.SignInStarted.After(at) {
 		return ErrSessionEnded
 	}
+
 	cp := s
 	m.sessions[s.Key] = &cp
+
 	return nil
 }
 
@@ -185,10 +199,12 @@ func (m *MemoryStore) CreateSession(_ context.Context, s Session) error {
 func (m *MemoryStore) GetSession(_ context.Context, key string) (Session, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
 	s, ok := m.sessions[key]
 	if !ok {
 		return Session{}, ErrNoSession
 	}
+
 	return clone(*s), nil
 }
 
@@ -197,7 +213,9 @@ func clone(s Session) Session {
 	for k, v := range s.Access {
 		access[k] = v
 	}
+
 	s.Access = access
+
 	return s
 }
 
@@ -205,13 +223,16 @@ func clone(s Session) Session {
 func (m *MemoryStore) DeleteSession(_ context.Context, key string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
 	delete(m.sessions, key)
+
 	return nil
 }
 
 // WithSessionLock implements Store.
 func (m *MemoryStore) WithSessionLock(_ context.Context, key string, fn func(s *Session) error) error {
 	m.mu.Lock()
+
 	lock, ok := m.locks[key]
 	if !ok {
 		lock = &sync.Mutex{}
@@ -221,25 +242,32 @@ func (m *MemoryStore) WithSessionLock(_ context.Context, key string, fn func(s *
 
 	lock.Lock()
 	defer lock.Unlock()
+
 	m.mu.Lock()
 	s, ok := m.sessions[key]
+
 	var work Session
 	if ok {
 		work = clone(*s)
 	}
 	m.mu.Unlock()
+
 	if !ok {
 		return ErrNoSession
 	}
+
 	if err := fn(&work); err != nil {
 		return err
 	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
 	if _, still := m.sessions[key]; still {
 		cp := work
 		m.sessions[key] = &cp
 	}
+
 	return nil
 }
 
@@ -253,17 +281,20 @@ const deliveryWindow = 26 * time.Hour
 func (m *MemoryStore) EndProviderSession(_ context.Context, issuer, sid, jti string, exp time.Time) (bool, int, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
 	now := m.now()
 	for k, until := range m.seen {
 		if !now.Before(until) {
 			delete(m.seen, k)
 		}
 	}
+
 	for k, at := range m.ended {
 		if !now.Before(at.Add(endedMemory)) {
 			delete(m.ended, k)
 		}
 	}
+
 	key := issuer + "\x00" + jti
 	if _, ok := m.seen[key]; ok {
 		return false, 0, nil
@@ -274,13 +305,17 @@ func (m *MemoryStore) EndProviderSession(_ context.Context, issuer, sid, jti str
 	if until := exp.Add(time.Hour); until.After(m.seen[key]) {
 		m.seen[key] = until
 	}
+
 	m.ended[issuer+"\x00"+sid] = now
 	n := 0
+
 	for k, s := range m.sessions {
 		if s.Issuer == issuer && s.ProviderSession == sid {
 			delete(m.sessions, k)
+
 			n++
 		}
 	}
+
 	return true, n, nil
 }

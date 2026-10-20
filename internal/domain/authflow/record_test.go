@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"airlance.org/auth/internal/domain/authflow"
-	"airlance.org/auth/internal/domain/identity"
-	"airlance.org/auth/internal/testutil"
+	"go.airlance.org/auth/internal/domain/authflow"
+	"go.airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/testutil"
 )
 
 func TestRecordRoundTripKeepsEveryState(t *testing.T) {
@@ -16,6 +16,7 @@ func TestRecordRoundTripKeepsEveryState(t *testing.T) {
 	pending := f.Flow(testutil.FlowSpec{})
 
 	consumed := f.Flow(testutil.FlowSpec{})
+
 	attempt, _ := consumed.Reserve(start, authflow.PurposeLogin, binding(), policy)
 	if err := consumed.Accept(attempt, start); err != nil {
 		t.Fatal(err)
@@ -43,6 +44,7 @@ func TestRecordRoundTripKeepsEveryState(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Restore: %v", err)
 			}
+
 			if !reflect.DeepEqual(restored.Record(), flow.Record()) {
 				t.Errorf("round trip changed record:\n got %+v\nwant %+v", restored.Record(), flow.Record())
 			}
@@ -84,6 +86,7 @@ func TestRestoreRejectsImpossibleRecords(t *testing.T) {
 			r := good
 			r.Salt = append([]byte(nil), good.Salt...)
 			tt.mutate(&r)
+
 			if _, err := authflow.Restore(r); err == nil {
 				t.Error("Restore accepted an impossible record")
 			}
@@ -96,10 +99,12 @@ func TestParseFlowID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	parsed, err := authflow.ParseFlowID(id.String())
 	if err != nil || parsed != id {
 		t.Fatalf("ParseFlowID(%q) = %q, %v", id, parsed, err)
 	}
+
 	if len(id.String()) != 22 {
 		t.Errorf("flow id %q has %d chars, want 22", id, len(id.String()))
 	}
@@ -120,6 +125,7 @@ func TestNewBindingHashRequiresSHA256Length(t *testing.T) {
 			t.Errorf("NewBindingHash accepted %d bytes", n)
 		}
 	}
+
 	hash, err := identity.NewBindingHash(make([]byte, identity.BindingHashLength))
 	if err != nil || hash.IsZero() || len(hash.Bytes()) != identity.BindingHashLength {
 		t.Errorf("NewBindingHash(32 bytes) = %+v, %v", hash, err)

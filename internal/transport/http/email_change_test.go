@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"airlance.org/auth/internal/adapter/memory"
-	"airlance.org/auth/internal/application/port"
-	"airlance.org/auth/internal/domain/quota"
-	"airlance.org/auth/internal/testutil"
+	"go.airlance.org/auth/internal/adapter/memory"
+	"go.airlance.org/auth/internal/application/port"
+	"go.airlance.org/auth/internal/domain/quota"
+	"go.airlance.org/auth/internal/testutil"
 )
 
 type changeStarted struct {
@@ -36,6 +36,7 @@ func (m manage) confirmChange(flowID, code string) *httptest.ResponseRecorder {
 func (m manage) beginChange(email string) changeStarted {
 	m.e.t.Helper()
 	token := m.stepUp(m.auth, "change_email")
+
 	return decode[changeStarted](m.e.t, m.startChange(token, email), http.StatusAccepted)
 }
 
@@ -47,9 +48,11 @@ func TestChangingTheEmailInBothProfiles(t *testing.T) {
 
 			// Without a step-up for this operation nothing starts, and nothing is sent.
 			jobsBefore := len(e.store.OutboxJobs())
+
 			wantProblem(t, m.startChange("", name+"-new@example.test"), http.StatusForbidden, "step_up_required")
 			wrongOp := m.stepUp(m.auth, "add_passkey")
 			wantProblem(t, m.startChange(wrongOp, name+"-new@example.test"), http.StatusForbidden, "step_up_required")
+
 			if len(e.store.OutboxJobs()) != jobsBefore {
 				t.Fatalf("a refused start queued a mail: %d jobs, was %d", len(e.store.OutboxJobs()), jobsBefore)
 			}
@@ -63,10 +66,12 @@ func TestChangingTheEmailInBothProfiles(t *testing.T) {
 
 			wantProblem(t, m.confirmChange(started.FlowID, "00000000"), http.StatusBadRequest, "invalid_code")
 			code := e.code(started.FlowID)
+
 			done := decode[changeDone](t, m.confirmChange(started.FlowID, code), http.StatusOK)
 			if done.Email != name+"-new@example.test" {
 				t.Errorf("email = %q", done.Email)
 			}
+
 			wantProblem(t, m.confirmChange(started.FlowID, code), http.StatusBadRequest, "invalid_code")
 
 			// The session survives and shows the new address.
@@ -81,11 +86,13 @@ func TestChangingTheEmailInBothProfiles(t *testing.T) {
 
 			// The old address is told, once, and the mail names no address of the new one.
 			var notices []port.MailJob
+
 			for _, job := range e.store.OutboxJobs() {
 				if job.Kind == port.JobEmailChanged {
 					notices = append(notices, job)
 				}
 			}
+
 			if len(notices) != 1 || notices[0].Recipient.String() != name+"-old@example.test" {
 				t.Fatalf("notices = %+v", notices)
 			}
@@ -95,6 +102,7 @@ func TestChangingTheEmailInBothProfiles(t *testing.T) {
 			if step := e.verifyStep(started2.FlowID, started2.ClientBinding); step.Next != "second_factor" {
 				t.Errorf("the new address was told %q, want second_factor: it owns the account's keys", step.Next)
 			}
+
 			started3 := e.start(name+"-old@example.test", "")
 			if step := e.verifyStep(started3.FlowID, started3.ClientBinding); step.Next != "enroll_passkey" {
 				t.Errorf("the old address was told %q, want enroll_passkey: it is a new account now", step.Next)
@@ -120,6 +128,7 @@ func TestEmailChangeRefusals(t *testing.T) {
 	wantProblem(t, m.confirmChange(started.FlowID, "00000000"), http.StatusBadRequest, "invalid_code")
 	wantProblem(t, m.confirmChange("AAAAAAAAAAAAAAAAAAAAAA", "30999009"), http.StatusBadRequest, "invalid_code")
 	wantProblem(t, m.confirmChange("not a flow", "30999009"), http.StatusBadRequest, "invalid_code")
+
 	loginFlow := e.start("alice@example.test", "")
 	wantProblem(t, m.confirmChange(loginFlow.FlowID, e.code(loginFlow.FlowID)), http.StatusBadRequest, "invalid_code")
 	bob := nativeManage(t, e, "bob@example.test")
@@ -133,6 +142,7 @@ func TestEmailChangeRefusals(t *testing.T) {
 	}
 	// Only the proof of the mailbox shows it: a conflict, with the account untouched.
 	wantProblem(t, m.confirmChange(taken.FlowID, e.code(taken.FlowID)), http.StatusConflict, "email_taken")
+
 	if _, ok := e.store.User(mustEmail(t, "alice@example.test")); !ok {
 		t.Error("the account moved to an address another account has")
 	}
@@ -140,17 +150,21 @@ func TestEmailChangeRefusals(t *testing.T) {
 
 func TestEmailChangeRoutesRefuseWhoIsNotSignedIn(t *testing.T) {
 	e := newEnv(t)
+
 	for _, base := range []string{"/v1/native/me", "/v1/me"} {
 		for _, path := range []string{"/email/change", "/email/change/confirm"} {
 			for _, token := range []string{"", "x.y.z"} {
 				req := httptest.NewRequest(http.MethodPost, base+path, strings.NewReader(`{"email":"a@example.test","flow_id":"x","code":"30999009"}`))
 				req.Header.Set("Content-Type", "application/json")
+
 				if token != "" {
 					req.Header.Set("Authorization", "Bearer "+token)
 				}
+
 				if base == "/v1/me" {
 					req.Header.Set("Sec-Fetch-Site", "same-origin")
 				}
+
 				e.wantUnauthenticated(e.do(req))
 			}
 		}
@@ -172,6 +186,7 @@ func TestBrowserEmailChangeRefusesAForeignOrigin(t *testing.T) {
 		req.Header.Set("Sec-Fetch-Site", "cross-site")
 		wantProblem(t, e.do(req), http.StatusForbidden, "permission_denied")
 	}
+
 	if e.store.FlowCount() != flowsBefore {
 		t.Errorf("flows = %d after refused foreign calls, was %d", e.store.FlowCount(), flowsBefore)
 	}
@@ -182,6 +197,7 @@ func TestEmailChangeIsBoundedByTheQuotaOfTheNewAddress(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	e := newEnv(t, memory.WithQuota(profile))
 	m := nativeManage(t, e, "alice@example.test")
 
@@ -202,20 +218,25 @@ func TestEmailChangeFailureLeavesTheAccountAndTheTokenAlone(t *testing.T) {
 
 	rec := m.startChange(token, "next@example.test")
 	wantProblem(t, rec, http.StatusServiceUnavailable, "temporarily_unavailable")
+
 	e.faults.wrap = nil
+
 	decode[changeStarted](t, m.startChange(token, "next@example.test"), http.StatusAccepted)
 }
 
 // otherDevice signs the same user in again, as a second device, and returns its tokens.
 func otherDevice(t *testing.T, e *env, email string) tokenResponse {
 	t.Helper()
+
 	signed, _ := e.signIn(email)
+
 	return signed
 }
 
 func (e *env) meStatus(token string) int {
 	req := httptest.NewRequest(http.MethodGet, "/v1/native/me", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
+
 	return e.do(req).Code
 }
 
@@ -223,6 +244,7 @@ func TestChangingTheEmailEndsTheOtherDevicesButNotThisOne(t *testing.T) {
 	e := newEnv(t)
 	m := nativeManage(t, e, "alice@example.test")
 	phone := otherDevice(t, e, "alice@example.test")
+
 	bob := otherDevice(t, e, "bob@example.test")
 	if e.meStatus(phone.AccessToken) != http.StatusOK {
 		t.Fatal("the second device is not signed in")
@@ -234,10 +256,13 @@ func TestChangingTheEmailEndsTheOtherDevicesButNotThisOne(t *testing.T) {
 	if got := e.meStatus(m.token); got != http.StatusOK {
 		t.Errorf("the device that changed the address = %d, want 200", got)
 	}
+
 	if got := e.meStatus(phone.AccessToken); got != http.StatusUnauthorized {
 		t.Errorf("the other device = %d, want 401", got)
 	}
+
 	wantProblem(t, e.refresh(phone.RefreshToken), http.StatusUnauthorized, "invalid_refresh")
+
 	if got := e.meStatus(bob.AccessToken); got != http.StatusOK {
 		t.Errorf("another user's device = %d, want 200", got)
 	}
@@ -258,8 +283,10 @@ func TestDeletingAPasskeyEndsTheOtherDevicesButNotThisOne(t *testing.T) {
 	if got := e.meStatus(m.token); got != http.StatusOK {
 		t.Errorf("the device that deleted the key = %d, want 200", got)
 	}
+
 	if got := e.meStatus(phone.AccessToken); got != http.StatusUnauthorized {
 		t.Errorf("the other device = %d, want 401", got)
 	}
+
 	wantProblem(t, e.refresh(phone.RefreshToken), http.StatusUnauthorized, "invalid_refresh")
 }

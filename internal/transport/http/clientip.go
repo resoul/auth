@@ -41,23 +41,29 @@ func ClientIP(r *http.Request, trusted []netip.Prefix) netip.Addr {
 	if !peer.IsValid() || !isTrusted(peer, trusted) {
 		return peer
 	}
+
 	hops := strings.Split(strings.Join(r.Header.Values("X-Forwarded-For"), ","), ",")
 	hop := peer
+
 	for i := len(hops) - 1; i >= 0; i-- {
 		entry := strings.TrimSpace(hops[i])
 		if entry == "" {
 			continue
 		}
+
 		addr, err := netip.ParseAddr(entry)
 		if err != nil {
 			return hop
 		}
+
 		addr = addr.Unmap().WithZone("")
 		if !isTrusted(addr, trusted) {
 			return addr
 		}
+
 		hop = addr
 	}
+
 	return hop
 }
 
@@ -66,10 +72,12 @@ func parseAddr(hostport string) netip.Addr {
 	if err != nil {
 		host = hostport
 	}
+
 	addr, err := netip.ParseAddr(host)
 	if err != nil {
 		return netip.Addr{}
 	}
+
 	return addr.Unmap().WithZone("")
 }
 
@@ -79,5 +87,6 @@ func isTrusted(a netip.Addr, trusted []netip.Prefix) bool {
 			return true
 		}
 	}
+
 	return false
 }

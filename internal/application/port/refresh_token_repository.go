@@ -5,9 +5,9 @@ import (
 	"errors"
 	"time"
 
-	"airlance.org/auth/internal/domain/identity"
-	"airlance.org/auth/internal/domain/session"
-	"airlance.org/auth/internal/domain/token"
+	"go.airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/domain/session"
+	"go.airlance.org/auth/internal/domain/token"
 )
 
 // ErrTokenConflict reports a violated token invariant: a duplicate secret hash or

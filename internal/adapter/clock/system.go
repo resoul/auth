@@ -3,7 +3,7 @@ package clock
 import (
 	"time"
 
-	"airlance.org/auth/internal/application/port"
+	"go.airlance.org/auth/internal/application/port"
 )
 
 var _ port.Clock = System{}

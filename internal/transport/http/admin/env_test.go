@@ -16,14 +16,14 @@ import (
 	"testing"
 	"time"
 
-	"airlance.org/auth/internal/adapter/crypto"
-	"airlance.org/auth/internal/adapter/memory"
-	apasskey "airlance.org/auth/internal/adapter/passkey"
-	appadmin "airlance.org/auth/internal/application/admin"
-	"airlance.org/auth/internal/application/port"
-	"airlance.org/auth/internal/domain/identity"
-	"airlance.org/auth/internal/testutil"
-	adminhttp "airlance.org/auth/internal/transport/http/admin"
+	"go.airlance.org/auth/internal/adapter/crypto"
+	"go.airlance.org/auth/internal/adapter/memory"
+	apasskey "go.airlance.org/auth/internal/adapter/passkey"
+	appadmin "go.airlance.org/auth/internal/application/admin"
+	"go.airlance.org/auth/internal/application/port"
+	"go.airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/testutil"
+	adminhttp "go.airlance.org/auth/internal/transport/http/admin"
 )
 
 const rpID = "localhost"
@@ -40,12 +40,14 @@ type metrics struct {
 func (m *metrics) RequestServed(route string, _ int, _ time.Duration) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
 	m.routes = append(m.routes, route)
 }
 
 func (m *metrics) AuthDenied(operation, reason string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
 	m.denied = append(m.denied, operation+"/"+reason)
 }
 
@@ -80,16 +82,19 @@ func newEnvScheme(t *testing.T, scheme string) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	_, portNumber, err := net.SplitHostPort(ln.Addr().String())
 	if err != nil {
 		t.Fatal(err)
 	}
 	// The listener is on the loopback address; the page and its Origin are localhost, which WebAuthn accepts over http.
 	e.origin = scheme + "://localhost:" + portNumber
+
 	web, err := apasskey.New(apasskey.Config{RPID: rpID, RPName: "Admin", Origins: []string{e.origin}})
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	auth, err := appadmin.NewAuth(appadmin.AuthDeps{UnitOfWork: e.store, Clock: e.clock, WebAuthn: web, PasskeyIDs: factory.IDs, Secrets: crypto.Ticket{}})
 	must(t, err)
 	e.users, err = appadmin.NewUsers(appadmin.UsersDeps{UnitOfWork: e.store, Clock: e.clock})
@@ -109,6 +114,7 @@ func newEnvScheme(t *testing.T, scheme string) *env {
 	}
 	handler, err := adminhttp.New(e.deps)
 	must(t, err)
+
 	e.server = httptest.NewUnstartedServer(handler)
 	_ = e.server.Listener.Close() // replaced by ln below
 	e.server.Listener = ln
@@ -117,12 +123,15 @@ func newEnvScheme(t *testing.T, scheme string) *env {
 
 	jar, err := cookiejar.New(nil)
 	must(t, err)
+
 	e.client = &http.Client{Jar: jar, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+
 	return e
 }
 
 func must(t *testing.T, err error) {
 	t.Helper()
+
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,6 +146,7 @@ type reply struct {
 
 func (r reply) json(t *testing.T, v any) {
 	t.Helper()
+
 	if err := json.Unmarshal(r.body, v); err != nil {
 		t.Fatalf("decode %q: %v", r.body, err)
 	}
@@ -147,7 +157,9 @@ func (r reply) errorCode() string {
 	var b struct {
 		Error string `json:"error"`
 	}
+
 	_ = json.Unmarshal(r.body, &b)
+
 	return b.Error
 }
 
@@ -165,6 +177,7 @@ func str(s string) *string { return &s }
 // send performs a request the way the admin page does: JSON, the page's origin and the CSRF token.
 func (e *env) send(r request) reply {
 	e.t.Helper()
+
 	var body io.Reader
 	switch {
 	case r.raw != "":
@@ -172,17 +185,22 @@ func (e *env) send(r request) reply {
 	case r.body != nil:
 		data, err := json.Marshal(r.body)
 		must(e.t, err)
+
 		body = bytes.NewReader(data)
 	}
+
 	req, err := http.NewRequest(r.method, e.server.URL+r.path, body)
 	must(e.t, err)
+
 	if r.method != http.MethodGet {
 		req.Header.Set("Origin", e.origin)
 		req.Header.Set("Content-Type", "application/json")
+
 		if token := e.csrf; token != "" {
 			req.Header.Set("X-CSRF-Token", token)
 		}
 	}
+
 	for k, v := range r.header {
 		if v == nil {
 			req.Header.Del(k)
@@ -190,11 +208,15 @@ func (e *env) send(r request) reply {
 			req.Header.Set(k, *v)
 		}
 	}
+
 	resp, err := e.client.Do(req)
 	must(e.t, err)
+
 	defer func() { _ = resp.Body.Close() }()
+
 	data, err := io.ReadAll(resp.Body)
 	must(e.t, err)
+
 	return reply{status: resp.StatusCode, header: resp.Header, body: data}
 }
 
@@ -210,6 +232,7 @@ func (e *env) user(email string) *identity.User {
 		_, _, err := s.Users.Ensure(ctx, u)
 		return err
 	}))
+
 	return u
 }
 
@@ -219,36 +242,43 @@ func (e *env) enrolled(email string) *testutil.SoftAuthenticator {
 	_, enrollment, err := e.operators.Create(context.Background(), email)
 	must(e.t, err)
 	key := testutil.NewSoftAuthenticator(e.t, rpID, e.origin)
+
 	begin := e.post("/admin/api/v1/enroll/begin", map[string]string{"code": enrollment.Code})
 	if begin.status != http.StatusOK {
 		e.t.Fatalf("enroll/begin = %d %s", begin.status, begin.body)
 	}
+
 	var ceremony struct {
 		ChallengeID string          `json:"challenge_id"`
 		Options     json.RawMessage `json:"options"`
 	}
 	begin.json(e.t, &ceremony)
+
 	done := e.post("/admin/api/v1/enroll/finish", map[string]any{
 		"challenge_id": ceremony.ChallengeID, "response": json.RawMessage(key.Register(ceremony.Options)), "name": "Test key",
 	})
 	if done.status != http.StatusNoContent {
 		e.t.Fatalf("enroll/finish = %d %s", done.status, done.body)
 	}
+
 	return key
 }
 
 // login answers a sign-in with the key and returns the reply of login/finish.
 func (e *env) login(key *testutil.SoftAuthenticator) reply {
 	e.t.Helper()
+
 	begin := e.post("/admin/api/v1/login/begin", nil)
 	if begin.status != http.StatusOK {
 		e.t.Fatalf("login/begin = %d %s", begin.status, begin.body)
 	}
+
 	var ceremony struct {
 		ChallengeID string          `json:"challenge_id"`
 		Options     json.RawMessage `json:"options"`
 	}
 	begin.json(e.t, &ceremony)
+
 	return e.post("/admin/api/v1/login/finish", map[string]any{
 		"challenge_id": ceremony.ChallengeID, "response": json.RawMessage(key.Assert(ceremony.Options)),
 	})
@@ -258,21 +288,26 @@ func (e *env) login(key *testutil.SoftAuthenticator) reply {
 func (e *env) signedIn(email string) *testutil.SoftAuthenticator {
 	e.t.Helper()
 	key := e.enrolled(email)
+
 	res := e.login(key)
 	if res.status != http.StatusOK {
 		e.t.Fatalf("login/finish = %d %s", res.status, res.body)
 	}
+
 	var body struct {
 		CSRFToken string `json:"csrf_token"`
 	}
 	res.json(e.t, &body)
 	e.csrf = body.CSRFToken
+
 	return key
 }
 
 func mustURL(t *testing.T, raw string) *url.URL {
 	t.Helper()
+
 	u, err := url.Parse(raw)
 	must(t, err)
+
 	return u
 }

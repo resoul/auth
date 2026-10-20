@@ -23,6 +23,7 @@ func ParseUserID(s string) (UserID, error) {
 	if !isUUIDv4(s) {
 		return UserID{}, ErrInvalidID
 	}
+
 	return UserID{value: s}, nil
 }
 
@@ -31,6 +32,7 @@ func ParseRecognizedClientID(s string) (RecognizedClientID, error) {
 	if !isUUIDv4(s) {
 		return RecognizedClientID{}, ErrInvalidID
 	}
+
 	return RecognizedClientID{value: s}, nil
 }
 
@@ -51,6 +53,7 @@ func isUUIDv4(s string) bool {
 	if len(s) != 36 {
 		return false
 	}
+
 	for i := 0; i < len(s); i++ {
 		c := s[i]
 		switch i {
@@ -64,6 +67,7 @@ func isUUIDv4(s string) bool {
 			}
 		}
 	}
+
 	return s[14] == '4' && strings.IndexByte("89ab", s[19]) >= 0
 }
 

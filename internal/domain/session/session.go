@@ -6,7 +6,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/domain/identity"
 )
 
 // MaxDeviceNameLength is the longest device name in characters.
@@ -33,6 +33,7 @@ func (p Policy) Validate() error {
 	if p.IdleTTL <= 0 || p.AbsoluteTTL < p.IdleTTL {
 		return errors.New("invalid session policy")
 	}
+
 	return nil
 }
 
@@ -68,6 +69,7 @@ func New(p NewParams, now time.Time, policy Policy) (*Session, error) {
 	if err := policy.Validate(); err != nil {
 		return nil, fmt.Errorf("new session: %w", err)
 	}
+
 	s := &Session{
 		id: p.ID, userID: p.UserID, binding: p.Binding, amr: append([]string(nil), p.AMR...),
 		authTime: p.AuthTime, deviceName: p.DeviceName, createdAt: now, lastActiveAt: now,
@@ -76,6 +78,7 @@ func New(p NewParams, now time.Time, policy Policy) (*Session, error) {
 	if err := s.validate(); err != nil {
 		return nil, fmt.Errorf("new session: %w", err)
 	}
+
 	return s, nil
 }
 
@@ -98,11 +101,13 @@ func (s *Session) validate() error {
 	case !ValidDeviceName(s.deviceName):
 		return errors.New("invalid device name")
 	}
+
 	for _, method := range s.amr {
 		if method == "" {
 			return errors.New("empty authentication method")
 		}
 	}
+
 	return nil
 }
 
@@ -112,11 +117,13 @@ func ValidDeviceName(name string) bool {
 	if !utf8.ValidString(name) || utf8.RuneCountInString(name) > MaxDeviceNameLength {
 		return false
 	}
+
 	for _, r := range name {
 		if r < 0x20 || r == 0x7f {
 			return false
 		}
 	}
+
 	return true
 }
 
@@ -131,8 +138,10 @@ func (s *Session) Touch(now time.Time, policy Policy) error {
 	if !s.Active(now) {
 		return ErrNotActive
 	}
+
 	s.lastActiveAt = now
 	s.idleExpiresAt = s.RefreshExpiry(now, policy)
+
 	return nil
 }
 
@@ -143,6 +152,7 @@ func (s *Session) RefreshExpiry(now time.Time, policy Policy) time.Time {
 	if expiry.After(s.expiresAt) {
 		return s.expiresAt
 	}
+
 	return expiry
 }
 
@@ -179,6 +189,7 @@ func Restore(r Record) (*Session, error) {
 	if err := s.validate(); err != nil {
 		return nil, fmt.Errorf("restore session: %w", err)
 	}
+
 	return s, nil
 }
 

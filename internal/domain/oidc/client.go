@@ -58,6 +58,7 @@ func ParseClientID(s string) (string, error) {
 	if !clientIDShape.MatchString(s) {
 		return "", ErrInvalidClientID
 	}
+
 	return s, nil
 }
 
@@ -81,47 +82,60 @@ func NewClient(p NewClientParams, now time.Time) (*Client, error) {
 	if _, err := ParseClientID(p.ID); err != nil {
 		return nil, err
 	}
+
 	if p.Name == "" || len(p.Name) > 100 {
 		return nil, fmt.Errorf("%w: a name of 1 to 100 characters is required", ErrInvalidClient)
 	}
+
 	if p.Service {
 		if len(p.RedirectURIs) > 0 || len(p.AllowedScopes) > 0 || len(p.PostLogoutRedirectURIs) > 0 || p.BackchannelLogoutURI != "" {
 			return nil, fmt.Errorf("%w: a service has no redirect URIs, scopes or logout settings", ErrInvalidClient)
 		}
+
 		if !p.Trusted {
 			return nil, fmt.Errorf("%w: only first-party services can be registered", ErrInvalidClient)
 		}
+
 		return &Client{ID: p.ID, Name: p.Name, Kind: ClientService, Status: ClientActive, Trusted: true, PolicyVersion: 1, CreatedAt: now.UTC(), UpdatedAt: now.UTC()}, nil
 	}
+
 	if !p.Trusted {
 		return nil, fmt.Errorf("%w: consent for third-party clients is not implemented; only trusted (first-party) clients can be registered", ErrInvalidClient)
 	}
+
 	if len(p.RedirectURIs) == 0 || len(p.RedirectURIs) > maxRedirects {
 		return nil, fmt.Errorf("%w: 1 to %d redirect URIs are required", ErrInvalidClient, maxRedirects)
 	}
+
 	for i, uri := range p.RedirectURIs {
 		if err := checkRedirectURI(uri); err != nil {
 			return nil, fmt.Errorf("%w: redirect URI %d: %w", ErrInvalidClient, i+1, err)
 		}
+
 		if slices.Contains(p.RedirectURIs[:i], uri) {
 			return nil, fmt.Errorf("%w: redirect URI %d is repeated", ErrInvalidClient, i+1)
 		}
 	}
+
 	if err := checkLogoutURIs(p.PostLogoutRedirectURIs, p.BackchannelLogoutURI); err != nil {
 		return nil, err
 	}
+
 	scopes := p.AllowedScopes
 	if len(scopes) == 0 {
 		scopes = []string{ScopeOpenID, ScopeEmail}
 	}
+
 	for i, s := range scopes {
 		if !slices.Contains(SupportedScopes(), s) || slices.Contains(scopes[:i], s) {
 			return nil, fmt.Errorf("%w: scope %q", ErrInvalidScope, s)
 		}
 	}
+
 	if !slices.Contains(scopes, ScopeOpenID) {
 		return nil, fmt.Errorf("%w: the openid scope is required", ErrInvalidClient)
 	}
+
 	return &Client{
 		ID: p.ID, Name: p.Name, Kind: ClientApplication, Status: ClientActive, RedirectURIs: slices.Clone(p.RedirectURIs),
 		AllowedScopes: slices.Clone(scopes), Trusted: p.Trusted, PolicyVersion: 1,
@@ -133,16 +147,20 @@ func checkRedirectURI(raw string) error {
 	if raw == "" || len(raw) > maxRedirectLen || strings.TrimSpace(raw) != raw || strings.ContainsAny(raw, "*\\\r\n\t ") {
 		return fmt.Errorf("not a plain absolute URL")
 	}
+
 	u, err := url.Parse(raw)
 	if err != nil || u.Host == "" || u.Hostname() == "" || u.Opaque != "" {
 		return fmt.Errorf("not an absolute URL")
 	}
+
 	if u.User != nil {
 		return fmt.Errorf("must not carry credentials")
 	}
+
 	if u.Fragment != "" || strings.Contains(raw, "#") {
 		return fmt.Errorf("must not have a fragment")
 	}
+
 	switch u.Scheme {
 	case "https":
 	case "http":
@@ -152,6 +170,7 @@ func checkRedirectURI(raw string) error {
 	default:
 		return fmt.Errorf("must be https")
 	}
+
 	return nil
 }
 
@@ -171,6 +190,7 @@ func (c *Client) Grantable(requested []string) ([]string, error) {
 			return nil, ErrInvalidScope
 		}
 	}
+
 	return requested, nil
 }
 
@@ -179,19 +199,23 @@ func checkLogoutURIs(postLogout []string, backchannel string) error {
 	if len(postLogout) > maxRedirects {
 		return fmt.Errorf("%w: at most %d post-logout redirect URIs", ErrInvalidClient, maxRedirects)
 	}
+
 	for i, uri := range postLogout {
 		if err := checkRedirectURI(uri); err != nil {
 			return fmt.Errorf("%w: post-logout redirect URI %d: %w", ErrInvalidClient, i+1, err)
 		}
+
 		if slices.Contains(postLogout[:i], uri) {
 			return fmt.Errorf("%w: post-logout redirect URI %d is repeated", ErrInvalidClient, i+1)
 		}
 	}
+
 	if backchannel != "" {
 		if err := checkRedirectURI(backchannel); err != nil {
 			return fmt.Errorf("%w: back-channel logout URI: %w", ErrInvalidClient, err)
 		}
 	}
+
 	return nil
 }
 
@@ -200,7 +224,9 @@ func (c *Client) SetLogout(postLogout []string, backchannel string, now time.Tim
 	if err := checkLogoutURIs(postLogout, backchannel); err != nil {
 		return err
 	}
+
 	c.PostLogoutRedirectURIs, c.BackchannelLogoutURI, c.UpdatedAt = slices.Clone(postLogout), backchannel, now.UTC()
+
 	return nil
 }
 

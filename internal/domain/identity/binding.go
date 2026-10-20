@@ -20,9 +20,11 @@ func NewBindingHash(hash []byte) (BindingHash, error) {
 	if len(hash) != BindingHashLength {
 		return BindingHash{}, errors.New("binding hash must be 32 bytes")
 	}
+
 	var h BindingHash
 	copy(h.value[:], hash)
 	h.set = true
+
 	return h, nil
 }
 

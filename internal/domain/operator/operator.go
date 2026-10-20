@@ -4,7 +4,7 @@ import (
 	"errors"
 	"time"
 
-	"airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/domain/identity"
 )
 
 // MaxCredentials bounds the passkeys of one operator.
@@ -29,6 +29,7 @@ func New(id ID, email identity.Email, now time.Time) (*Operator, error) {
 	case now.IsZero():
 		return nil, errors.New("new operator: time is required")
 	}
+
 	return &Operator{id: id, email: email, createdAt: now}, nil
 }
 
@@ -37,9 +38,11 @@ func (o *Operator) Disable(now time.Time) error {
 	if now.IsZero() {
 		return errors.New("disable operator: time is required")
 	}
+
 	if o.disabledAt.IsZero() {
 		o.disabledAt = now
 	}
+
 	return nil
 }
 
@@ -74,6 +77,7 @@ func Restore(r Record) (*Operator, error) {
 	if r.ID.IsZero() || r.Email.IsZero() || r.CreatedAt.IsZero() {
 		return nil, errors.New("restore operator: incomplete record")
 	}
+
 	return &Operator{id: r.ID, email: r.Email, createdAt: r.CreatedAt, disabledAt: r.DisabledAt}, nil
 }
 

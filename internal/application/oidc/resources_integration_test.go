@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	appoidc "airlance.org/auth/internal/application/oidc"
-	"airlance.org/auth/internal/application/port"
-	doidc "airlance.org/auth/internal/domain/oidc"
+	appoidc "go.airlance.org/auth/internal/application/oidc"
+	"go.airlance.org/auth/internal/application/port"
+	doidc "go.airlance.org/auth/internal/domain/oidc"
 )
 
 const (
@@ -26,6 +26,7 @@ func (e *env) registerResource(id, uri string, scopes ...string) *doidc.Resource
 	e.t.Helper()
 	res, err := e.resources.Register(context.Background(), appoidc.RegisterResourceCommand{ID: id, Name: id, URI: uri, Audience: id, Scopes: scopes})
 	must(e.t, err)
+
 	return res
 }
 
@@ -33,6 +34,7 @@ func (e *env) allow(c client, resourceID string, scopes ...string) int {
 	e.t.Helper()
 	n, err := e.resources.Allow(context.Background(), c.id, resourceID, scopes)
 	must(e.t, err)
+
 	return n
 }
 
@@ -44,6 +46,7 @@ func (e *env) exchangeFor(f flow, code, resource, scope string) appoidc.TokenRes
 		RedirectURI: f.client.redirect, CodeVerifier: f.verifier, Resource: resource, Scope: scope,
 	})
 	must(e.t, err)
+
 	return got
 }
 
@@ -53,11 +56,13 @@ func (e *env) refreshFor(c client, refreshToken, resource, scope string) appoidc
 		ClientID: c.id, ClientSecret: c.secret, GrantType: "refresh_token", RefreshToken: refreshToken, Resource: resource, Scope: scope,
 	})
 	must(e.t, err)
+
 	return got
 }
 
 func wantFailure(t *testing.T, name string, got appoidc.TokenResult, code string) {
 	t.Helper()
+
 	if got.Response != nil || got.Failure == nil || got.Failure.Code != code {
 		t.Errorf("%s: response %+v, failure %+v, want %s", name, got.Response, got.Failure, code)
 	}
@@ -84,6 +89,7 @@ func newResourceSetup(t *testing.T) resourceSetup {
 	app := e.registerWithLogout("panels-web", appCallback, "", appBackchannel)
 	e.allow(app, "platform-api", "messages:read", "messages:send")
 	e.allow(app, "video-api", "video:read", "video:upload")
+
 	return resourceSetup{e: e, app: app, alice: e.newPerson()}
 }
 
@@ -95,13 +101,16 @@ func TestOneSignInTwoSeparateAPIsGetTwoSeparateTokens(t *testing.T) {
 
 	// One sign-in, one code, one grant.
 	code, sso := e.signedIn(f, s.alice)
+
 	first := e.exchangeFor(f, code, platformURI, "")
 	if first.Response == nil {
 		t.Fatalf("exchange = %+v", first.Failure)
 	}
+
 	if first.Response.IDToken == "" || first.Response.Scope != "messages:send" {
 		t.Errorf("the first token response = %+v, want an ID token and only the right of the first API", first.Response)
 	}
+
 	claims, err := e.accessFor(first.Response.AccessToken, "platform-api")
 	if err != nil || claims.Subject != s.alice.user.ID() || claims.ClientID != "panels-web" || strings.Join(claims.Scope, " ") != "messages:send" {
 		t.Fatalf("the platform token = %+v, %v", claims, err)
@@ -112,10 +121,12 @@ func TestOneSignInTwoSeparateAPIsGetTwoSeparateTokens(t *testing.T) {
 	if second.Response == nil {
 		t.Fatalf("refresh = %+v", second.Failure)
 	}
+
 	videoClaims, err := e.accessFor(second.Response.AccessToken, "video-api")
 	if err != nil || strings.Join(videoClaims.Scope, " ") != "video:read" || second.Response.Scope != "video:read" || videoClaims.GrantID != claims.GrantID {
 		t.Fatalf("the video token = %+v, %v", videoClaims, err)
 	}
+
 	if second.Response.RefreshToken == first.Response.RefreshToken {
 		t.Error("the refresh token was not rotated")
 	}
@@ -124,6 +135,7 @@ func TestOneSignInTwoSeparateAPIsGetTwoSeparateTokens(t *testing.T) {
 	if _, err := e.accessFor(first.Response.AccessToken, "video-api"); !errors.Is(err, port.ErrInvalidOIDCToken) {
 		t.Errorf("the platform token was accepted by the video API: %v", err)
 	}
+
 	if _, err := e.accessFor(second.Response.AccessToken, "platform-api"); !errors.Is(err, port.ErrInvalidOIDCToken) {
 		t.Errorf("the video token was accepted by the platform API: %v", err)
 	}
@@ -138,6 +150,7 @@ func TestOneSignInTwoSeparateAPIsGetTwoSeparateTokens(t *testing.T) {
 	if plain.Response == nil || plain.Response.Scope != "openid email" {
 		t.Fatalf("refresh without a resource = %+v, %+v", plain.Response, plain.Failure)
 	}
+
 	if info, err := e.userinfo.Execute(context.Background(), plain.Response.AccessToken); err != nil || info.Claims == nil || info.Claims.Subject != s.alice.user.ID().String() {
 		t.Errorf("userinfo = %+v, %v", info, err)
 	}
@@ -154,10 +167,12 @@ func TestOneSharedAPIKeepsOneAudienceAndEveryScopeApart(t *testing.T) {
 	f := e.newFlow(s.app)
 	f.scope, f.resources = "openid messages:read messages:send video:read video:upload", []string{platformURI}
 	code, _ := e.signedIn(f, s.alice)
+
 	got := e.exchangeFor(f, code, platformURI, "")
 	if got.Response == nil || got.Response.Scope != "messages:read messages:send video:read video:upload" {
 		t.Fatalf("exchange = %+v, %+v", got.Response, got.Failure)
 	}
+
 	claims, err := e.accessFor(got.Response.AccessToken, "platform-api")
 	if err != nil || len(claims.Scope) != 4 {
 		t.Fatalf("claims = %+v, %v", claims, err)
@@ -169,6 +184,7 @@ func TestOneSharedAPIKeepsOneAudienceAndEveryScopeApart(t *testing.T) {
 				return true
 			}
 		}
+
 		return false
 	}
 	if !have("messages:send") || have("messages") || have("messages:send:any") || have("send") {
@@ -179,6 +195,7 @@ func TestOneSharedAPIKeepsOneAudienceAndEveryScopeApart(t *testing.T) {
 	if narrow.Response == nil || narrow.Response.Scope != "video:read" {
 		t.Fatalf("narrowing = %+v, %+v", narrow.Response, narrow.Failure)
 	}
+
 	wantFailure(t, "a scope the grant does not hold", e.refreshFor(s.app, narrow.Response.RefreshToken, platformURI, "calls:join"), appoidc.ErrInvalidScope)
 }
 
@@ -188,9 +205,11 @@ func TestEveryRefusalOfAResourceRequest(t *testing.T) {
 	// calls-api exists but this client was never allowed it; "dormant-api" is disabled.
 	e.registerResource("dormant-api", "https://dormant.example.test/", "dormant:read")
 	e.allow(s.app, "dormant-api", "dormant:read")
+
 	if _, err := e.resources.SetActive(context.Background(), "dormant-api", false); err != nil {
 		t.Fatal(err)
 	}
+
 	f := e.newFlow(s.app)
 
 	back := map[string]struct {
@@ -218,11 +237,13 @@ func TestEveryRefusalOfAResourceRequest(t *testing.T) {
 	for name, tc := range back {
 		cmd := f.command("")
 		cmd.Scope, cmd.Resources = tc.scope, tc.resources
+
 		got := e.authorizeWith(cmd)
 		if got.Kind != appoidc.AuthorizeRedirect {
 			t.Errorf("%s: %+v, want a redirect with an error", name, got)
 			continue
 		}
+
 		q := e.query(got.Location, appCallback)
 		if q.Get("error") != tc.code || q.Get("code") != "" || q.Get("iss") != issuer {
 			t.Errorf("%s: redirect %q, want error %s and no code", name, got.Location, tc.code)
@@ -234,6 +255,7 @@ func TestEveryRefusalOfAResourceRequest(t *testing.T) {
 		if err != nil || len(apps) != 0 {
 			t.Errorf("grants = %v, %v", apps, err)
 		}
+
 		return nil
 	})
 }
@@ -278,10 +300,12 @@ func TestAClientWithoutAResourceKeepsTheOldContract(t *testing.T) {
 	e := newEnv(t)
 	app := e.register("panels-web", appCallback, "openid", "email")
 	alice := e.newPerson()
+
 	got, _ := e.tokens(e.newFlow(app), alice)
 	if got.Scope != "openid email" || got.IDToken == "" {
 		t.Fatalf("response = %+v", got)
 	}
+
 	claims, err := e.accessFor(got.AccessToken, issuer+"/oauth2/userinfo")
 	if err != nil || strings.Join(claims.Scope, " ") != "openid email" {
 		t.Fatalf("access token = %+v, %v", claims, err)
@@ -294,6 +318,7 @@ func TestRegisteringAResourceRefusesCollisions(t *testing.T) {
 	e := newEnv(t)
 	e.registerResource("platform-api", platformURI, "messages:send")
 	e.register("panels-web", appCallback, "openid", "email")
+
 	ctx := context.Background()
 	for name, cmd := range map[string]appoidc.RegisterResourceCommand{
 		"the same id":                {ID: "platform-api", Name: "x", URI: "https://other.example.test/", Audience: "other-api", Scopes: []string{"a:b"}},
@@ -318,9 +343,11 @@ func TestRegisteringAResourceRefusesCollisions(t *testing.T) {
 	if _, err := e.resources.Allow(ctx, "panels-web", "platform-api", []string{"video:read"}); !errors.Is(err, doidc.ErrInvalidScope) {
 		t.Errorf("allowing a scope the resource does not define: %v", err)
 	}
+
 	if _, err := e.resources.Allow(ctx, "nobody", "platform-api", []string{"messages:send"}); !errors.Is(err, port.ErrNotFound) {
 		t.Errorf("allowing an unknown client: %v", err)
 	}
+
 	if _, err := e.resources.Allow(ctx, "panels-web", "nothing-api", []string{"messages:send"}); !errors.Is(err, port.ErrNotFound) {
 		t.Errorf("allowing an unknown resource: %v", err)
 	}
@@ -332,10 +359,12 @@ func (s resourceSetup) grantOfBoth(p person) (flow, *appoidc.TokenResponse, stri
 	f := s.e.newFlow(s.app)
 	f.scope, f.resources = "openid messages:send video:read", []string{platformURI, videoURI}
 	code, sso := s.e.signedIn(f, p)
+
 	got := s.e.exchangeFor(f, code, platformURI, "")
 	if got.Response == nil {
 		s.e.t.Fatalf("exchange = %+v", got.Failure)
 	}
+
 	return f, got.Response, sso
 }
 
@@ -345,21 +374,25 @@ func TestTakingARightAwayEndsTheGrantsThatHoldIt(t *testing.T) {
 		// asking for the changed API afterwards: a disabled resource is refused as a target before the grant is looked at.
 		forChanged string
 	}
+
 	cases := map[string]change{
 		"the client's right is narrowed": {func(e *env, app client) int { return e.allow(app, "platform-api", "messages:read") }, appoidc.ErrInvalidGrant},
 		"the client loses the resource": {func(e *env, app client) int {
 			n, err := e.resources.Deny(context.Background(), app.id, "platform-api")
 			must(e.t, err)
+
 			return n
 		}, appoidc.ErrInvalidGrant},
 		"the resource is disabled": {func(e *env, app client) int {
 			n, err := e.resources.SetActive(context.Background(), "platform-api", false)
 			must(e.t, err)
+
 			return n
 		}, appoidc.ErrInvalidTarget},
 		"the resource drops the scope": {func(e *env, app client) int {
 			n, err := e.resources.SetScopes(context.Background(), "platform-api", []string{"messages:read", "video:read", "video:upload"})
 			must(e.t, err)
+
 			return n
 		}, appoidc.ErrInvalidGrant},
 	}
@@ -384,6 +417,7 @@ func TestTakingARightAwayEndsTheGrantsThatHoldIt(t *testing.T) {
 				wantFailure(t, "a refresh after the change", e.refreshFor(s.app, token, videoURI, ""), appoidc.ErrInvalidGrant)
 				wantFailure(t, "a refresh for the changed API", e.refreshFor(s.app, token, platformURI, ""), change.forChanged)
 			}
+
 			if n := e.queued()["panels-web"]; n != 2 {
 				t.Errorf("%d logout notices queued, want one for each grant that ended", n)
 			}
@@ -391,6 +425,7 @@ func TestTakingARightAwayEndsTheGrantsThatHoldIt(t *testing.T) {
 			if got := e.refreshFor(s.app, videoOnly.RefreshToken, videoURI, ""); got.Response == nil {
 				t.Errorf("a grant that did not hold the resource was ended: %+v", got.Failure)
 			}
+
 			if e.opSessionOf(sso) == nil || !e.opSessionOf(sso).Active(e.clock.Now(), doidc.DefaultPolicy()) {
 				t.Error("the shared sign-in was ended")
 			}
@@ -409,7 +444,9 @@ func TestGivingARightNeverWidensAGrantThatExists(t *testing.T) {
 	if n := e.allow(s.app, "platform-api", "messages:read", "messages:send", "video:read"); n != 0 {
 		t.Fatalf("widening ended %d grants", n)
 	}
+
 	wantFailure(t, "the new right on the old grant", e.refreshFor(s.app, got.RefreshToken, platformURI, "video:read"), appoidc.ErrInvalidScope)
+
 	if still := e.refreshFor(s.app, got.RefreshToken, platformURI, ""); still.Response == nil || still.Response.Scope != "messages:send" {
 		t.Fatalf("the old grant changed: %+v, %+v", still.Response, still.Failure)
 	}
@@ -417,10 +454,12 @@ func TestGivingARightNeverWidensAGrantThatExists(t *testing.T) {
 	// A new authorization that asks for the right gets a new grant, and the old one is replaced, not widened.
 	again := e.newFlow(s.app)
 	again.scope, again.resources = "openid messages:send video:read", []string{platformURI}
+
 	res := e.authorizeWith(again.command(sso))
 	if res.Kind != appoidc.AuthorizeRedirect {
 		t.Fatalf("authorize = %+v", res)
 	}
+
 	fresh := e.exchangeFor(again, e.codeOf(again, res.Location), platformURI, "")
 	if fresh.Response == nil || fresh.Response.Scope != "messages:send video:read" {
 		t.Fatalf("the new grant = %+v, %+v", fresh.Response, fresh.Failure)
@@ -429,10 +468,12 @@ func TestGivingARightNeverWidensAGrantThatExists(t *testing.T) {
 	narrower := e.newFlow(s.app)
 	narrower.scope, narrower.resources = "openid video:read", []string{platformURI}
 	res = e.authorizeWith(narrower.command(sso))
+
 	cover := e.exchangeFor(narrower, e.codeOf(narrower, res.Location), platformURI, "")
 	if cover.Response == nil || cover.Response.Scope != "video:read" {
 		t.Fatalf("a narrower request = %+v, %+v", cover.Response, cover.Failure)
 	}
+
 	if got := e.refreshFor(s.app, fresh.Response.RefreshToken, platformURI, ""); got.Response == nil {
 		t.Errorf("a covered request replaced the grant: %+v", got.Failure)
 	}
@@ -442,6 +483,7 @@ func TestAReplayEndsTheGrantThatHoldsSeveralAPIs(t *testing.T) {
 	s := newResourceSetup(t)
 	e := s.e
 	_, first, _ := s.grantOfBoth(s.alice)
+
 	second := e.refreshFor(s.app, first.RefreshToken, videoURI, "")
 	if second.Response == nil {
 		t.Fatalf("refresh = %+v", second.Failure)
@@ -449,17 +491,21 @@ func TestAReplayEndsTheGrantThatHoldsSeveralAPIs(t *testing.T) {
 	// The first refresh token comes back, from a copy: the grant, with every API on it, ends.
 	replay := e.refreshFor(s.app, first.RefreshToken, platformURI, "")
 	wantFailure(t, "a replay", replay, appoidc.ErrInvalidGrant)
+
 	if !replay.Replay {
 		t.Error("the replay was not reported")
 	}
+
 	wantFailure(t, "the descendant of a replayed token", e.refreshFor(s.app, second.Response.RefreshToken, videoURI, ""), appoidc.ErrInvalidGrant)
 	// Ending the resource's rights later, and enabling it again, brings nothing back.
 	if _, err := e.resources.SetActive(context.Background(), "video-api", false); err != nil {
 		t.Fatal(err)
 	}
+
 	if _, err := e.resources.SetActive(context.Background(), "video-api", true); err != nil {
 		t.Fatal(err)
 	}
+
 	wantFailure(t, "a revoked grant after the resource came back", e.refreshFor(s.app, second.Response.RefreshToken, videoURI, ""), appoidc.ErrInvalidGrant)
 }
 
@@ -475,23 +521,29 @@ func TestAPersonTakesAnApplicationBack(t *testing.T) {
 	otherFlow := e.newFlow(other)
 	otherFlow.scope, otherFlow.resources = "openid video:read", []string{videoURI}
 	res := e.authorizeWith(otherFlow.command(sso))
+
 	otherTokens := e.exchangeFor(otherFlow, e.codeOf(otherFlow, res.Location), videoURI, "")
 	if otherTokens.Response == nil {
 		t.Fatalf("the second application = %+v", otherTokens.Failure)
 	}
+
 	_, bobs, _ := s.grantOfBoth(bob)
+
 	e.queued()
 
 	listed, err := e.apps.List(ctx, s.alice.user.ID())
 	must(t, err)
+
 	if len(listed) != 2 || listed[0].ClientID != "other-app" || listed[1].ClientID != "panels-web" {
 		t.Fatalf("the list = %+v, want the person's two applications by name", listed)
 	}
+
 	panels := listed[1]
 	if len(panels.Resources) != 2 || panels.Resources[0].ID != "platform-api" || strings.Join(panels.Resources[0].Scopes, " ") != "messages:send" ||
 		panels.Resources[1].ID != "video-api" || strings.Join(panels.Resources[1].Scopes, " ") != "video:read" || strings.Join(panels.Scopes, " ") != "openid" {
 		t.Errorf("what the application holds = %+v", panels)
 	}
+
 	if panels.ExpiresAt.Before(panels.CreatedAt) || panels.LastUsedAt.IsZero() {
 		t.Errorf("times = %+v", panels)
 	}
@@ -499,32 +551,39 @@ func TestAPersonTakesAnApplicationBack(t *testing.T) {
 	// A person cannot end a grant that is another's: the answer is the same as for one that does not exist.
 	must(t, e.apps.RevokeGrant(ctx, bob.user.ID(), panels.ID))
 	must(t, e.apps.RevokeGrant(ctx, bob.user.ID(), "not-an-id"))
+
 	moved := e.refreshFor(s.app, held.RefreshToken, platformURI, "")
 	if moved.Response == nil {
 		t.Fatalf("another person ended the grant: %+v", moved.Failure)
 	}
+
 	e.queued() // the exchange above is not a notice, but be sure of a clean count
 
 	// The owner ends one grant: that one only, its application is told, and the others carry on.
 	must(t, e.apps.RevokeGrant(ctx, s.alice.user.ID(), panels.ID))
 	wantFailure(t, "the revoked grant", e.refreshFor(s.app, moved.Response.RefreshToken, platformURI, ""), appoidc.ErrInvalidGrant)
+
 	if got := e.refreshFor(other, otherTokens.Response.RefreshToken, videoURI, ""); got.Response == nil {
 		t.Errorf("another application was ended: %+v", got.Failure)
 	}
+
 	bobsToken := bobs.RefreshToken
 	if got := e.refreshFor(s.app, bobsToken, platformURI, ""); got.Response == nil {
 		t.Errorf("another person's grant was ended: %+v", got.Failure)
 	} else {
 		bobsToken = got.Response.RefreshToken
 	}
+
 	if n := e.queued(); n["panels-web"] != 1 || n["other-app"] != 0 {
 		t.Errorf("notices = %v, want one, for the application that was taken back", n)
 	}
+
 	if !e.opSessionOf(sso).Active(e.clock.Now(), doidc.DefaultPolicy()) {
 		t.Error("taking an application back ended the person's sign-in")
 	}
 	// The sign-in is alive and the application is trusted: asking again gives a new grant, which is not a ban.
 	again := e.newFlow(s.app)
+
 	again.scope, again.resources = f.scope, f.resources
 	if res := e.authorizeWith(again.command(sso)); res.Kind != appoidc.AuthorizeRedirect {
 		t.Errorf("authorize = %+v", res)
@@ -534,9 +593,11 @@ func TestAPersonTakesAnApplicationBack(t *testing.T) {
 	must(t, e.apps.RevokeClient(ctx, s.alice.user.ID(), "other-app"))
 	wantFailure(t, "the application taken back", e.refreshFor(other, otherTokens.Response.RefreshToken, videoURI, ""), appoidc.ErrInvalidGrant)
 	must(t, e.apps.RevokeClient(ctx, s.alice.user.ID(), "../x"))
+
 	if got := e.refreshFor(s.app, bobsToken, videoURI, ""); got.Response == nil {
 		t.Errorf("another person's grant was ended: %+v", got.Failure)
 	}
+
 	if left, err := e.apps.List(ctx, bob.user.ID()); err != nil || len(left) != 1 {
 		t.Errorf("the other person's list = %+v, %v", left, err)
 	}
@@ -551,6 +612,7 @@ func TestIssuingWaitsForAChangeOfRights(t *testing.T) {
 
 	started := make(chan struct{})
 	release := make(chan struct{})
+
 	changed := make(chan error, 1)
 	go func() {
 		// The administrator's transaction: it holds the resource exclusively, as the use case does, and takes its time.
@@ -558,36 +620,50 @@ func TestIssuingWaitsForAChangeOfRights(t *testing.T) {
 			if _, err := st.OIDCResources.GetForUpdate(ctx, "platform-api"); err != nil {
 				return err
 			}
+
 			close(started)
 			<-release
+
 			if err := st.OIDCResources.SetStatus(ctx, "platform-api", doidc.ResourceDisabled, e.clock.Now()); err != nil {
 				return err
 			}
+
 			_, err := st.OIDCApps.RevokeOfResource(ctx, "platform-api", "", nil, e.clock.Now())
+
 			return err
 		})
 	}()
+
 	<-started
 
 	var wg sync.WaitGroup
+
 	done := make(chan appoidc.TokenResult, 1)
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+
 		done <- e.refreshFor(s.app, held.RefreshToken, platformURI, "")
 	}()
+
 	select {
 	case got := <-done:
 		t.Fatalf("a token was issued while the rights were being changed: %+v, %+v", got.Response, got.Failure)
 	case <-time.After(300 * time.Millisecond):
 	}
+
 	close(release)
 	must(t, <-changed)
+
 	got := <-done
+
 	wg.Wait()
+
 	if got.Response != nil {
 		t.Fatalf("a token was issued after the resource was disabled: %+v", got.Response)
 	}
+
 	if got.Failure == nil || (got.Failure.Code != appoidc.ErrInvalidTarget && got.Failure.Code != appoidc.ErrInvalidGrant) {
 		t.Errorf("failure = %+v", got.Failure)
 	}
@@ -597,24 +673,33 @@ func TestIssuingWaitsForAChangeOfRights(t *testing.T) {
 func TestIssuingAndChangingRightsTogetherDoNotDeadlock(t *testing.T) {
 	s := newResourceSetup(t)
 	e := s.e
+
 	const people = 6
+
 	type holder struct {
 		person person
 		token  string
 	}
+
 	var holders []holder
+
 	for range people {
 		p := e.newPerson()
 		_, got, _ := s.grantOfBoth(p)
 		holders = append(holders, holder{p, got.RefreshToken})
 	}
+
 	ctx := context.Background()
+
 	var wg sync.WaitGroup
+
 	errs := make(chan error, 64)
+
 	for _, h := range holders {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+
 			token := h.token
 			for range 4 {
 				got, err := e.token.Execute(ctx, appoidc.TokenCommand{ClientID: s.app.id, ClientSecret: s.app.secret, GrantType: "refresh_token", RefreshToken: token, Resource: platformURI})
@@ -622,16 +707,20 @@ func TestIssuingAndChangingRightsTogetherDoNotDeadlock(t *testing.T) {
 					errs <- err
 					return
 				}
+
 				if got.Response == nil {
 					return // the grant was ended by one of the changes
 				}
+
 				token = got.Response.RefreshToken
 			}
 		}()
 	}
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+
 		for i := range 4 {
 			var err error
 			if i%2 == 0 {
@@ -639,14 +728,17 @@ func TestIssuingAndChangingRightsTogetherDoNotDeadlock(t *testing.T) {
 			} else {
 				_, err = e.resources.Allow(ctx, s.app.id, "platform-api", []string{"messages:read", "messages:send"})
 			}
+
 			if err != nil {
 				errs <- err
 				return
 			}
 		}
 	}()
+
 	wg.Wait()
 	close(errs)
+
 	for err := range errs {
 		t.Errorf("a request failed: %v", err)
 	}
@@ -658,10 +750,12 @@ func TestIssuingAndChangingRightsTogetherDoNotDeadlock(t *testing.T) {
 			if err != nil {
 				return err
 			}
+
 			if len(apps) != 0 {
 				t.Errorf("a grant that held a withdrawn right is live: %+v", apps)
 			}
 		}
+
 		return nil
 	})
 }
@@ -674,10 +768,12 @@ func TestWhatHappensToResourceTokensIsCounted(t *testing.T) {
 	code, _ := e.signedIn(f, s.alice)
 	wantFailure(t, "a resource that is not registered", e.exchangeFor(f, code, "https://nobody.example.test/", ""), appoidc.ErrInvalidTarget)
 	wantFailure(t, "a scope not held", e.exchangeFor(f, code, platformURI, "video:read"), appoidc.ErrInvalidScope)
+
 	got := e.exchangeFor(f, code, platformURI, "")
 	if got.Response == nil {
 		t.Fatalf("exchange = %+v", got.Failure)
 	}
+
 	for key, want := range map[string]int{
 		"token:unknown:invalid_target":     1,
 		"token:platform-api:invalid_scope": 1,
@@ -690,9 +786,11 @@ func TestWhatHappensToResourceTokensIsCounted(t *testing.T) {
 			t.Errorf("%s = %d, want %d", key, got, want)
 		}
 	}
+
 	if _, err := e.resources.Deny(context.Background(), s.app.id, "platform-api"); err != nil {
 		t.Fatal(err)
 	}
+
 	if e.metrics.count("change:client_denied") != 1 || e.metrics.count("ended:client_denied") != 1 {
 		t.Errorf("the denial and the grant it ended were not counted: %v", e.metrics.counts)
 	}
@@ -700,6 +798,7 @@ func TestWhatHappensToResourceTokensIsCounted(t *testing.T) {
 	before := len(e.metrics.counts)
 	plain := e.newFlow(e.register("plain-app", appTwo, "openid", "email"))
 	e.tokens(plain, s.alice)
+
 	if len(e.metrics.counts) != before {
 		t.Errorf("a token request without a resource was counted: %v", e.metrics.counts)
 	}

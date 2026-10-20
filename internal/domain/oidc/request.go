@@ -21,7 +21,9 @@ func SecretHashFrom(b []byte) (SecretHash, error) {
 	if len(b) != len(h) {
 		return h, errors.New("oidc: a stored secret hash must be 32 bytes")
 	}
+
 	copy(h[:], b)
+
 	return h, nil
 }
 
@@ -67,5 +69,6 @@ func (r *AuthorizationRequest) Satisfied(authTime, now time.Time) bool {
 	if r.MaxAge != nil && !zero && now.Sub(authTime) > time.Duration(*r.MaxAge)*time.Second {
 		return false
 	}
+
 	return true
 }

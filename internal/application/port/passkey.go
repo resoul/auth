@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
-	"airlance.org/auth/internal/domain/identity"
-	"airlance.org/auth/internal/domain/passkey"
+	"go.airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/domain/passkey"
 )
 
 // Errors of the passkey repositories.

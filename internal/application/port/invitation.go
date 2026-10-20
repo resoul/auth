@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/domain/identity"
 )
 
 // InvitationRepository stores the permissions to register in the invite-only mode.

@@ -15,15 +15,18 @@ func TestDeletingAccountInBothProfilesEndsAccessAndForgetsCookies(t *testing.T) 
 			wrong := m.stepUp(m.auth, "change_email")
 			wantProblem(t, m.call(http.MethodDelete, "", wrong, ""), http.StatusForbidden, "step_up_required")
 			token := m.stepUp(m.auth, "delete_account")
+
 			rec := m.call(http.MethodDelete, "", token, "")
 			if rec.Code != http.StatusNoContent {
 				t.Fatalf("delete = %d %s", rec.Code, rec.Body)
 			}
+
 			cookies := rec.Result().Cookies()
 			if name == "browser" {
 				if len(cookies) != 2 {
 					t.Fatalf("cookies = %+v", cookies)
 				}
+
 				for _, cookie := range cookies {
 					if cookie.MaxAge >= 0 || !cookie.Secure || !cookie.HttpOnly {
 						t.Errorf("cookie not forgotten: %+v", cookie)
@@ -32,8 +35,10 @@ func TestDeletingAccountInBothProfilesEndsAccessAndForgetsCookies(t *testing.T) 
 			} else if len(cookies) != 0 {
 				t.Error("native response set cookies")
 			}
+
 			wantProblem(t, m.call(http.MethodGet, "", "", ""), http.StatusUnauthorized, "unauthenticated")
 			wantProblem(t, m.call(http.MethodDelete, "", token, ""), http.StatusUnauthorized, "unauthenticated")
+
 			if e.store.UserCount() != 0 || e.store.SessionCount() != 0 || e.store.TokenCount() != 0 {
 				t.Error("account access survived")
 			}
@@ -51,6 +56,7 @@ func TestBrowserAccountDeletionRefusesForeignOrigins(t *testing.T) {
 	req.Header.Set("Origin", "https://foreign.example")
 	req.Header.Set("Sec-Fetch-Site", "cross-site")
 	wantProblem(t, e.do(req), http.StatusForbidden, "permission_denied")
+
 	if e.store.UserCount() != 1 {
 		t.Error("foreign page deleted account")
 	}

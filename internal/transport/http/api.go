@@ -9,14 +9,14 @@ import (
 	"net/netip"
 	"time"
 
-	"airlance.org/auth/internal/application/account"
-	"airlance.org/auth/internal/application/deviceauth"
-	"airlance.org/auth/internal/application/emailauth"
-	appoidc "airlance.org/auth/internal/application/oidc"
-	"airlance.org/auth/internal/application/passkey"
-	"airlance.org/auth/internal/application/port"
-	appsession "airlance.org/auth/internal/application/session"
-	"airlance.org/auth/internal/transport/http/openapi"
+	"go.airlance.org/auth/internal/application/account"
+	"go.airlance.org/auth/internal/application/deviceauth"
+	"go.airlance.org/auth/internal/application/emailauth"
+	appoidc "go.airlance.org/auth/internal/application/oidc"
+	"go.airlance.org/auth/internal/application/passkey"
+	"go.airlance.org/auth/internal/application/port"
+	appsession "go.airlance.org/auth/internal/application/session"
+	"go.airlance.org/auth/internal/transport/http/openapi"
 )
 
 const (
@@ -150,20 +150,25 @@ func New(d Deps) (http.Handler, error) {
 	if d.Start == nil || d.Resend == nil || d.Verify == nil || d.Refresh == nil || d.BeginStepUp == nil || d.FinishStepUp == nil || d.ListKeys == nil || d.RenameKey == nil || d.BeginAddKey == nil || d.FinishAddKey == nil || d.DeleteKey == nil || d.NewCodes == nil || d.DeleteAccount == nil || d.StartDevice == nil || d.StatusDevice == nil || d.DeviceApprover == nil || d.RedeemDevice == nil || d.StartEmailChange == nil || d.ConfirmEmailChange == nil || d.BeginEnroll == nil || d.FinishEnroll == nil || d.BeginLogin == nil || d.FinishLogin == nil || d.Recovery == nil || d.Auth == nil || d.Me == nil || d.List == nil || d.SignOut == nil || d.RevokeOne == nil || d.Apps == nil || d.JWKS == nil || d.Ready == nil || d.Logger == nil {
 		return nil, errors.New("new http api: all dependencies are required")
 	}
+
 	if d.Requests == nil {
 		d.Requests = discardRequests{}
 	}
+
 	jwks, err := d.JWKS.JWKS()
 	if err != nil {
 		return nil, fmt.Errorf("new http api: jwks: %w", err)
 	}
+
 	sameSite := d.CookieSameSite
 	if sameSite == 0 {
 		sameSite = http.SameSiteStrictMode
 	}
+
 	if sameSite == http.SameSiteNoneMode && len(d.BrowserOrigins) == 0 {
 		return nil, errors.New("new http api: SameSite=None needs a trusted browser origin")
 	}
+
 	api := &API{
 		cookies: cookies{sameSite: sameSite},
 		start:   d.Start, resend: d.Resend, verify: d.Verify, refresh: d.Refresh,
@@ -186,9 +191,11 @@ func New(d Deps) (http.Handler, error) {
 		BaseRouter:       mux,
 		ErrorHandlerFunc: api.malformedRequest,
 	})
+
 	if d.Metrics != nil {
 		mux.Handle("GET /metrics", d.Metrics)
 	}
+
 	if d.OIDC != nil {
 		d.OIDC.Routes(mux)
 	}
@@ -197,6 +204,7 @@ func New(d Deps) (http.Handler, error) {
 	if err != nil {
 		return nil, fmt.Errorf("new http api: %w", err)
 	}
+
 	return withRequestID(withClientIP(d.TrustedProxies, withCORS(d.BrowserOrigins, withCookies(guarded)))), nil
 }
 

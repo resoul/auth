@@ -6,7 +6,7 @@ import (
 	"context"
 	"testing"
 
-	appoidc "airlance.org/auth/internal/application/oidc"
+	appoidc "go.airlance.org/auth/internal/application/oidc"
 )
 
 // An application that is switched off while the person signs in cannot receive the sign-in: the request is refused
@@ -15,6 +15,7 @@ func TestAnApplicationSwitchedOffDuringTheSignInCannotComplete(t *testing.T) {
 	e := newEnv(t)
 	app := e.register("panels-web", appCallback, "openid", "email")
 	alice := e.newPerson()
+
 	asked := e.authorizeWith(e.newFlow(app).command(""))
 	if asked.Kind != appoidc.AuthorizeLogin {
 		t.Fatalf("authorize = %+v, want the sign-in page", asked)
@@ -25,6 +26,7 @@ func TestAnApplicationSwitchedOffDuringTheSignInCannotComplete(t *testing.T) {
 		RequestSecret: asked.RequestID, BindingSecret: asked.BindingSecret, AccessToken: e.signIn(alice),
 	})
 	must(t, err)
+
 	if got.Failure == nil || got.Failure.Code != appoidc.ErrInvalidRequest || got.SSOSecret != "" || got.Location != "" {
 		t.Errorf("a switched-off application = %+v, want invalid_request and nothing opened", got)
 	}

@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"airlance.org/auth/internal/domain/identity"
-	"airlance.org/auth/internal/domain/session"
-	"airlance.org/auth/internal/testutil"
+	"go.airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/domain/session"
+	"go.airlance.org/auth/internal/testutil"
 )
 
 var (
@@ -21,6 +21,7 @@ var (
 func newSession(t *testing.T) *session.Session {
 	t.Helper()
 	f := testutil.NewFactory(t, now)
+
 	return f.Session(testutil.SessionSpec{User: f.User(testutil.UserSpec{})})
 }
 
@@ -30,12 +31,15 @@ func TestNewSessionHasIdleAndAbsoluteLimits(t *testing.T) {
 	if !s.CreatedAt().Equal(now) || !s.LastActiveAt().Equal(now) || !s.AuthTime().Equal(now) {
 		t.Errorf("times = %v / %v / %v", s.CreatedAt(), s.LastActiveAt(), s.AuthTime())
 	}
+
 	if !s.IdleExpiresAt().Equal(now.Add(30*day)) || !s.ExpiresAt().Equal(now.Add(90*day)) {
 		t.Errorf("limits = %v / %v", s.IdleExpiresAt(), s.ExpiresAt())
 	}
+
 	if !s.RevokedAt().IsZero() || !s.Active(now) {
 		t.Error("a new session must be active")
 	}
+
 	if !reflect.DeepEqual(s.AMR(), []string{"otp"}) || s.DeviceName() != "test device" {
 		t.Errorf("amr=%v device=%q", s.AMR(), s.DeviceName())
 	}
@@ -46,6 +50,7 @@ func TestSessionIsActiveOnlyInsideBothLimits(t *testing.T) {
 	if !s.Active(s.IdleExpiresAt().Add(-time.Nanosecond)) {
 		t.Error("inactive just before the idle limit")
 	}
+
 	if s.Active(s.IdleExpiresAt()) {
 		t.Error("active at the idle limit")
 	}
@@ -56,9 +61,11 @@ func TestSessionIsActiveOnlyInsideBothLimits(t *testing.T) {
 			t.Fatalf("Touch at day %d: %v", d, err)
 		}
 	}
+
 	if !s.Active(s.ExpiresAt().Add(-time.Nanosecond)) {
 		t.Error("inactive just before the absolute limit")
 	}
+
 	if s.Active(s.ExpiresAt()) {
 		t.Error("active at the absolute limit")
 	}
@@ -66,10 +73,12 @@ func TestSessionIsActiveOnlyInsideBothLimits(t *testing.T) {
 
 func TestTouchMovesIdleLimitButNeverPastTheAbsoluteLimit(t *testing.T) {
 	s := newSession(t)
+
 	at := now.Add(20 * day)
 	if err := s.Touch(at, policy); err != nil {
 		t.Fatalf("Touch: %v", err)
 	}
+
 	if !s.LastActiveAt().Equal(at) || !s.IdleExpiresAt().Equal(at.Add(30*day)) {
 		t.Errorf("after Touch: last=%v idle=%v", s.LastActiveAt(), s.IdleExpiresAt())
 	}
@@ -79,6 +88,7 @@ func TestTouchMovesIdleLimitButNeverPastTheAbsoluteLimit(t *testing.T) {
 			t.Fatalf("Touch at day %d: %v", d, err)
 		}
 	}
+
 	if !s.IdleExpiresAt().Equal(s.ExpiresAt()) {
 		t.Errorf("idle limit %v should be capped at %v", s.IdleExpiresAt(), s.ExpiresAt())
 	}
@@ -87,15 +97,18 @@ func TestTouchMovesIdleLimitButNeverPastTheAbsoluteLimit(t *testing.T) {
 func TestTouchRefusesInactiveSessions(t *testing.T) {
 	revoked := newSession(t)
 	revoked.Revoke(now.Add(time.Hour))
+
 	if err := revoked.Touch(now.Add(2*time.Hour), policy); !errors.Is(err, session.ErrNotActive) {
 		t.Errorf("Touch of a revoked session = %v", err)
 	}
 
 	idle := newSession(t)
+
 	before := idle.Record()
 	if err := idle.Touch(now.Add(31*day), policy); !errors.Is(err, session.ErrNotActive) {
 		t.Errorf("Touch of an idle-expired session = %v", err)
 	}
+
 	if !reflect.DeepEqual(idle.Record(), before) {
 		t.Error("a refused Touch changed the session")
 	}
@@ -106,6 +119,7 @@ func TestRefreshExpiryIsCappedBySessionLife(t *testing.T) {
 	if got := s.RefreshExpiry(now, policy); !got.Equal(now.Add(30 * day)) {
 		t.Errorf("early expiry = %v", got)
 	}
+
 	if got := s.RefreshExpiry(now.Add(80*day), policy); !got.Equal(s.ExpiresAt()) {
 		t.Errorf("late expiry = %v, want the session end %v", got, s.ExpiresAt())
 	}
@@ -116,6 +130,7 @@ func TestRevokeKeepsTheFirstTimeAndEndsTheSession(t *testing.T) {
 	first := now.Add(time.Hour)
 	s.Revoke(first)
 	s.Revoke(now.Add(2 * time.Hour))
+
 	if !s.RevokedAt().Equal(first) || s.Active(now.Add(3*time.Hour)) {
 		t.Errorf("revokedAt=%v active=%v", s.RevokedAt(), s.Active(now.Add(3*time.Hour)))
 	}
@@ -143,6 +158,7 @@ func TestNewSessionRejectsInvalidInput(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			p := good
 			mutate(&p)
+
 			if _, err := session.New(p, now, policy); err == nil {
 				t.Error("New accepted invalid input")
 			}
@@ -151,11 +167,13 @@ func TestNewSessionRejectsInvalidInput(t *testing.T) {
 
 	for _, name := range []string{"", "Alice's iPhone", strings.Repeat("я", 64)} {
 		p := good
+
 		p.DeviceName = name
 		if _, err := session.New(p, now, policy); err != nil {
 			t.Errorf("device name %q rejected: %v", name, err)
 		}
 	}
+
 	for name, bad := range map[string]session.Policy{
 		"zero idle": {AbsoluteTTL: day}, "absolute shorter than idle": {IdleTTL: 2 * day, AbsoluteTTL: day},
 	} {
@@ -168,6 +186,7 @@ func TestNewSessionRejectsInvalidInput(t *testing.T) {
 func TestSessionRecordRoundTripAndValidation(t *testing.T) {
 	s := newSession(t)
 	s.Revoke(now.Add(time.Hour))
+
 	restored, err := session.Restore(s.Record())
 	if err != nil || !reflect.DeepEqual(restored.Record(), s.Record()) {
 		t.Fatalf("round trip = %v", err)
@@ -182,6 +201,7 @@ func TestSessionRecordRoundTripAndValidation(t *testing.T) {
 	} {
 		r := good
 		mutate(&r)
+
 		if _, err := session.Restore(r); err == nil {
 			t.Errorf("Restore accepted a record with %s", name)
 		}
@@ -190,6 +210,7 @@ func TestSessionRecordRoundTripAndValidation(t *testing.T) {
 
 func TestSessionDoesNotAliasAMR(t *testing.T) {
 	s := newSession(t)
+
 	s.AMR()[0] = "changed"
 	if s.AMR()[0] != "otp" {
 		t.Error("AMR exposes internal state")
@@ -201,6 +222,7 @@ func TestParseID(t *testing.T) {
 	if id, err := session.ParseID(v7); err != nil || id.String() != v7 {
 		t.Fatalf("ParseID(%q) = %v, %v", v7, id, err)
 	}
+
 	for _, in := range []string{"", "3f1b7c0e-5d2a-4b8e-9c61-0a1b2c3d4e5f", "018F3B2A-1C4D-7A5E-8B6F-9C0D1E2F3A4B", "018f3b2a-1c4d-7a5e-cb6f-9c0d1e2f3a4b", "x"} {
 		if _, err := session.ParseID(in); !errors.Is(err, session.ErrInvalidID) {
 			t.Errorf("ParseID(%q) = %v, want ErrInvalidID", in, err)

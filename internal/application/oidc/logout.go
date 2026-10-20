@@ -8,8 +8,8 @@ import (
 	"errors"
 	"fmt"
 
-	"airlance.org/auth/internal/application/port"
-	appsession "airlance.org/auth/internal/application/session"
+	"go.airlance.org/auth/internal/application/port"
+	appsession "go.airlance.org/auth/internal/application/session"
 )
 
 // Logout is RP-initiated logout: an application sends the browser here to end the shared sign-in. The first request
@@ -23,6 +23,7 @@ func NewLogout(d Deps) (*Logout, error) {
 	if err := d.validate("logout"); err != nil {
 		return nil, err
 	}
+
 	return &Logout{d}, nil
 }
 
@@ -78,53 +79,67 @@ func (u *Logout) Execute(ctx context.Context, cmd LogoutCommand) (LogoutResult, 
 	if err != nil {
 		return LogoutResult{}, err
 	}
+
 	if f != nil {
 		return LogoutResult{Kind: LogoutFailure, Failure: f}, nil
 	}
+
 	if !cmd.Confirm {
 		return LogoutResult{Kind: LogoutConfirm, ConfirmToken: confirmToken(cmd.SSOSecret)}, nil
 	}
+
 	if subtle.ConstantTimeCompare([]byte(cmd.ConfirmToken), []byte(confirmToken(cmd.SSOSecret))) != 1 {
 		return LogoutResult{Kind: LogoutFailure, Failure: fail(ErrInvalidRequest, "The sign-out was not confirmed on this page.")}, nil
 	}
 
 	now := u.Clock.Now()
+
 	result := LogoutResult{Kind: LogoutDone, Location: redirect}
 	if cmd.SSOSecret == "" {
 		return result, nil
 	}
+
 	hash, err := u.Secrets.HashOIDCSecret(cmd.SSOSecret)
 	if errors.Is(err, port.ErrInvalidOIDCSecret) {
 		return result, nil
 	}
+
 	if err != nil {
 		return LogoutResult{}, fmt.Errorf("logout: hash sso cookie: %w", err)
 	}
+
 	err = u.UnitOfWork.Do(ctx, func(ctx context.Context, st port.Stores) error {
 		op, err := st.OPSessions.GetBySecret(ctx, hash)
 		if errors.Is(err, port.ErrNotFound) {
 			return nil
 		}
+
 		if err != nil {
 			return fmt.Errorf("load op session: %w", err)
 		}
+
 		if !op.RevokedAt.IsZero() {
 			return nil // it was ended already: nothing to end again, nobody to tell again
 		}
+
 		if err := st.OPSessions.End(ctx, op.ID, now); err != nil {
 			return fmt.Errorf("end op session: %w", err)
 		}
+
 		if op.DeviceSessionID != "" {
 			if err := appsession.RevokeDeviceSession(ctx, st, op.UserID, op.DeviceSessionID, now); err != nil {
 				return err
 			}
 		}
+
 		result.SignedOut = true
+
 		return st.Audit.Record(ctx, port.AuditEvent{Type: port.AuditOIDCLogout, Result: port.AuditSuccess, UserID: op.UserID, At: now, Fields: map[string]string{"scope": "current"}})
 	})
 	if err != nil {
 		return LogoutResult{}, fmt.Errorf("logout: %w", err)
 	}
+
 	return result, nil
 }
 
@@ -135,20 +150,25 @@ func (u *Logout) check(ctx context.Context, cmd LogoutCommand) (string, *Failure
 	if len(cmd.State) > maxParamLength {
 		return bad("The state is too long.")
 	}
+
 	clientID := cmd.ClientID
 	if cmd.IDTokenHint != "" {
 		hint, err := u.Verifier.VerifyIDTokenHint(cmd.IDTokenHint)
 		if errors.Is(err, port.ErrInvalidOIDCToken) {
 			return bad("The ID token hint is not valid.")
 		}
+
 		if err != nil {
 			return "", nil, fmt.Errorf("logout: %w", err)
 		}
+
 		if cmd.ClientID != "" && cmd.ClientID != hint.ClientID {
 			return bad("The client does not match the ID token hint.")
 		}
+
 		clientID = hint.ClientID
 	}
+
 	if cmd.PostLogoutRedirectURI == "" {
 		return "", nil, nil
 	}
@@ -157,26 +177,33 @@ func (u *Logout) check(ctx context.Context, cmd LogoutCommand) (string, *Failure
 	if clientID == "" {
 		return bad("A return address needs the client or an ID token hint.")
 	}
+
 	var client interface {
 		Active() bool
 		AllowsPostLogoutRedirect(string) bool
 	}
+
 	err := u.UnitOfWork.Do(ctx, func(ctx context.Context, st port.Stores) error {
 		c, err := st.OIDCClients.Get(ctx, clientID)
 		if errors.Is(err, port.ErrNotFound) {
 			return nil
 		}
+
 		if err != nil {
 			return fmt.Errorf("load client: %w", err)
 		}
+
 		client = c
+
 		return nil
 	})
 	if err != nil {
 		return "", nil, fmt.Errorf("logout: %w", err)
 	}
+
 	if client == nil || !client.Active() || !client.AllowsPostLogoutRedirect(cmd.PostLogoutRedirectURI) {
 		return bad("The return address is not registered for this application.")
 	}
+
 	return redirectTo(cmd.PostLogoutRedirectURI, map[string]string{"state": cmd.State}), nil, nil
 }

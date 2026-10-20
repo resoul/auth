@@ -3,7 +3,7 @@ package port
 import (
 	"context"
 
-	"airlance.org/auth/internal/domain/quota"
+	"go.airlance.org/auth/internal/domain/quota"
 )
 
 // SpendKind is the quota being spent.

@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"time"
 
-	"airlance.org/auth/internal/application/port"
-	"airlance.org/auth/internal/domain/identity"
-	dsession "airlance.org/auth/internal/domain/session"
-	"airlance.org/auth/internal/domain/token"
+	"go.airlance.org/auth/internal/application/port"
+	"go.airlance.org/auth/internal/domain/identity"
+	dsession "go.airlance.org/auth/internal/domain/session"
+	"go.airlance.org/auth/internal/domain/token"
 )
 
 // IssuerDeps are the dependencies of Issuer.
@@ -32,9 +32,11 @@ func NewIssuer(d IssuerDeps) (*Issuer, error) {
 	if d.SessionIDs == nil || d.TokenIDs == nil || d.Secrets == nil {
 		return nil, errors.New("new issuer: all dependencies are required")
 	}
+
 	if err := d.Policy.Validate(); err != nil {
 		return nil, fmt.Errorf("new issuer: %w", err)
 	}
+
 	return &Issuer{d}, nil
 }
 
@@ -61,14 +63,17 @@ func (i *Issuer) Issue(ctx context.Context, st port.Stores, now time.Time, p Iss
 	if err != nil {
 		return Issued{}, fmt.Errorf("issue session: %w", err)
 	}
+
 	tokenID, err := i.TokenIDs.NewRefreshTokenID()
 	if err != nil {
 		return Issued{}, fmt.Errorf("issue session: %w", err)
 	}
+
 	familyID, err := i.TokenIDs.NewFamilyID()
 	if err != nil {
 		return Issued{}, fmt.Errorf("issue session: %w", err)
 	}
+
 	secret, hash, err := i.Secrets.NewRefreshSecret()
 	if err != nil {
 		return Issued{}, fmt.Errorf("issue session: %w", err)
@@ -81,7 +86,9 @@ func (i *Issuer) Issue(ctx context.Context, st port.Stores, now time.Time, p Iss
 	if err != nil {
 		return Issued{}, fmt.Errorf("issue session: %w", err)
 	}
+
 	expiresAt := sess.RefreshExpiry(now, i.Policy)
+
 	root, err := token.NewRoot(tokenID, sess.ID(), familyID, hash, now, expiresAt)
 	if err != nil {
 		return Issued{}, fmt.Errorf("issue session: %w", err)
@@ -90,8 +97,10 @@ func (i *Issuer) Issue(ctx context.Context, st port.Stores, now time.Time, p Iss
 	if err := st.Sessions.Create(ctx, sess); err != nil {
 		return Issued{}, fmt.Errorf("store session: %w", err)
 	}
+
 	if err := st.Tokens.Create(ctx, root); err != nil {
 		return Issued{}, fmt.Errorf("store refresh token: %w", err)
 	}
+
 	return Issued{Session: sess, RefreshSecret: secret, RefreshExpiresAt: expiresAt}, nil
 }

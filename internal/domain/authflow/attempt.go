@@ -3,7 +3,7 @@ package authflow
 import (
 	"time"
 
-	"airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/domain/identity"
 )
 
 // Attempt is the admission for one code comparison against one generation.
@@ -26,13 +26,17 @@ func (f *Flow) Reserve(now time.Time, purpose Purpose, binding identity.BindingH
 	if err := f.checkOpen(now); err != nil {
 		return Attempt{}, err
 	}
+
 	if err := f.checkCaller(purpose, binding); err != nil {
 		return Attempt{}, err
 	}
+
 	if f.attempts >= policy.MaxAttempts {
 		return Attempt{}, ErrAttemptsExhausted
 	}
+
 	f.attempts++
+
 	return Attempt{flowID: f.id, generation: f.generation}, nil
 }
 
@@ -42,7 +46,9 @@ func (f *Flow) Accept(a Attempt, now time.Time) error {
 	if err := f.checkResult(a, now); err != nil {
 		return err
 	}
+
 	f.close(StateConsumed)
+
 	return nil
 }
 
@@ -53,9 +59,11 @@ func (f *Flow) Reject(a Attempt, now time.Time, policy Policy) error {
 	if err := f.checkResult(a, now); err != nil {
 		return err
 	}
+
 	if f.attempts >= policy.MaxAttempts {
 		f.close(StateLocked)
 	}
+
 	return nil
 }
 
@@ -63,8 +71,10 @@ func (f *Flow) checkResult(a Attempt, now time.Time) error {
 	if err := f.checkOpen(now); err != nil {
 		return err
 	}
+
 	if a.flowID != f.id || a.generation != f.generation {
 		return ErrStaleAttempt
 	}
+
 	return nil
 }

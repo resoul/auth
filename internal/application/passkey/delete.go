@@ -5,9 +5,9 @@ import (
 	"errors"
 	"fmt"
 
-	"airlance.org/auth/internal/application/port"
-	appsession "airlance.org/auth/internal/application/session"
-	dpasskey "airlance.org/auth/internal/domain/passkey"
+	"go.airlance.org/auth/internal/application/port"
+	appsession "go.airlance.org/auth/internal/application/session"
+	dpasskey "go.airlance.org/auth/internal/domain/passkey"
 )
 
 // DeleteCredentialDeps are the dependencies of DeleteCredential.
@@ -26,6 +26,7 @@ func NewDeleteCredential(d DeleteCredentialDeps) (*DeleteCredential, error) {
 	if d.UnitOfWork == nil || d.Clock == nil || d.Tickets == nil {
 		return nil, errors.New("new delete credential: all dependencies are required")
 	}
+
 	return &DeleteCredential{d}, nil
 }
 
@@ -46,7 +47,9 @@ type DeleteResult struct {
 func (u *DeleteCredential) Execute(ctx context.Context, cmd DeleteCommand) (DeleteResult, error) {
 	id, idErr := dpasskey.ParseID(cmd.ID)
 	now := u.Clock.Now()
+
 	var result DeleteResult
+
 	err := u.UnitOfWork.Do(ctx, func(ctx context.Context, st port.Stores) error {
 		if _, ok, err := appsession.ActiveSession(ctx, st, cmd.Actor, now); err != nil {
 			return err
@@ -54,18 +57,22 @@ func (u *DeleteCredential) Execute(ctx context.Context, cmd DeleteCommand) (Dele
 			result = DeleteResult{Outcome: OutcomeDenied, Reason: ReasonNoSession}
 			return nil
 		}
+
 		ticket, ok, err := StepUpTicket(ctx, st, u.Tickets, cmd.StepUpSecret, cmd.Actor, dpasskey.OperationDeletePasskey, now)
 		if err != nil {
 			return err
 		}
+
 		if !ok {
 			result = DeleteResult{Outcome: OutcomeStepUpRequired, Reason: ReasonStepUp}
 			return nil
 		}
+
 		if idErr != nil {
 			result = DeleteResult{Outcome: OutcomeNotFound, Reason: ReasonUnknownKeyID}
 			return nil
 		}
+
 		err = st.Credentials.Delete(ctx, cmd.Actor.UserID, id)
 		switch {
 		case errors.Is(err, port.ErrNotFound):
@@ -77,9 +84,11 @@ func (u *DeleteCredential) Execute(ctx context.Context, cmd DeleteCommand) (Dele
 		case err != nil:
 			return fmt.Errorf("delete credential: %w", err)
 		}
+
 		if err := SpendStepUp(ctx, st, ticket, cmd.Actor, dpasskey.OperationDeletePasskey, now); err != nil {
 			return err
 		}
+
 		if err := st.Audit.Record(ctx, port.AuditEvent{
 			Type: port.AuditPasskeyDeleted, Result: port.AuditSuccess, UserID: cmd.Actor.UserID, SessionID: cmd.Actor.SessionID, At: now,
 		}); err != nil {
@@ -90,11 +99,14 @@ func (u *DeleteCredential) Execute(ctx context.Context, cmd DeleteCommand) (Dele
 		if err := appsession.RevokeOthers(ctx, st, cmd.Actor.UserID, cmd.Actor.SessionID, now, "key_deleted"); err != nil {
 			return err
 		}
+
 		result = DeleteResult{Outcome: OutcomeOK}
+
 		return nil
 	})
 	if err != nil {
 		return DeleteResult{}, fmt.Errorf("delete credential: %w", err)
 	}
+
 	return result, nil
 }

@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"airlance.org/auth/internal/bootstrap"
-	"airlance.org/auth/internal/config"
+	"go.airlance.org/auth/internal/bootstrap"
+	"go.airlance.org/auth/internal/config"
 )
 
 func TestMigrateRequiresDatabaseURL(t *testing.T) {

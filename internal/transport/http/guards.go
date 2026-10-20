@@ -24,23 +24,30 @@ func withCORS(allowed []string, next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
+
 		w.Header().Add("Vary", "Origin")
+
 		trusted := slices.Contains(allowed, origin)
 		if trusted {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Access-Control-Allow-Credentials", "true")
 		}
+
 		if r.Method == http.MethodOptions && r.Header.Get("Access-Control-Request-Method") != "" {
 			w.Header().Add("Vary", "Access-Control-Request-Method")
 			w.Header().Add("Vary", "Access-Control-Request-Headers")
+
 			if trusted {
 				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE")
 				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Step-Up")
 				w.Header().Set("Access-Control-Max-Age", "600")
 			}
+
 			w.WriteHeader(http.StatusNoContent)
+
 			return
 		}
+
 		next.ServeHTTP(w, r)
 	})
 }
@@ -56,12 +63,15 @@ func (a *API) crossOrigin(trusted, bypass []string, next http.Handler) (http.Han
 			return nil, fmt.Errorf("trusted origin %q: %w", origin, err)
 		}
 	}
+
 	for _, pattern := range bypass {
 		cop.AddInsecureBypassPattern(pattern)
 	}
+
 	cop.SetDenyHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		a.logger.DebugContext(r.Context(), "cross-origin request refused", "route", r.URL.Path)
 		writeProblem(w, r, http.StatusForbidden, "permission_denied")
 	}))
+
 	return cop.Handler(next), nil
 }

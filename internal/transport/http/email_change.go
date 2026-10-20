@@ -5,9 +5,9 @@ import (
 	"errors"
 	"fmt"
 
-	"airlance.org/auth/internal/application/account"
-	"airlance.org/auth/internal/domain/identity"
-	"airlance.org/auth/internal/transport/http/openapi"
+	"go.airlance.org/auth/internal/application/account"
+	"go.airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/transport/http/openapi"
 )
 
 // The routes that change the address of the signed-in account. Each authenticates first and answers
@@ -23,15 +23,18 @@ func (a *API) startEmailChange(ctx context.Context, token *string, email string)
 	if err != nil || !ok {
 		return account.StartEmailChangeResult{}, !ok, false, err
 	}
+
 	res, err = a.startChangeUC.Execute(ctx, account.StartEmailChangeCommand{
 		Actor: actor, StepUpSecret: stepUpToken(token), Email: email, ClientIP: clientIP(ctx),
 	})
 	if errors.Is(err, identity.ErrInvalidEmail) {
 		return account.StartEmailChangeResult{}, false, true, nil
 	}
+
 	if err == nil && res.Outcome == account.OutcomeInvalid {
 		return account.StartEmailChangeResult{}, false, true, nil
 	}
+
 	return res, false, false, err
 }
 
@@ -40,9 +43,11 @@ func (a *API) confirmEmailChange(ctx context.Context, body openapi.EmailChangeCo
 	if err != nil || !ok {
 		return account.ConfirmEmailChangeResult{}, !ok, err
 	}
+
 	res, err = a.confirmChangeUC.Execute(ctx, account.ConfirmEmailChangeCommand{
 		Actor: actor, FlowID: body.FlowId, Code: body.Code, ClientIP: clientIP(ctx),
 	})
+
 	return res, false, err
 }
 
@@ -61,6 +66,7 @@ func (a *API) NativeStartEmailChange(ctx context.Context, req openapi.NativeStar
 	case invalid:
 		return openapi.NativeStartEmailChange400JSONResponse(invalidRequest(ctx)), nil
 	}
+
 	switch res.Outcome {
 	case account.OutcomeOK:
 		return openapi.NativeStartEmailChange202JSONResponse(startChangeBody(res)), nil
@@ -74,6 +80,7 @@ func (a *API) NativeStartEmailChange(ctx context.Context, req openapi.NativeStar
 		a.denied(ctx, "change_email_start", string(res.Reason))
 		return openapi.NativeStartEmailChange401JSONResponse{UnauthenticatedJSONResponse: unauthenticated(ctx)}, nil
 	}
+
 	return nil, fmt.Errorf("start email change: unexpected outcome %q", res.Outcome)
 }
 
@@ -86,6 +93,7 @@ func (a *API) NativeConfirmEmailChange(ctx context.Context, req openapi.NativeCo
 	case unauth:
 		return openapi.NativeConfirmEmailChange401JSONResponse{UnauthenticatedJSONResponse: unauthenticated(ctx)}, nil
 	}
+
 	switch res.Outcome {
 	case account.OutcomeOK:
 		return openapi.NativeConfirmEmailChange200JSONResponse(openapi.EmailChangeResponse{Email: res.Email.String()}), nil
@@ -97,11 +105,14 @@ func (a *API) NativeConfirmEmailChange(ctx context.Context, req openapi.NativeCo
 		return openapi.NativeConfirmEmailChange429JSONResponse{RateLimitedJSONResponse: rateLimited(ctx)}, nil
 	case account.OutcomeDenied, account.OutcomeInvalid:
 		a.denied(ctx, "change_email_confirm", string(res.Reason))
+
 		if res.Reason == account.ReasonNoSession {
 			return openapi.NativeConfirmEmailChange401JSONResponse{UnauthenticatedJSONResponse: unauthenticated(ctx)}, nil
 		}
+
 		return openapi.NativeConfirmEmailChange400JSONResponse(problem(ctx, openapi.ErrorCodeInvalidCode)), nil
 	}
+
 	return nil, fmt.Errorf("confirm email change: unexpected outcome %q", res.Outcome)
 }
 
@@ -116,6 +127,7 @@ func (a *API) BrowserStartEmailChange(ctx context.Context, req openapi.BrowserSt
 	case invalid:
 		return openapi.BrowserStartEmailChange400JSONResponse(invalidRequest(ctx)), nil
 	}
+
 	switch res.Outcome {
 	case account.OutcomeOK:
 		return openapi.BrowserStartEmailChange202JSONResponse(startChangeBody(res)), nil
@@ -129,6 +141,7 @@ func (a *API) BrowserStartEmailChange(ctx context.Context, req openapi.BrowserSt
 		a.denied(ctx, "change_email_start", string(res.Reason))
 		return openapi.BrowserStartEmailChange401JSONResponse{UnauthenticatedJSONResponse: unauthenticated(ctx)}, nil
 	}
+
 	return nil, fmt.Errorf("start email change: unexpected outcome %q", res.Outcome)
 }
 
@@ -141,6 +154,7 @@ func (a *API) BrowserConfirmEmailChange(ctx context.Context, req openapi.Browser
 	case unauth:
 		return openapi.BrowserConfirmEmailChange401JSONResponse{UnauthenticatedJSONResponse: unauthenticated(ctx)}, nil
 	}
+
 	switch res.Outcome {
 	case account.OutcomeOK:
 		return openapi.BrowserConfirmEmailChange200JSONResponse(openapi.EmailChangeResponse{Email: res.Email.String()}), nil
@@ -152,10 +166,13 @@ func (a *API) BrowserConfirmEmailChange(ctx context.Context, req openapi.Browser
 		return openapi.BrowserConfirmEmailChange429JSONResponse{RateLimitedJSONResponse: rateLimited(ctx)}, nil
 	case account.OutcomeDenied, account.OutcomeInvalid:
 		a.denied(ctx, "change_email_confirm", string(res.Reason))
+
 		if res.Reason == account.ReasonNoSession {
 			return openapi.BrowserConfirmEmailChange401JSONResponse{UnauthenticatedJSONResponse: unauthenticated(ctx)}, nil
 		}
+
 		return openapi.BrowserConfirmEmailChange400JSONResponse(problem(ctx, openapi.ErrorCodeInvalidCode)), nil
 	}
+
 	return nil, fmt.Errorf("confirm email change: unexpected outcome %q", res.Outcome)
 }

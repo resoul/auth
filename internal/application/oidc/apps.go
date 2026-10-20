@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"time"
 
-	"airlance.org/auth/internal/application/port"
-	"airlance.org/auth/internal/domain/identity"
-	doidc "airlance.org/auth/internal/domain/oidc"
+	"go.airlance.org/auth/internal/application/port"
+	"go.airlance.org/auth/internal/domain/identity"
+	doidc "go.airlance.org/auth/internal/domain/oidc"
 )
 
 // Apps is what a person sees of the applications they connected, and how they take one back. It is always the caller's
@@ -31,6 +31,7 @@ func NewApps(a Apps) (*Apps, error) {
 	if a.UnitOfWork == nil || a.Clock == nil {
 		return nil, errors.New("new apps: all dependencies are required")
 	}
+
 	return &a, nil
 }
 
@@ -39,16 +40,22 @@ func (u *Apps) List(ctx context.Context, user identity.UserID) ([]port.AppGrant,
 	if user.IsZero() {
 		return nil, nil
 	}
+
 	now := u.Clock.Now()
+
 	var out []port.AppGrant
+
 	err := u.UnitOfWork.Do(ctx, func(ctx context.Context, st port.Stores) error {
 		var err error
+
 		out, err = st.OIDCApps.LiveGrantsOfUser(ctx, user, now)
+
 		return err
 	})
 	if err != nil {
 		return nil, fmt.Errorf("list apps: %w", err)
 	}
+
 	return out, nil
 }
 
@@ -58,20 +65,26 @@ func (u *Apps) RevokeGrant(ctx context.Context, user identity.UserID, grantID st
 	if user.IsZero() {
 		return nil
 	}
+
 	now := u.Clock.Now()
 	n := 0
+
 	err := u.UnitOfWork.Do(ctx, func(ctx context.Context, st port.Stores) error {
 		ended, clientID, err := st.OIDCApps.RevokeOwned(ctx, user, grantID, now)
 		if err != nil || !ended {
 			return err
 		}
+
 		n = 1
+
 		return u.audit(ctx, st, now, user, clientID, "one")
 	})
 	if err != nil {
 		return fmt.Errorf("revoke app grant: %w", err)
 	}
+
 	u.counted(n)
+
 	return nil
 }
 
@@ -80,20 +93,26 @@ func (u *Apps) RevokeClient(ctx context.Context, user identity.UserID, clientID 
 	if _, err := doidc.ParseClientID(clientID); err != nil || user.IsZero() {
 		return nil
 	}
+
 	now := u.Clock.Now()
 	ended := 0
+
 	err := u.UnitOfWork.Do(ctx, func(ctx context.Context, st port.Stores) error {
 		n, err := st.OIDCApps.RevokeOwnedOfClient(ctx, user, clientID, now)
 		if err != nil || n == 0 {
 			return err
 		}
+
 		ended = n
+
 		return u.audit(ctx, st, now, user, clientID, "client")
 	})
 	if err != nil {
 		return fmt.Errorf("revoke app: %w", err)
 	}
+
 	u.counted(ended)
+
 	return nil
 }
 
@@ -111,5 +130,6 @@ func (u *Apps) audit(ctx context.Context, st port.Stores, now time.Time, user id
 	}); err != nil {
 		return fmt.Errorf("record audit event: %w", err)
 	}
+
 	return nil
 }

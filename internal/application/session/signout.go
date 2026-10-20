@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strconv"
 
-	"airlance.org/auth/internal/application/port"
+	"go.airlance.org/auth/internal/application/port"
 )
 
 // SignOutScope says which sessions a sign-out ends.
@@ -28,6 +28,7 @@ func NewSignOut(d RevokeDeps) (*SignOut, error) {
 	if err := d.validate("sign out"); err != nil {
 		return nil, err
 	}
+
 	return &SignOut{d}, nil
 }
 
@@ -46,17 +47,21 @@ func (u *SignOut) Execute(ctx context.Context, cmd SignOutCommand) (RevokeResult
 	if cmd.Actor.UserID.IsZero() || (cmd.Scope != ScopeCurrent && cmd.Scope != ScopeAll) {
 		return RevokeResult{Outcome: OutcomeDenied}, nil
 	}
+
 	now := u.Clock.Now()
 
 	result := RevokeResult{Outcome: OutcomeDenied}
+
 	err := u.UnitOfWork.Do(ctx, func(ctx context.Context, st port.Stores) error {
 		sess, err := st.Sessions.GetForUpdate(ctx, cmd.Actor.SessionID)
 		if errors.Is(err, port.ErrNotFound) {
 			return nil
 		}
+
 		if err != nil {
 			return fmt.Errorf("load session: %w", err)
 		}
+
 		if sess.UserID() != cmd.Actor.UserID {
 			return nil
 		}
@@ -65,23 +70,30 @@ func (u *SignOut) Execute(ctx context.Context, cmd SignOutCommand) (RevokeResult
 			if err := revokeEverything(ctx, st, cmd.Actor.UserID, now); err != nil {
 				return err
 			}
+
 			result = RevokeResult{Outcome: OutcomeOK}
+
 			return nil
 		}
+
 		fields := map[string]string{"scope": string(ScopeCurrent), "forget_client": strconv.FormatBool(cmd.ForgetClient)}
 		if err := revokeSession(ctx, st, sess, now, fields); err != nil {
 			return err
 		}
+
 		if cmd.ForgetClient {
 			if err := st.Recognized.Revoke(ctx, sess.UserID(), sess.Binding(), now); err != nil {
 				return fmt.Errorf("revoke recognition: %w", err)
 			}
 		}
+
 		result = RevokeResult{Outcome: OutcomeOK}
+
 		return nil
 	})
 	if err != nil {
 		return RevokeResult{}, fmt.Errorf("sign out: %w", err)
 	}
+
 	return result, nil
 }

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"airlance.org/auth/internal/application/port"
+	"go.airlance.org/auth/internal/application/port"
 )
 
 var at = time.Date(2026, 10, 2, 12, 0, 0, 0, time.UTC)
@@ -16,6 +16,7 @@ func TestAuditEventValidation(t *testing.T) {
 	if err := valid.Validate(); err != nil {
 		t.Fatalf("a valid event was rejected: %v", err)
 	}
+
 	if err := (port.AuditEvent{Type: port.AuditSessionRevoked, Result: port.AuditDenied, At: at}).Validate(); err != nil {
 		t.Errorf("an event without fields was rejected: %v", err)
 	}

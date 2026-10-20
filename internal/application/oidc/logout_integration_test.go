@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	appoidc "airlance.org/auth/internal/application/oidc"
-	"airlance.org/auth/internal/application/port"
-	appsession "airlance.org/auth/internal/application/session"
+	appoidc "go.airlance.org/auth/internal/application/oidc"
+	"go.airlance.org/auth/internal/application/port"
+	appsession "go.airlance.org/auth/internal/application/session"
 )
 
 const (
@@ -21,36 +21,47 @@ const (
 // logoutOnce confirms a logout and returns the result.
 func (e *env) logoutOnce(cmd appoidc.LogoutCommand) appoidc.LogoutResult {
 	e.t.Helper()
+
 	if cmd.Confirm && cmd.ConfirmToken == "" {
 		// What the person's browser does: the page that asks carries the token back.
 		ask := cmd
+
 		ask.Confirm = false
 		if asked, err := e.logout.Execute(context.Background(), ask); err == nil {
 			cmd.ConfirmToken = asked.ConfirmToken
 		}
 	}
+
 	got, err := e.logout.Execute(context.Background(), cmd)
 	must(e.t, err)
+
 	return got
 }
 
 // queued counts the logout notices waiting for delivery, per client.
 func (e *env) queued() map[string]int {
 	e.t.Helper()
+
 	out := map[string]int{}
+
 	for {
 		var n *port.ClaimedLogout
+
 		e.do(func(ctx context.Context, st port.Stores) error {
 			var err error
+
 			n, err = st.OIDCLogout.Claim(ctx, e.clock.Now(), e.clock.Now().Add(time.Hour))
 			if err != nil && err.Error() != port.ErrNotFound.Error() {
 				return err
 			}
+
 			return nil
 		})
+
 		if n == nil {
 			return out
 		}
+
 		out[n.ClientID]++
 	}
 }
@@ -64,8 +75,10 @@ func TestLoggingOutEndsTheSharedSignInAndEverythingOnIt(t *testing.T) {
 	second, _ := func() (*appoidc.TokenResponse, string) {
 		f := e.newFlow(video)
 		got := e.authorizeWith(f.command(sso))
+
 		return e.exchange(f, e.codeOf(f, got.Location)).Response, sso
 	}()
+
 	op := e.opSessionOf(sso)
 	if op.DeviceSessionID == "" {
 		t.Fatal("the shared sign-in does not remember the device session it grew from")
@@ -76,6 +89,7 @@ func TestLoggingOutEndsTheSharedSignInAndEverythingOnIt(t *testing.T) {
 	if asked.Kind != appoidc.LogoutConfirm || asked.SignedOut {
 		t.Fatalf("logout without confirmation = %+v, want only a question", asked)
 	}
+
 	if !e.userinfoOK(first.AccessToken) || e.refresh(panels, first.RefreshToken).Response == nil {
 		t.Fatal("asking to log out ended something")
 	}
@@ -91,9 +105,11 @@ func TestLoggingOutEndsTheSharedSignInAndEverythingOnIt(t *testing.T) {
 			t.Errorf("the %s access token still works after logout", name)
 		}
 	}
+
 	if e.refresh(panels, first.RefreshToken).Response != nil || e.refresh(video, second.RefreshToken).Response != nil {
 		t.Error("a refresh token survived the logout")
 	}
+
 	if got := e.authorizeWith(e.newFlow(panels).command(sso)); got.Kind != appoidc.AuthorizeLogin {
 		t.Errorf("the cookie still opens a code after logout: %+v", got)
 	}
@@ -103,9 +119,11 @@ func TestLoggingOutEndsTheSharedSignInAndEverythingOnIt(t *testing.T) {
 		if err != nil {
 			return err
 		}
+
 		if sess.Active(e.clock.Now()) {
 			t.Error("the device session the sign-in grew from is still live")
 		}
+
 		return nil
 	})
 	// Only the application with an endpoint is told, once.
@@ -118,6 +136,7 @@ func TestLoggingOutEndsTheSharedSignInAndEverythingOnIt(t *testing.T) {
 	if again.Kind != appoidc.LogoutDone || again.SignedOut {
 		t.Errorf("a second logout = %+v", again)
 	}
+
 	if got := e.queued(); len(got) != 0 {
 		t.Errorf("a second logout queued %v", got)
 	}
@@ -133,6 +152,7 @@ func TestLogoutRequestsAreCheckedBeforeAnythingElse(t *testing.T) {
 
 	refuse := func(name string, cmd appoidc.LogoutCommand) {
 		t.Helper()
+
 		cmd.SSOSecret = sso
 		for _, confirm := range []bool{false, true} {
 			cmd.Confirm = confirm
@@ -150,12 +170,14 @@ func TestLogoutRequestsAreCheckedBeforeAnythingElse(t *testing.T) {
 	refuse("a return address and nobody to vouch for it", appoidc.LogoutCommand{PostLogoutRedirectURI: appLogoutReturn})
 	refuse("a return address of an unknown client", appoidc.LogoutCommand{ClientID: "nobody", PostLogoutRedirectURI: appLogoutReturn})
 	refuse("an endless state", appoidc.LogoutCommand{IDTokenHint: tokens.IDToken, PostLogoutRedirectURI: appLogoutReturn, State: string(make([]byte, 600))})
+
 	if !e.userinfoOK(tokens.AccessToken) || !e.userinfoOK(other.AccessToken) {
 		t.Fatal("refused requests ended a sign-in")
 	}
 
 	// A hint that has expired still names the sign-in: that is its use.
 	e.clock.Advance(time.Hour)
+
 	if got := e.logoutOnce(appoidc.LogoutCommand{IDTokenHint: tokens.IDToken, PostLogoutRedirectURI: appLogoutReturn, State: "s"}); got.Kind != appoidc.LogoutConfirm {
 		t.Errorf("an expired hint = %+v, want the question", got)
 	}
@@ -178,9 +200,11 @@ func TestLoggingOutEndsTheSignInOfTheCookieOnly(t *testing.T) {
 	if got := e.logoutOnce(appoidc.LogoutCommand{SSOSecret: aliceSSO, Confirm: true}); !got.SignedOut {
 		t.Fatalf("logout = %+v", got)
 	}
+
 	if e.userinfoOK(aliceTokens.AccessToken) {
 		t.Error("alice's token survived her logout")
 	}
+
 	if !e.userinfoOK(bobTokens.AccessToken) || e.authorizeWith(e.newFlow(app).command(bobSSO)).Kind != appoidc.AuthorizeRedirect {
 		t.Error("alice's logout ended bob's sign-in")
 	}
@@ -207,10 +231,13 @@ func TestSigningOutEverywhereTellsTheApplications(t *testing.T) {
 		})
 	}
 	revoke()
+
 	if got := e.queued(); got["app-one"] != 1 || got["app-two"] != 1 || len(got) != 2 {
 		t.Errorf("notices after sign out everywhere = %v, want one each", got)
 	}
+
 	revoke() // a recovery after it, or a block: the grants are gone, so nobody is told twice
+
 	if got := e.queued(); len(got) != 0 {
 		t.Errorf("a second revocation queued %v", got)
 	}
@@ -223,8 +250,10 @@ func TestRevokingATokenEndsItsGrantButOnlyForItsOwnClient(t *testing.T) {
 	alice := e.newPerson()
 	revoke := func(c client, token string) appoidc.RevokeResult {
 		t.Helper()
+
 		got, err := e.revoke.Execute(context.Background(), appoidc.RevokeCommand{ClientID: c.id, ClientSecret: c.secret, Token: token})
 		must(t, err)
+
 		return got
 	}
 
@@ -233,6 +262,7 @@ func TestRevokingATokenEndsItsGrantButOnlyForItsOwnClient(t *testing.T) {
 		if got := revoke(app, tokens.RefreshToken); got.Failure != nil {
 			t.Fatalf("revoke = %+v", got.Failure)
 		}
+
 		if e.refresh(app, tokens.RefreshToken).Response != nil || e.userinfoOK(tokens.AccessToken) {
 			t.Error("a token of the revoked grant still works")
 		}
@@ -247,6 +277,7 @@ func TestRevokingATokenEndsItsGrantButOnlyForItsOwnClient(t *testing.T) {
 		if got := revoke(app, tokens.AccessToken); got.Failure != nil {
 			t.Fatalf("revoke = %+v", got.Failure)
 		}
+
 		if e.refresh(app, tokens.RefreshToken).Response != nil || e.userinfoOK(tokens.AccessToken) {
 			t.Error("revoking an access token left its grant alive")
 		}
@@ -259,6 +290,7 @@ func TestRevokingATokenEndsItsGrantButOnlyForItsOwnClient(t *testing.T) {
 				t.Errorf("%s: revoke = %+v, want the same empty success as for any token", name, got.Failure)
 			}
 		}
+
 		if !e.userinfoOK(tokens.AccessToken) || e.refresh(app, tokens.RefreshToken).Response == nil {
 			t.Error("a client revoked a grant that is not its own")
 		}
@@ -279,6 +311,7 @@ func TestRevokingATokenEndsItsGrantButOnlyForItsOwnClient(t *testing.T) {
 		bad.secret, _, _ = e.secrets.NewOIDCSecret()
 		got, err := e.revoke.Execute(context.Background(), appoidc.RevokeCommand{ClientID: bad.id, ClientSecret: bad.secret, Token: tokens.RefreshToken})
 		must(t, err)
+
 		if got.Failure == nil || got.Failure.Code != appoidc.ErrInvalidClient || !e.userinfoOK(tokens.AccessToken) {
 			t.Errorf("revoke with a wrong secret = %+v", got)
 		}
@@ -288,12 +321,14 @@ func TestRevokingATokenEndsItsGrantButOnlyForItsOwnClient(t *testing.T) {
 func TestTheLogoutSettingsOfAClient(t *testing.T) {
 	e := newEnv(t)
 	app := e.register("panels-web", appCallback, "openid", "email")
+
 	set := func(post []string, back string) error {
 		return e.clients.SetLogout(context.Background(), app.id, post, back)
 	}
 	if err := set([]string{appLogoutReturn}, appBackchannel); err != nil {
 		t.Fatal(err)
 	}
+
 	for name, tc := range map[string]struct {
 		post []string
 		back string
@@ -313,9 +348,11 @@ func TestTheLogoutSettingsOfAClient(t *testing.T) {
 	if err := set(nil, ""); err != nil {
 		t.Fatal(err)
 	}
+
 	if got := e.logoutOnce(appoidc.LogoutCommand{ClientID: "panels-web", PostLogoutRedirectURI: appLogoutReturn}); got.Kind != appoidc.LogoutFailure {
 		t.Errorf("a cleared return address still works: %+v", got)
 	}
+
 	if err := e.clients.SetLogout(context.Background(), "nobody", nil, ""); err == nil {
 		t.Error("settings were stored for a client that does not exist")
 	}
@@ -326,17 +363,21 @@ func TestTheLogoutSettingsOfAClient(t *testing.T) {
 func TestLogoutNeedsTheTokenOfTheConfirmationPage(t *testing.T) {
 	e := newEnv(t)
 	app := e.register("panels-web", appCallback, "openid", "email")
+
 	_, sso := e.signedIn(e.newFlow(app), e.newPerson())
 	for name, token := range map[string]string{"none": "", "guessed": "1", "another browser": "00" + strings.Repeat("a", 62)} {
 		got, err := e.logout.Execute(context.Background(), appoidc.LogoutCommand{SSOSecret: sso, Confirm: true, ConfirmToken: token})
 		must(t, err)
+
 		if got.Kind != appoidc.LogoutFailure || got.SignedOut {
 			t.Errorf("%s: %+v, want a refusal", name, got)
 		}
 	}
+
 	if !e.opSessionOf(sso).RevokedAt.IsZero() {
 		t.Fatal("a forged confirmation ended the sign-in")
 	}
+
 	if got := e.logoutOnce(appoidc.LogoutCommand{SSOSecret: sso, Confirm: true}); !got.SignedOut {
 		t.Fatalf("the real confirmation = %+v", got)
 	}

@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	appsession "airlance.org/auth/internal/application/session"
-	"airlance.org/auth/internal/transport/http/openapi"
+	appsession "go.airlance.org/auth/internal/application/session"
+	"go.airlance.org/auth/internal/transport/http/openapi"
 )
 
 // NativeRefreshToken rotates the refresh token from the body. Every refusal is the
@@ -15,6 +15,7 @@ func (a *API) NativeRefreshToken(ctx context.Context, req openapi.NativeRefreshT
 	if err != nil {
 		return nil, err
 	}
+
 	switch res.Outcome {
 	case appsession.OutcomeOK:
 		return openapi.NativeRefreshToken200JSONResponse{
@@ -24,5 +25,6 @@ func (a *API) NativeRefreshToken(ctx context.Context, req openapi.NativeRefreshT
 		a.denied(ctx, "refresh", string(res.Reason))
 		return openapi.NativeRefreshToken401JSONResponse(problem(ctx, openapi.ErrorCodeInvalidRefresh)), nil
 	}
+
 	return nil, fmt.Errorf("refresh: unexpected outcome %q", res.Outcome)
 }

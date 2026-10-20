@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	"airlance.org/auth/internal/application/port"
-	"airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/application/port"
+	"go.airlance.org/auth/internal/domain/identity"
 )
 
 // mayReceiveCode says why a sign-in code must not be sent to the address, or "" when it should be. A
@@ -21,17 +21,21 @@ func mayReceiveCode(ctx context.Context, st port.Stores, mode identity.Registrat
 		if user.Blocked() {
 			return ReasonBlocked, nil
 		}
+
 		return "", nil
 	case !errors.Is(err, port.ErrNotFound):
 		return "", fmt.Errorf("look up user: %w", err)
 	}
+
 	if !mode.Invites() {
 		return "", nil
 	}
+
 	if _, err := st.Invitations.FindActive(ctx, email, now); err == nil {
 		return "", nil
 	} else if !errors.Is(err, port.ErrNotFound) {
 		return "", fmt.Errorf("look up invitation: %w", err)
 	}
+
 	return ReasonNotInvited, nil
 }

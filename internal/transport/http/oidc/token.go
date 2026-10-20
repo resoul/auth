@@ -7,7 +7,7 @@ import (
 	"net/url"
 	"strings"
 
-	appoidc "airlance.org/auth/internal/application/oidc"
+	appoidc "go.airlance.org/auth/internal/application/oidc"
 )
 
 // tokenParams are the single-valued parameters of the token endpoint.
@@ -15,6 +15,7 @@ var tokenParams = []string{"grant_type", "code", "redirect_uri", "code_verifier"
 
 func (h *Handler) token(w http.ResponseWriter, r *http.Request) {
 	noStore(w)
+
 	if mt, _, err := mime.ParseMediaType(r.Header.Get("Content-Type")); err != nil || mt != "application/x-www-form-urlencoded" {
 		oauthError(w, http.StatusBadRequest, &appoidc.Failure{Code: appoidc.ErrInvalidRequest, Description: "The body must be application/x-www-form-urlencoded."})
 		return
@@ -27,15 +28,18 @@ func (h *Handler) token(w http.ResponseWriter, r *http.Request) {
 	}
 	// Both parts are form-encoded before they are Base64-encoded (RFC 6749 section 2.3.1).
 	id, errID := url.QueryUnescape(id)
+
 	secret, errSecret := url.QueryUnescape(secret)
 	if errID != nil || errSecret != nil {
 		h.clientRefused(w, r)
 		return
 	}
+
 	if err := r.ParseForm(); err != nil || r.URL.RawQuery != "" {
 		oauthError(w, http.StatusBadRequest, &appoidc.Failure{Code: appoidc.ErrInvalidRequest, Description: "The request is not valid."})
 		return
 	}
+
 	for _, name := range tokenParams {
 		if len(r.PostForm[name]) > 1 {
 			oauthError(w, http.StatusBadRequest, &appoidc.Failure{Code: appoidc.ErrInvalidRequest, Description: "A parameter was repeated."})
@@ -46,8 +50,10 @@ func (h *Handler) token(w http.ResponseWriter, r *http.Request) {
 	if len(r.PostForm["resource"]) > 1 {
 		h.denied(r, "oidc_token", appoidc.ErrInvalidTarget)
 		oauthError(w, http.StatusBadRequest, &appoidc.Failure{Code: appoidc.ErrInvalidTarget, Description: "A token is issued for one resource."})
+
 		return
 	}
+
 	got, err := h.d.Token.Execute(r.Context(), appoidc.TokenCommand{
 		ClientID: id, ClientSecret: secret, GrantType: r.PostForm.Get("grant_type"), Code: r.PostForm.Get("code"),
 		RedirectURI: r.PostForm.Get("redirect_uri"), CodeVerifier: r.PostForm.Get("code_verifier"),
@@ -57,28 +63,36 @@ func (h *Handler) token(w http.ResponseWriter, r *http.Request) {
 		h.serverError(w, r, err)
 		return
 	}
+
 	if got.Failure != nil {
 		h.denied(r, "oidc_token", got.Failure.Code)
+
 		if got.Replay {
 			// A used code or refresh token came back: someone holds a copy. The grant is already revoked.
 			h.d.Logger.WarnContext(r.Context(), "request denied", "operation", "oidc_token", "reason", "token_reused")
 		}
+
 		if got.Failure.Code == appoidc.ErrInvalidClient {
 			h.clientRefused(w, r)
 			return
 		}
+
 		oauthError(w, http.StatusBadRequest, got.Failure)
+
 		return
 	}
+
 	body := map[string]any{
 		"access_token": got.Response.AccessToken, "token_type": "Bearer", "expires_in": got.Response.ExpiresIn, "scope": got.Response.Scope,
 	}
 	if got.Response.RefreshToken != "" {
 		body["refresh_token"] = got.Response.RefreshToken
 	}
+
 	if got.Response.IDToken != "" {
 		body["id_token"] = got.Response.IDToken
 	}
+
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(body)
 }
@@ -97,5 +111,6 @@ func bearer(r *http.Request) (string, bool) {
 	if !ok || !strings.EqualFold(scheme, "Bearer") || token == "" || strings.ContainsAny(token, " \t") {
 		return "", false
 	}
+
 	return token, true
 }

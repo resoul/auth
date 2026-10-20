@@ -7,8 +7,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"airlance.org/auth/internal/bootstrap"
-	"airlance.org/auth/internal/config"
+	"go.airlance.org/auth/internal/bootstrap"
+	"go.airlance.org/auth/internal/config"
 )
 
 func newMigrateCommand() *cobra.Command {
@@ -33,11 +33,14 @@ func newMigrateCommand() *cobra.Command {
 				if err != nil {
 					return err
 				}
+
 				ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 				defer stop()
+
 				return bootstrap.Migrate(ctx, cfg, sub.action, cmd.OutOrStdout())
 			},
 		})
 	}
+
 	return migrate
 }

@@ -3,7 +3,7 @@ package port
 import (
 	"errors"
 
-	"airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/domain/identity"
 )
 
 // ErrInvalidBindingSecret reports a client binding secret of the wrong shape.

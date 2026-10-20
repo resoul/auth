@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	httpapi "airlance.org/auth/internal/transport/http"
+	httpapi "go.airlance.org/auth/internal/transport/http"
 )
 
 const appOrigin = "https://app.example.test"
@@ -20,12 +20,15 @@ func newEnvWithOrigins(t *testing.T, origins ...string) *env {
 func (e *env) from(path, origin, fetchSite string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"email": "alice@example.test"}`))
 	req.Header.Set("Content-Type", "application/json")
+
 	if origin != "" {
 		req.Header.Set("Origin", origin)
 	}
+
 	if fetchSite != "" {
 		req.Header.Set("Sec-Fetch-Site", fetchSite)
 	}
+
 	return e.do(req)
 }
 
@@ -55,14 +58,18 @@ func TestStateChangingRequestsMustComeFromAnAllowedOrigin(t *testing.T) {
 		} {
 			t.Run(path+"/"+tc.name, func(t *testing.T) {
 				e := newEnvWithOrigins(t, appOrigin)
+
 				rec := e.from(path, tc.origin, tc.fetchSite)
 				if tc.want == http.StatusForbidden {
 					wantProblem(t, rec, tc.want, "permission_denied")
+
 					if e.store.FlowCount() != 0 || len(e.store.OutboxJobs()) != 0 || len(rec.Result().Cookies()) != 0 {
 						t.Error("a refused request wrote a flow, a mail or a cookie")
 					}
+
 					return
 				}
+
 				if rec.Code != tc.want {
 					t.Errorf("status = %d, want %d; body %s", rec.Code, tc.want, rec.Body)
 				}
@@ -83,6 +90,7 @@ func TestEveryStateChangingRouteIsProtected(t *testing.T) {
 			t.Errorf("POST %s from a foreign page = %d, want 403", path, rec.Code)
 		}
 	}
+
 	if e.metrics == nil || strings.Contains(e.get("/metrics").Body.String(), "airlance_auth_refresh_reuse_total 1") {
 		t.Error("a refused request reached the use case")
 	}
@@ -93,6 +101,7 @@ func TestSafeRequestsAreNotBlockedByTheOriginCheck(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/.well-known/jwks.json", nil)
 	req.Header.Set("Origin", "https://evil.example")
 	req.Header.Set("Sec-Fetch-Site", "cross-site")
+
 	if rec := e.do(req); rec.Code != http.StatusOK {
 		t.Errorf("GET jwks from a foreign page = %d", rec.Code)
 	}
@@ -104,6 +113,7 @@ func (e *env) preflight(path, origin string) *httptest.ResponseRecorder {
 	req.Header.Set("Sec-Fetch-Site", "cross-site")
 	req.Header.Set("Access-Control-Request-Method", "POST")
 	req.Header.Set("Access-Control-Request-Headers", "content-type")
+
 	return e.do(req)
 }
 
@@ -111,12 +121,14 @@ func TestCORSAnswersOnlyTheConfiguredOriginsOnBrowserRoutes(t *testing.T) {
 	e := newEnvWithOrigins(t, appOrigin)
 
 	rec := e.preflight(browserStart, appOrigin)
+
 	h := rec.Header()
 	if rec.Code != http.StatusNoContent || h.Get("Access-Control-Allow-Origin") != appOrigin ||
 		h.Get("Access-Control-Allow-Credentials") != "true" || !strings.Contains(h.Get("Access-Control-Allow-Methods"), "POST") ||
 		!strings.Contains(h.Get("Access-Control-Allow-Headers"), "Content-Type") {
 		t.Errorf("trusted preflight = %d %v", rec.Code, h)
 	}
+
 	if !strings.Contains(strings.Join(h.Values("Vary"), ","), "Origin") {
 		t.Errorf("Vary = %v: caches would mix origins", h.Values("Vary"))
 	}
@@ -126,6 +138,7 @@ func TestCORSAnswersOnlyTheConfiguredOriginsOnBrowserRoutes(t *testing.T) {
 		if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "" {
 			t.Errorf("preflight from %q allowed origin %q", origin, got)
 		}
+
 		if rec.Header().Get("Access-Control-Allow-Credentials") != "" || rec.Header().Get("Access-Control-Allow-Methods") != "" {
 			t.Errorf("preflight from %q granted something: %v", origin, rec.Header())
 		}
@@ -134,10 +147,12 @@ func TestCORSAnswersOnlyTheConfiguredOriginsOnBrowserRoutes(t *testing.T) {
 
 func TestCORSHeadersAccompanyTheActualResponseOfATrustedOrigin(t *testing.T) {
 	e := newEnvWithOrigins(t, appOrigin)
+
 	rec := e.from(browserStart, appOrigin, "cross-site")
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("status = %d", rec.Code)
 	}
+
 	h := rec.Header()
 	if h.Get("Access-Control-Allow-Origin") != appOrigin || h.Get("Access-Control-Allow-Credentials") != "true" {
 		t.Errorf("headers = %v", h)
@@ -159,6 +174,7 @@ func TestNativeRoutesAreNotOpenedToBrowsers(t *testing.T) {
 	if rec := e.preflight(startPath, appOrigin); rec.Code != http.StatusMethodNotAllowed || rec.Header().Get("Access-Control-Allow-Origin") != "" {
 		t.Errorf("native preflight = %d %v, want 405 without CORS headers", rec.Code, rec.Header())
 	}
+
 	rec := e.from(startPath, appOrigin, "cross-site")
 	if rec.Header().Get("Access-Control-Allow-Origin") != "" || rec.Header().Get("Access-Control-Allow-Credentials") != "" {
 		t.Errorf("a native response carries CORS headers: %v", rec.Header())
@@ -180,6 +196,7 @@ func TestSameSiteAttributeFollowsTheConfiguration(t *testing.T) {
 				d.BrowserOrigins = []string{appOrigin}
 			})
 			rec := e.from(browserStart, appOrigin, "cross-site")
+
 			ck := setCookies(rec)[httpapi.BindingCookieName]
 			if ck == nil || ck.SameSite != tc.want || !ck.Secure || !ck.HttpOnly {
 				t.Errorf("cookie = %+v, want SameSite %v, Secure, HttpOnly", ck, tc.want)
@@ -200,6 +217,7 @@ func TestTheHandlerRefusesUnsafeCookieAndOriginSettings(t *testing.T) {
 			}
 		})
 	}
+
 	if _, err := buildEnv(t, func(d *httpapi.Deps) {
 		d.CookieSameSite = http.SameSiteNoneMode
 		d.BrowserOrigins = []string{appOrigin}

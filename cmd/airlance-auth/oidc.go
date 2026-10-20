@@ -8,8 +8,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"airlance.org/auth/internal/bootstrap"
-	"airlance.org/auth/internal/config"
+	"go.airlance.org/auth/internal/bootstrap"
+	"go.airlance.org/auth/internal/config"
 )
 
 // newOIDCCommand manages the clients of the OpenID Provider. It is run on the server by the operator and talks to the
@@ -25,8 +25,10 @@ func newOIDCCommand() *cobra.Command {
 		if err != nil {
 			return err
 		}
+
 		ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
+
 		return bootstrap.OIDCClient(ctx, cfg, req, cmd.OutOrStdout())
 	}
 
@@ -82,6 +84,7 @@ func newOIDCCommand() *cobra.Command {
 				if len(a) == 1 {
 					req.ID = a[0]
 				}
+
 				return run(cmd, req)
 			},
 		}
@@ -92,6 +95,7 @@ func newOIDCCommand() *cobra.Command {
 		simple("enable ID", "Let a disabled application sign users in again (old grants stay revoked)", bootstrap.OIDCClientEnable, cobra.ExactArgs(1)),
 	)
 	oidc.AddCommand(client, newOIDCResourceCommand())
+
 	return oidc
 }
 
@@ -108,8 +112,10 @@ func newOIDCResourceCommand() *cobra.Command {
 		if err != nil {
 			return err
 		}
+
 		ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
+
 		return bootstrap.OIDCResource(ctx, cfg, req, cmd.OutOrStdout())
 	}
 
@@ -184,6 +190,7 @@ func newOIDCResourceCommand() *cobra.Command {
 				if len(a) == 1 {
 					req.ID = a[0]
 				}
+
 				return run(cmd, req)
 			},
 		}
@@ -193,5 +200,6 @@ func newOIDCResourceCommand() *cobra.Command {
 		simple("disable ID", "Stop issuing tokens for an API and end every grant that holds it", bootstrap.OIDCResourceDisable, cobra.ExactArgs(1)),
 		simple("enable ID", "Issue tokens for a disabled API again (ended grants stay ended)", bootstrap.OIDCResourceEnable, cobra.ExactArgs(1)),
 	)
+
 	return resource
 }

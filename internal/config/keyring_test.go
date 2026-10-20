@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"airlance.org/auth/internal/config"
+	"go.airlance.org/auth/internal/config"
 )
 
 const validKeyring = `{
@@ -30,6 +30,7 @@ func TestParseKeyringDocumentedExample(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseKeyring: %v", err)
 	}
+
 	if got := ring.JWTSigning.Keys["sign-old"].KeyFile; got != "/run/secrets/sign-old.pem" {
 		t.Errorf("sign-old key_file = %q", got)
 	}
@@ -40,6 +41,7 @@ func TestParseKeyringPurposesAreOptional(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseKeyring: %v", err)
 	}
+
 	if ring.OTPHMAC != nil || ring.JWTSigning != nil {
 		t.Errorf("ring = %+v, want no purposes", ring)
 	}
@@ -79,6 +81,7 @@ func TestParseKeyringRejectsInvalid(t *testing.T) {
 
 func TestParseKeyringErrorsDoNotEchoContents(t *testing.T) {
 	const secret = "s3cr3t-material"
+
 	inputs := []string{
 		`{"format_version": 1, "otp_hmac": ` + secret + `}`,
 		`{"format_version": "` + secret + `"}`,
@@ -88,6 +91,7 @@ func TestParseKeyringErrorsDoNotEchoContents(t *testing.T) {
 		if err == nil {
 			t.Fatalf("ParseKeyring(%q) succeeded", in)
 		}
+
 		if strings.Contains(err.Error(), secret) {
 			t.Errorf("error %q echoes input", err)
 		}

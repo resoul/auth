@@ -7,12 +7,12 @@ import (
 	"net/netip"
 	"time"
 
-	"airlance.org/auth/internal/application/port"
-	appsession "airlance.org/auth/internal/application/session"
-	"airlance.org/auth/internal/domain/authflow"
-	"airlance.org/auth/internal/domain/identity"
-	dpasskey "airlance.org/auth/internal/domain/passkey"
-	dsession "airlance.org/auth/internal/domain/session"
+	"go.airlance.org/auth/internal/application/port"
+	appsession "go.airlance.org/auth/internal/application/session"
+	"go.airlance.org/auth/internal/domain/authflow"
+	"go.airlance.org/auth/internal/domain/identity"
+	dpasskey "go.airlance.org/auth/internal/domain/passkey"
+	dsession "go.airlance.org/auth/internal/domain/session"
 )
 
 // Outcome is the externally visible result class of a use case.
@@ -81,6 +81,7 @@ func (d SessionDeps) validate(name string) error {
 	if d.Sessions == nil || d.Signer == nil {
 		return fmt.Errorf("new %s: all dependencies are required", name)
 	}
+
 	return nil
 }
 
@@ -98,18 +99,21 @@ func (d SessionDeps) signIn(ctx context.Context, st port.Stores, now time.Time, 
 	if err != nil {
 		return SignedIn{}, fmt.Errorf("read session history: %w", err)
 	}
+
 	issued, err := d.Sessions.Issue(ctx, st, now, appsession.IssueParams{
 		UserID: user.ID(), Binding: binding, AMR: amr, AuthTime: now, DeviceName: deviceName,
 	})
 	if err != nil {
 		return SignedIn{}, fmt.Errorf("issue session: %w", err)
 	}
+
 	access, err := d.Signer.SignAccess(port.AccessClaims{
 		UserID: user.ID(), SessionID: issued.Session.ID(), AuthTime: now, AMR: issued.Session.AMR(),
 	})
 	if err != nil {
 		return SignedIn{}, fmt.Errorf("sign access token: %w", err)
 	}
+
 	if history.NewClient() {
 		if err := st.Outbox.Enqueue(ctx, port.MailJob{
 			Kind: port.JobNewDevice, QuotaClass: authflow.QuotaRecognized, AvailableAt: now,
@@ -118,12 +122,14 @@ func (d SessionDeps) signIn(ctx context.Context, st port.Stores, now time.Time, 
 			return SignedIn{}, fmt.Errorf("enqueue new device notice: %w", err)
 		}
 	}
+
 	if err := st.Audit.Record(ctx, port.AuditEvent{
 		Type: port.AuditLoginSucceeded, Result: port.AuditSuccess, UserID: user.ID(), SessionID: issued.Session.ID(), At: now,
 		Fields: map[string]string{"method": method},
 	}); err != nil {
 		return SignedIn{}, fmt.Errorf("record audit event: %w", err)
 	}
+
 	return SignedIn{
 		User: user, Session: issued.Session, Access: access,
 		RefreshSecret: issued.RefreshSecret, RefreshExpiresAt: issued.RefreshExpiresAt,
@@ -146,6 +152,7 @@ func refuse(ctx context.Context, st port.Stores, now time.Time, userID identity.
 	if userID.IsZero() {
 		return nil
 	}
+
 	return st.Audit.Record(ctx, port.AuditEvent{
 		Type: port.AuditPasskeyRefused, Result: port.AuditDenied, UserID: userID, At: now,
 		Fields: map[string]string{"reason": string(reason)},

@@ -23,6 +23,7 @@ func ParseRegistrationMode(s string) (RegistrationMode, error) {
 	case RegistrationOpen, RegistrationInviteOnly:
 		return RegistrationMode(s), nil
 	}
+
 	return "", fmt.Errorf("unknown registration mode %q", s)
 }
 
@@ -53,6 +54,7 @@ func NewInvitation(email Email, now time.Time, ttl time.Duration) (*Invitation, 
 	case ttl < MinInvitationTTL || ttl > MaxInvitationTTL:
 		return nil, fmt.Errorf("new invitation: the lifetime must be between %v and %v", MinInvitationTTL, MaxInvitationTTL)
 	}
+
 	return &Invitation{email: email, createdAt: now, expiresAt: now.Add(ttl)}, nil
 }
 
@@ -68,6 +70,7 @@ func RestoreInvitation(r InvitationRecord) (*Invitation, error) {
 	if r.Email.IsZero() || r.CreatedAt.IsZero() || !r.ExpiresAt.After(r.CreatedAt) {
 		return nil, errors.New("restore invitation: incomplete record")
 	}
+
 	return &Invitation{email: r.Email, createdAt: r.CreatedAt, expiresAt: r.ExpiresAt}, nil
 }
 

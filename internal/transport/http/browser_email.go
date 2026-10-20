@@ -5,10 +5,10 @@ import (
 	"errors"
 	"fmt"
 
-	"airlance.org/auth/internal/application/emailauth"
-	"airlance.org/auth/internal/application/port"
-	"airlance.org/auth/internal/domain/identity"
-	"airlance.org/auth/internal/transport/http/openapi"
+	"go.airlance.org/auth/internal/application/emailauth"
+	"go.airlance.org/auth/internal/application/port"
+	"go.airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/transport/http/openapi"
 )
 
 // BrowserStartEmail starts a flow. The client binding is the cookie; a browser that has none
@@ -17,14 +17,17 @@ func (a *API) BrowserStartEmail(ctx context.Context, req openapi.BrowserStartEma
 	cmd := emailauth.StartCommand{
 		Email: req.Body.Email, BindingSecret: requestCookie(ctx, BindingCookieName), ClientIP: clientIP(ctx),
 	}
+
 	res, err := a.start.Execute(ctx, cmd)
 	if cmd.BindingSecret != "" && errors.Is(err, port.ErrInvalidBindingSecret) {
 		cmd.BindingSecret = ""
 		res, err = a.start.Execute(ctx, cmd)
 	}
+
 	if errors.Is(err, identity.ErrInvalidEmail) {
 		return openapi.BrowserStartEmail400JSONResponse{InvalidRequestJSONResponse: openapi.InvalidRequestJSONResponse(problem(ctx, openapi.ErrorCodeInvalidRequest))}, nil
 	}
+
 	if err != nil {
 		return nil, err
 	}
@@ -34,14 +37,17 @@ func (a *API) BrowserStartEmail(ctx context.Context, req openapi.BrowserStartEma
 		if res.Reason == emailauth.ReasonNotInvited || res.Reason == emailauth.ReasonBlocked {
 			a.denied(ctx, "start", string(res.Reason)) // the client sees an ordinary start; the operator sees the refusal
 		}
+
 		if res.NewBindingSecret != "" {
 			setCookie(ctx, a.cookies.binding(res.NewBindingSecret))
 		}
+
 		return openapi.BrowserStartEmail202JSONResponse{FlowId: res.FlowID.String(), ExpiresAt: res.ExpiresAt, ResendAfter: res.ResendAfter}, nil
 	case emailauth.OutcomeRateLimited:
 		a.denied(ctx, "start", string(res.Reason))
 		return openapi.BrowserStartEmail429JSONResponse{RateLimitedJSONResponse: openapi.RateLimitedJSONResponse(problem(ctx, openapi.ErrorCodeRateLimited))}, nil
 	}
+
 	return nil, fmt.Errorf("start: unexpected outcome %q", res.Outcome)
 }
 
@@ -66,6 +72,7 @@ func (a *API) BrowserVerifyEmail(ctx context.Context, req openapi.BrowserVerifyE
 		a.denied(ctx, "verify", string(res.Reason))
 		return openapi.BrowserVerifyEmail429JSONResponse{RateLimitedJSONResponse: openapi.RateLimitedJSONResponse(problem(ctx, openapi.ErrorCodeRateLimited))}, nil
 	}
+
 	return nil, fmt.Errorf("verify: unexpected outcome %q", res.Outcome)
 }
 
@@ -75,11 +82,13 @@ func (a *API) BrowserResendEmail(ctx context.Context, req openapi.BrowserResendE
 	if err != nil {
 		return nil, err
 	}
+
 	switch res.Outcome {
 	case emailauth.OutcomeOK:
 		if res.Reason == emailauth.ReasonNotInvited || res.Reason == emailauth.ReasonBlocked {
 			a.denied(ctx, "resend", string(res.Reason))
 		}
+
 		return openapi.BrowserResendEmail202JSONResponse{FlowId: req.Body.FlowId, ExpiresAt: res.ExpiresAt, ResendAfter: res.ResendAfter}, nil
 	case emailauth.OutcomeDenied:
 		a.denied(ctx, "resend", string(res.Reason))
@@ -88,6 +97,7 @@ func (a *API) BrowserResendEmail(ctx context.Context, req openapi.BrowserResendE
 		a.denied(ctx, "resend", string(res.Reason))
 		return openapi.BrowserResendEmail429JSONResponse{RateLimitedJSONResponse: openapi.RateLimitedJSONResponse(problem(ctx, openapi.ErrorCodeRateLimited))}, nil
 	}
+
 	return nil, fmt.Errorf("resend: unexpected outcome %q", res.Outcome)
 }
 
@@ -97,11 +107,13 @@ func (a *API) NativeResendEmail(ctx context.Context, req openapi.NativeResendEma
 	if err != nil {
 		return nil, err
 	}
+
 	switch res.Outcome {
 	case emailauth.OutcomeOK:
 		if res.Reason == emailauth.ReasonNotInvited || res.Reason == emailauth.ReasonBlocked {
 			a.denied(ctx, "resend", string(res.Reason))
 		}
+
 		return openapi.NativeResendEmail202JSONResponse{FlowId: req.Body.FlowId, ExpiresAt: res.ExpiresAt, ResendAfter: res.ResendAfter}, nil
 	case emailauth.OutcomeDenied:
 		a.denied(ctx, "resend", string(res.Reason))
@@ -110,6 +122,7 @@ func (a *API) NativeResendEmail(ctx context.Context, req openapi.NativeResendEma
 		a.denied(ctx, "resend", string(res.Reason))
 		return openapi.NativeResendEmail429JSONResponse{RateLimitedJSONResponse: openapi.RateLimitedJSONResponse(problem(ctx, openapi.ErrorCodeRateLimited))}, nil
 	}
+
 	return nil, fmt.Errorf("resend: unexpected outcome %q", res.Outcome)
 }
 

@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"time"
 
-	"airlance.org/auth/internal/application/port"
-	"airlance.org/auth/internal/domain/operator"
-	"airlance.org/auth/internal/domain/passkey"
+	"go.airlance.org/auth/internal/application/port"
+	"go.airlance.org/auth/internal/domain/operator"
+	"go.airlance.org/auth/internal/domain/passkey"
 )
 
 // Outcome is the externally visible result class of a use case.
@@ -71,26 +71,33 @@ func (a Actor) session(ctx context.Context, st port.Stores, now time.Time) (*ope
 	if a.OperatorID.IsZero() || a.SessionID.IsZero() {
 		return nil, false, nil
 	}
+
 	sess, err := st.OperatorSessions.GetForUpdate(ctx, a.SessionID)
 	if errors.Is(err, port.ErrNotFound) {
 		return nil, false, nil
 	}
+
 	if err != nil {
 		return nil, false, fmt.Errorf("load operator session: %w", err)
 	}
+
 	if sess.OperatorID() != a.OperatorID || !sess.Active(now) {
 		return nil, false, nil
 	}
+
 	op, err := st.Operators.Get(ctx, a.OperatorID)
 	if errors.Is(err, port.ErrNotFound) {
 		return nil, false, nil
 	}
+
 	if err != nil {
 		return nil, false, fmt.Errorf("load operator: %w", err)
 	}
+
 	if op.Disabled() {
 		return nil, false, nil
 	}
+
 	return sess, true, nil
 }
 
@@ -101,12 +108,14 @@ func (a Actor) authorize(ctx context.Context, st port.Stores, now time.Time, fre
 	if err != nil {
 		return "", err
 	}
+
 	switch {
 	case !ok:
 		return OutcomeUnauthenticated, nil
 	case fresh && !sess.Fresh(now):
 		return OutcomeReauthRequired, nil
 	}
+
 	return OutcomeOK, nil
 }
 

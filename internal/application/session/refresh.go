@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"time"
 
-	"airlance.org/auth/internal/application/port"
-	dsession "airlance.org/auth/internal/domain/session"
-	"airlance.org/auth/internal/domain/token"
+	"go.airlance.org/auth/internal/application/port"
+	dsession "go.airlance.org/auth/internal/domain/session"
+	"go.airlance.org/auth/internal/domain/token"
 )
 
 // RefreshDeps are the dependencies of Refresh.
@@ -36,9 +36,11 @@ func NewRefresh(d RefreshDeps) (*Refresh, error) {
 	if d.UnitOfWork == nil || d.Clock == nil || d.TokenIDs == nil || d.Secrets == nil || d.Signer == nil || d.Metrics == nil {
 		return nil, errors.New("new refresh: all dependencies are required")
 	}
+
 	if err := d.Policy.Validate(); err != nil {
 		return nil, fmt.Errorf("new refresh: %w", err)
 	}
+
 	return &Refresh{d}, nil
 }
 
@@ -66,6 +68,7 @@ func (r *Refresh) Execute(ctx context.Context, cmd RefreshCommand) (RefreshResul
 	if errors.Is(err, port.ErrInvalidRefreshSecret) {
 		return RefreshResult{Outcome: OutcomeDenied, Reason: ReasonMalformed}, nil
 	}
+
 	if err != nil {
 		return RefreshResult{}, fmt.Errorf("refresh: hash secret: %w", err)
 	}
@@ -74,19 +77,23 @@ func (r *Refresh) Execute(ctx context.Context, cmd RefreshCommand) (RefreshResul
 	if err != nil {
 		return RefreshResult{}, fmt.Errorf("refresh: %w", err)
 	}
+
 	newSecret, newHash, err := r.Secrets.NewRefreshSecret()
 	if err != nil {
 		return RefreshResult{}, fmt.Errorf("refresh: %w", err)
 	}
+
 	now := r.Clock.Now()
 
 	var result RefreshResult
+
 	err = r.UnitOfWork.Do(ctx, func(ctx context.Context, st port.Stores) error {
 		found, err := st.Tokens.FindByHash(ctx, hash)
 		if errors.Is(err, port.ErrNotFound) {
 			result = denied(ReasonUnknownToken)
 			return nil
 		}
+
 		if err != nil {
 			return fmt.Errorf("find token: %w", err)
 		}
@@ -98,14 +105,17 @@ func (r *Refresh) Execute(ctx context.Context, cmd RefreshCommand) (RefreshResul
 			result = denied(ReasonUnknownSession)
 			return nil
 		}
+
 		if err != nil {
 			return fmt.Errorf("load session: %w", err)
 		}
+
 		tok, err := st.Tokens.GetForUpdate(ctx, found.ID())
 		if errors.Is(err, port.ErrNotFound) {
 			result = denied(ReasonUnknownToken)
 			return nil
 		}
+
 		if err != nil {
 			return fmt.Errorf("load token: %w", err)
 		}
@@ -120,19 +130,24 @@ func (r *Refresh) Execute(ctx context.Context, cmd RefreshCommand) (RefreshResul
 		case errors.Is(err, token.ErrReused):
 			// Replay of an exchanged token: revoke, commit, and only then refuse.
 			sess.Revoke(now)
+
 			if err := st.Sessions.Save(ctx, sess); err != nil {
 				return fmt.Errorf("revoke session after reuse: %w", err)
 			}
+
 			if err := st.Tokens.RevokeBySession(ctx, sess.ID(), now); err != nil {
 				return fmt.Errorf("revoke tokens after reuse: %w", err)
 			}
+
 			if err := st.Audit.Record(ctx, port.AuditEvent{
 				Type: port.AuditRefreshReuse, Result: port.AuditDenied, UserID: sess.UserID(), SessionID: sess.ID(), At: now,
 				Fields: map[string]string{"reason": "token_reused"},
 			}); err != nil {
 				return fmt.Errorf("record audit event: %w", err)
 			}
+
 			result = denied(ReasonTokenReused)
+
 			return nil
 		case errors.Is(err, token.ErrRevoked):
 			result = denied(ReasonTokenRevoked)
@@ -161,18 +176,23 @@ func (r *Refresh) Execute(ctx context.Context, cmd RefreshCommand) (RefreshResul
 		if err != nil {
 			return fmt.Errorf("sign access token: %w", err)
 		}
+
 		if err := st.Tokens.Save(ctx, tok); err != nil {
 			return fmt.Errorf("store used token: %w", err)
 		}
+
 		if err := st.Tokens.Create(ctx, child); err != nil {
 			return fmt.Errorf("store child token: %w", err)
 		}
+
 		if err := st.Sessions.Save(ctx, sess); err != nil {
 			return fmt.Errorf("store session: %w", err)
 		}
+
 		result = RefreshResult{
 			Outcome: OutcomeOK, Session: sess, Access: access, NewRefreshSecret: newSecret, RefreshExpiresAt: child.ExpiresAt(),
 		}
+
 		return nil
 	})
 	if err != nil {
@@ -182,6 +202,7 @@ func (r *Refresh) Execute(ctx context.Context, cmd RefreshCommand) (RefreshResul
 	if result.Reason == ReasonTokenReused {
 		r.Metrics.RefreshReuseDetected()
 	}
+
 	return result, nil
 }
 

@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"time"
 
-	"airlance.org/auth/internal/application/port"
-	"airlance.org/auth/internal/domain/identity"
-	"airlance.org/auth/internal/domain/operator"
+	"go.airlance.org/auth/internal/application/port"
+	"go.airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/domain/operator"
 )
 
 // OperatorsDeps are the dependencies of Operators.
@@ -29,6 +29,7 @@ func NewOperators(d OperatorsDeps) (*Operators, error) {
 	if d.UnitOfWork == nil || d.Clock == nil || d.OperatorIDs == nil || d.PasskeyIDs == nil || d.Secrets == nil {
 		return nil, errors.New("new operators: all dependencies are required")
 	}
+
 	return &Operators{d}, nil
 }
 
@@ -53,17 +54,21 @@ func (o *Operators) issue(ctx context.Context, st port.Stores, now time.Time, id
 	if err != nil {
 		return Enrollment{}, fmt.Errorf("new enrollment code: %w", err)
 	}
+
 	rowID, err := o.PasskeyIDs.NewPasskeyID()
 	if err != nil {
 		return Enrollment{}, fmt.Errorf("enrollment id: %w", err)
 	}
+
 	e, err := operator.NewEnrollment(rowID, id, hash, now)
 	if err != nil {
 		return Enrollment{}, err
 	}
+
 	if err := st.Operators.CreateEnrollment(ctx, e); err != nil {
 		return Enrollment{}, fmt.Errorf("store enrollment: %w", err)
 	}
+
 	return Enrollment{Code: code, ExpiresAt: e.ExpiresAt()}, nil
 }
 
@@ -74,28 +79,36 @@ func (o *Operators) Create(ctx context.Context, rawEmail string) (*operator.Oper
 	if err != nil {
 		return nil, Enrollment{}, invalid("the address is not valid")
 	}
+
 	id, err := o.OperatorIDs.NewOperatorID()
 	if err != nil {
 		return nil, Enrollment{}, fmt.Errorf("create operator: %w", err)
 	}
+
 	now := o.Clock.Now()
+
 	op, err := operator.New(id, email, now)
 	if err != nil {
 		return nil, Enrollment{}, fmt.Errorf("create operator: %w", err)
 	}
+
 	var enrollment Enrollment
+
 	err = o.UnitOfWork.Do(ctx, func(ctx context.Context, st port.Stores) error {
 		if err := st.Operators.Create(ctx, op); err != nil {
 			return err
 		}
+
 		if enrollment, err = o.issue(ctx, st, now, op.ID()); err != nil {
 			return err
 		}
+
 		return recordChange(ctx, st, now, op.ID(), "create")
 	})
 	if err != nil {
 		return nil, Enrollment{}, fmt.Errorf("create operator: %w", err)
 	}
+
 	return op, enrollment, nil
 }
 
@@ -106,11 +119,14 @@ func (o *Operators) Enroll(ctx context.Context, rawEmail string) (*operator.Oper
 	if err != nil {
 		return nil, Enrollment{}, invalid("the address is not valid")
 	}
+
 	now := o.Clock.Now()
+
 	var (
 		op         *operator.Operator
 		enrollment Enrollment
 	)
+
 	err = o.UnitOfWork.Do(ctx, func(ctx context.Context, st port.Stores) error {
 		var err error
 		if op, err = st.Operators.FindByEmail(ctx, email); errors.Is(err, port.ErrNotFound) {
@@ -118,17 +134,21 @@ func (o *Operators) Enroll(ctx context.Context, rawEmail string) (*operator.Oper
 		} else if err != nil {
 			return err
 		}
+
 		if op.Disabled() {
 			return invalid("the operator is disabled: enable it first")
 		}
+
 		if enrollment, err = o.issue(ctx, st, now, op.ID()); err != nil {
 			return err
 		}
+
 		return recordChange(ctx, st, now, op.ID(), "enroll")
 	})
 	if err != nil {
 		return nil, Enrollment{}, fmt.Errorf("enroll operator: %w", err)
 	}
+
 	return op, enrollment, nil
 }
 
@@ -139,8 +159,11 @@ func (o *Operators) SetDisabled(ctx context.Context, rawEmail string, disabled b
 	if err != nil {
 		return nil, invalid("the address is not valid")
 	}
+
 	now := o.Clock.Now()
+
 	var op *operator.Operator
+
 	err = o.UnitOfWork.Do(ctx, func(ctx context.Context, st port.Stores) error {
 		var err error
 		if op, err = st.Operators.FindByEmail(ctx, email); errors.Is(err, port.ErrNotFound) {
@@ -148,28 +171,34 @@ func (o *Operators) SetDisabled(ctx context.Context, rawEmail string, disabled b
 		} else if err != nil {
 			return err
 		}
+
 		operation := "enable"
 		if disabled {
 			operation = "disable"
+
 			if err := op.Disable(now); err != nil {
 				return err
 			}
 		} else {
 			op.Enable()
 		}
+
 		if err := st.Operators.Save(ctx, op); err != nil {
 			return err
 		}
+
 		if disabled {
 			if err := st.OperatorSessions.RevokeAllForOperator(ctx, op.ID(), now); err != nil {
 				return err
 			}
 		}
+
 		return recordChange(ctx, st, now, op.ID(), operation)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("set operator disabled: %w", err)
 	}
+
 	return op, nil
 }
 
@@ -182,22 +211,27 @@ type OperatorInfo struct {
 // List returns every operator with the number of keys each has.
 func (o *Operators) List(ctx context.Context) ([]OperatorInfo, error) {
 	var out []OperatorInfo
+
 	err := o.UnitOfWork.Do(ctx, func(ctx context.Context, st port.Stores) error {
 		ops, err := st.Operators.List(ctx)
 		if err != nil {
 			return err
 		}
+
 		for _, op := range ops {
 			keys, err := st.Operators.ListCredentials(ctx, op.ID())
 			if err != nil {
 				return err
 			}
+
 			out = append(out, OperatorInfo{Operator: op, Keys: len(keys)})
 		}
+
 		return nil
 	})
 	if err != nil {
 		return nil, fmt.Errorf("list operators: %w", err)
 	}
+
 	return out, nil
 }

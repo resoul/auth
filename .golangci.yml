@@ -2,6 +2,8 @@ version: "2"
 
 run:
   timeout: 5m
+  # Integration and end-to-end tests are code too: lint them with everything else.
+  build-tags: [integration, e2e]
 
 linters:
   default: standard # errcheck, govet, ineffassign, staticcheck, unused
@@ -39,11 +41,15 @@ linters:
       # The OpenAPI generator uses both aliases for encoding/json in generated code.
       - path: internal/transport/http/openapi/openapi.gen.go
         text: ST1019
+      # Generated code keeps the layout of its generator.
+      - path: (internal/transport/http/openapi/openapi.gen.go|internal/adapter/postgres/sqlc/)
+        linters: [wsl_v5]
   enable:
     - depguard
     - errorlint
     - gosec
     - nolintlint
+    - wsl_v5
   settings:
     gosec:
       excludes:
@@ -62,14 +68,14 @@ linters:
           files: ["**/internal/domain/**", "!$test"]
           allow:
             - $gostd
-            - airlance.org/auth/internal/domain
+            - go.airlance.org/auth/internal/domain
         application:
           list-mode: strict
           files: ["**/internal/application/**", "!$test"]
           allow:
             - $gostd
-            - airlance.org/auth/internal/domain
-            - airlance.org/auth/internal/application
+            - go.airlance.org/auth/internal/domain
+            - go.airlance.org/auth/internal/application
         config:
           list-mode: strict
           files: ["**/internal/config/**", "!$test"]
@@ -78,34 +84,34 @@ linters:
         adapter:
           files: ["**/internal/adapter/**", "!$test"]
           deny:
-            - pkg: airlance.org/auth/internal/transport
+            - pkg: go.airlance.org/auth/internal/transport
               desc: adapter must not depend on transport
-            - pkg: airlance.org/auth/internal/bootstrap
+            - pkg: go.airlance.org/auth/internal/bootstrap
               desc: only cmd depends on bootstrap
-            - pkg: airlance.org/auth/internal/config
+            - pkg: go.airlance.org/auth/internal/config
               desc: bootstrap passes config values to adapter constructors
-            - pkg: airlance.org/auth/internal/application/emailauth
+            - pkg: go.airlance.org/auth/internal/application/emailauth
               desc: adapter depends on application/port only
-            - pkg: airlance.org/auth/internal/application/session
+            - pkg: go.airlance.org/auth/internal/application/session
               desc: adapter depends on application/port only
-            - pkg: airlance.org/auth/internal/application/account
+            - pkg: go.airlance.org/auth/internal/application/account
               desc: adapter depends on application/port only
-            - pkg: airlance.org/auth/internal/application/passkey
+            - pkg: go.airlance.org/auth/internal/application/passkey
               desc: adapter depends on application/port only
-            - pkg: airlance.org/auth/internal/application/deviceauth
+            - pkg: go.airlance.org/auth/internal/application/deviceauth
               desc: adapter depends on application/port only
-            - pkg: airlance.org/auth/internal/application/oauth
+            - pkg: go.airlance.org/auth/internal/application/oauth
               desc: adapter depends on application/port only
-            - pkg: airlance.org/auth/internal/application/admin
+            - pkg: go.airlance.org/auth/internal/application/admin
               desc: adapter depends on application/port only
         transport:
           files: ["**/internal/transport/**", "!$test"]
           deny:
-            - pkg: airlance.org/auth/internal/adapter
+            - pkg: go.airlance.org/auth/internal/adapter
               desc: transport reaches adapters only through bootstrap
-            - pkg: airlance.org/auth/internal/bootstrap
+            - pkg: go.airlance.org/auth/internal/bootstrap
               desc: only cmd depends on bootstrap
-            - pkg: airlance.org/auth/internal/config
+            - pkg: go.airlance.org/auth/internal/config
               desc: bootstrap passes config values to transport constructors
         entrypoint:
           files: ["**/cmd/**", "!$test"]
@@ -113,15 +119,15 @@ linters:
           allow:
             - $gostd
             - github.com/spf13/cobra
-            - airlance.org/auth/internal/bootstrap
-            - airlance.org/auth/internal/config
+            - go.airlance.org/auth/internal/bootstrap
+            - go.airlance.org/auth/internal/config
         # Production code never imports test support.
         production:
           files: ["!$test", "!**/internal/testutil/**"]
           deny:
-            - pkg: airlance.org/auth/internal/testutil
+            - pkg: go.airlance.org/auth/internal/testutil
               desc: production code must not import testutil
-            - pkg: airlance.org/auth/internal/adapter/memory
+            - pkg: go.airlance.org/auth/internal/adapter/memory
               desc: production code must not import in-memory test adapters
 
 formatters:
@@ -131,4 +137,4 @@ formatters:
   settings:
     goimports:
       local-prefixes:
-        - airlance.org/auth
+        - go.airlance.org/auth

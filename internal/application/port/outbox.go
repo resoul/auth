@@ -8,9 +8,9 @@ import (
 	"regexp"
 	"time"
 
-	"airlance.org/auth/internal/domain/authflow"
-	"airlance.org/auth/internal/domain/identity"
-	"airlance.org/auth/internal/domain/session"
+	"go.airlance.org/auth/internal/domain/authflow"
+	"go.airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/domain/session"
 )
 
 // MailJobKind says what a queued job sends.
@@ -57,6 +57,7 @@ func (j MailJob) EffectiveKind() MailJobKind {
 	if j.Kind == "" {
 		return JobCode
 	}
+
 	return j.Kind
 }
 
@@ -80,21 +81,26 @@ func (j MailJob) Validate() error {
 		case !session.ValidDeviceName(j.DeviceName):
 			return errors.New("mail job: invalid device name")
 		}
+
 		return nil
 	case JobInvitation:
 		if j.Recipient.IsZero() {
 			return errors.New("mail job: an invitation needs a recipient")
 		}
+
 		if !j.FlowID.IsZero() {
 			return errors.New("mail job: an invitation belongs to no flow")
 		}
+
 		return nil
 	default:
 		return fmt.Errorf("mail job: unknown kind %q", j.Kind)
 	}
+
 	if j.FlowID.IsZero() || j.Generation == 0 {
 		return errors.New("mail job: a flow and its generation are required")
 	}
+
 	return nil
 }
 
@@ -108,6 +114,7 @@ func ParseMailJobID(s string) (MailJobID, error) {
 	if !mailJobIDFormat.MatchString(s) {
 		return MailJobID{}, errors.New("invalid mail job id")
 	}
+
 	return MailJobID{value: s}, nil
 }
 

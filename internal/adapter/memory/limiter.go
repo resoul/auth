@@ -5,8 +5,8 @@ import (
 	"slices"
 	"time"
 
-	"airlance.org/auth/internal/application/port"
-	"airlance.org/auth/internal/domain/quota"
+	"go.airlance.org/auth/internal/application/port"
+	"go.airlance.org/auth/internal/domain/quota"
 )
 
 type limiter struct {
@@ -24,6 +24,7 @@ func (l *limiter) Allow(_ context.Context, spend port.Spend) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+
 	for _, lim := range limits {
 		events := l.tx.events[eventKey(lim)]
 		for _, w := range lim.Windows {
@@ -32,22 +33,28 @@ func (l *limiter) Allow(_ context.Context, spend port.Spend) (bool, error) {
 			}
 		}
 	}
+
 	horizon := spend.Now.Add(-quota.MaxWindow)
+
 	for _, lim := range limits {
 		key := eventKey(lim)
 		kept := slices.DeleteFunc(slices.Clone(l.tx.events[key]), func(at time.Time) bool { return !at.After(horizon) })
 		l.tx.events[key] = append(kept, spend.Now)
 	}
+
 	l.tx.spent[spendKey{spend.Kind, spend.Email.String()}]++
+
 	return true, nil
 }
 
 func countAfter(events []time.Time, from time.Time) int {
 	n := 0
+
 	for _, at := range events {
 		if at.After(from) {
 			n++
 		}
 	}
+
 	return n
 }

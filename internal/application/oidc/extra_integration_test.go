@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"airlance.org/auth/internal/adapter/postgres"
-	appoidc "airlance.org/auth/internal/application/oidc"
-	"airlance.org/auth/internal/application/port"
-	doidc "airlance.org/auth/internal/domain/oidc"
+	"go.airlance.org/auth/internal/adapter/postgres"
+	appoidc "go.airlance.org/auth/internal/application/oidc"
+	"go.airlance.org/auth/internal/application/port"
+	doidc "go.airlance.org/auth/internal/domain/oidc"
 )
 
 func TestStartingASignInIsLimitedPerAddressButTheSharedSignInIsNot(t *testing.T) {
@@ -25,6 +25,7 @@ func TestStartingASignInIsLimitedPerAddressButTheSharedSignInIsNot(t *testing.T)
 	start := func(ip netip.Addr, sso string) appoidc.AuthorizeResult {
 		cmd := e.newFlow(app).command(sso)
 		cmd.ClientIP = ip
+
 		return e.authorizeWith(cmd)
 	}
 	for i := range 60 {
@@ -32,6 +33,7 @@ func TestStartingASignInIsLimitedPerAddressButTheSharedSignInIsNot(t *testing.T)
 			t.Fatalf("start %d = %+v, want the sign-in page", i+1, got)
 		}
 	}
+
 	got := start(here, "")
 	if got.Kind != appoidc.AuthorizeRedirect || got.Location == "" || !contains(got.Location, "error=temporarily_unavailable") {
 		t.Errorf("the 61st start in a minute = %+v, want temporarily_unavailable back to the application", got)
@@ -48,6 +50,7 @@ func TestStartingASignInIsLimitedPerAddressButTheSharedSignInIsNot(t *testing.T)
 	}
 	// The window moves on.
 	e.clock.Advance(2 * time.Minute)
+
 	if got := start(here, ""); got.Kind != appoidc.AuthorizeLogin {
 		t.Errorf("after the window = %+v", got)
 	}
@@ -59,6 +62,7 @@ func contains(s, sub string) bool {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -75,27 +79,34 @@ func TestCleanupRemovesWhatExpiredAndKeepsWhatLives(t *testing.T) {
 	spentCode, spentSSO := e.signedIn(spent, e.newPerson())
 
 	e.clock.Advance(15 * 24 * time.Hour) // past the absolute time of the sign-ins (7 days) and their grace period (7 more)
+
 	res, err := e.store.Cleanup(context.Background(), e.clock.Now(), postgres.DefaultCleanupPolicy())
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if res.OIDCRows == 0 {
 		t.Fatalf("cleanup removed no OIDC rows: %+v", res)
 	}
+
 	h := func(secret string) doidc.SecretHash {
 		hash, err := e.secrets.HashOIDCSecret(secret)
 		must(t, err)
+
 		return hash
 	}
+
 	e.do(func(ctx context.Context, st port.Stores) error {
 		if _, err := st.OIDCRequests.GetForUpdate(ctx, h(abandoned.RequestID)); !errors.Is(err, port.ErrNotFound) {
 			t.Errorf("an abandoned request survived: %v", err)
 		}
+
 		for name, code := range map[string]string{"first": liveCode, "second": spentCode} {
 			if _, _, err := st.OIDCCodes.GetByHashForUpdate(ctx, h(code)); !errors.Is(err, port.ErrNotFound) {
 				t.Errorf("the %s code survived: %v", name, err)
 			}
 		}
+
 		for name, sso := range map[string]string{"first": liveSSO, "second": spentSSO} {
 			if _, err := st.OPSessions.GetBySecret(ctx, h(sso)); !errors.Is(err, port.ErrNotFound) {
 				t.Errorf("the %s ended sign-in survived: %v", name, err)
@@ -105,6 +116,7 @@ func TestCleanupRemovesWhatExpiredAndKeepsWhatLives(t *testing.T) {
 		if _, err := st.OIDCClients.Get(ctx, app.id); err != nil {
 			t.Errorf("cleanup removed the client: %v", err)
 		}
+
 		return nil
 	})
 }
@@ -115,12 +127,15 @@ func TestCleanupKeepsALiveSignInAndItsGrant(t *testing.T) {
 	tokens, sso := e.tokens(e.newFlow(app), e.newPerson())
 
 	e.clock.Advance(time.Hour)
+
 	if _, err := e.store.Cleanup(context.Background(), e.clock.Now(), postgres.DefaultCleanupPolicy()); err != nil {
 		t.Fatal(err)
 	}
+
 	if got := e.refresh(app, tokens.RefreshToken); got.Response == nil {
 		t.Errorf("cleanup broke a live grant: %+v", got.Failure)
 	}
+
 	if got := e.authorizeWith(e.newFlow(app).command(sso)); got.Kind != appoidc.AuthorizeRedirect {
 		t.Errorf("cleanup ended a live sign-in: %+v", got)
 	}

@@ -7,7 +7,7 @@ import (
 	"net/netip"
 	"time"
 
-	"airlance.org/auth/internal/application/port"
+	"go.airlance.org/auth/internal/application/port"
 )
 
 // AuthDeps are the dependencies of Auth.
@@ -27,6 +27,7 @@ func NewAuth(d AuthDeps) (*Auth, error) {
 	if d.UnitOfWork == nil || d.Clock == nil || d.WebAuthn == nil || d.PasskeyIDs == nil || d.Secrets == nil {
 		return nil, errors.New("new admin auth: all dependencies are required")
 	}
+
 	return &Auth{d}, nil
 }
 
@@ -45,5 +46,6 @@ func (a *Auth) spend(ctx context.Context, st port.Stores, now time.Time, ip neti
 	if err != nil {
 		return false, fmt.Errorf("spend admin quota: %w", err)
 	}
+
 	return allowed, nil
 }

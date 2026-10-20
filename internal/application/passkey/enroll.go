@@ -7,11 +7,11 @@ import (
 	"net/netip"
 	"slices"
 
-	"airlance.org/auth/internal/application/port"
-	appsession "airlance.org/auth/internal/application/session"
-	"airlance.org/auth/internal/domain/identity"
-	dpasskey "airlance.org/auth/internal/domain/passkey"
-	dsession "airlance.org/auth/internal/domain/session"
+	"go.airlance.org/auth/internal/application/port"
+	appsession "go.airlance.org/auth/internal/application/session"
+	"go.airlance.org/auth/internal/domain/identity"
+	dpasskey "go.airlance.org/auth/internal/domain/passkey"
+	dsession "go.airlance.org/auth/internal/domain/session"
 )
 
 // DefaultCredentialName labels a passkey whose owner gave no name.
@@ -40,6 +40,7 @@ func NewBeginEnroll(d BeginEnrollDeps) (*BeginEnroll, error) {
 	if d.UnitOfWork == nil || d.Clock == nil || d.WebAuthn == nil || d.Bindings == nil || d.Tickets == nil || d.PasskeyIDs == nil {
 		return nil, errors.New("new begin enroll: all dependencies are required")
 	}
+
 	return &BeginEnroll{d}, nil
 }
 
@@ -67,36 +68,45 @@ func (u *BeginEnroll) Execute(ctx context.Context, cmd BeginEnrollCommand) (Cere
 	if errors.Is(err, port.ErrInvalidBindingSecret) {
 		return CeremonyResult{Outcome: OutcomeDenied, Reason: ReasonBadBinding}, nil
 	}
+
 	if err != nil {
 		return CeremonyResult{}, fmt.Errorf("begin enroll: binding: %w", err)
 	}
+
 	hash, err := u.Tickets.HashTicketSecret(cmd.TicketSecret)
 	if errors.Is(err, port.ErrInvalidTicketSecret) {
 		return CeremonyResult{Outcome: OutcomeDenied, Reason: ReasonBadTicket}, nil
 	}
+
 	if err != nil {
 		return CeremonyResult{}, fmt.Errorf("begin enroll: ticket: %w", err)
 	}
+
 	now := u.Clock.Now()
 
 	var result CeremonyResult
+
 	err = u.UnitOfWork.Do(ctx, func(ctx context.Context, st port.Stores) error {
 		ticket, err := st.Tickets.GetByHashForUpdate(ctx, hash)
 		if errors.Is(err, port.ErrNotFound) {
 			result = CeremonyResult{Outcome: OutcomeDenied, Reason: ReasonBadTicket}
 			return nil
 		}
+
 		if err != nil {
 			return fmt.Errorf("load ticket: %w", err)
 		}
+
 		if !slices.Contains(enrollKinds, ticket.Kind()) || ticketDenied(ticket.Check(now, dpasskey.Presented{Kind: ticket.Kind(), Binding: binding})) {
 			result = CeremonyResult{Outcome: OutcomeDenied, Reason: ReasonBadTicket}
 			return nil
 		}
+
 		user, creds, reason, err := enrollSubject(ctx, st, ticket, false)
 		if err != nil {
 			return err
 		}
+
 		if reason != "" {
 			result = CeremonyResult{Outcome: OutcomeDenied, Reason: reason}
 			return nil
@@ -107,6 +117,7 @@ func (u *BeginEnroll) Execute(ctx context.Context, cmd BeginEnrollCommand) (Cere
 		if err != nil {
 			return fmt.Errorf("spend passkey quota: %w", err)
 		}
+
 		if !allowed {
 			result = CeremonyResult{Outcome: OutcomeRateLimited, Reason: ReasonQuota}
 			return nil
@@ -116,10 +127,12 @@ func (u *BeginEnroll) Execute(ctx context.Context, cmd BeginEnrollCommand) (Cere
 		if err != nil {
 			return fmt.Errorf("begin registration: %w", err)
 		}
+
 		challengeID, err := u.PasskeyIDs.NewPasskeyID()
 		if err != nil {
 			return fmt.Errorf("new challenge id: %w", err)
 		}
+
 		challenge, err := dpasskey.NewChallenge(dpasskey.NewChallengeParams{
 			ID: challengeID, Purpose: dpasskey.ChallengeRegistration, UserID: user.ID(), TicketID: ticket.ID(),
 			Data: ceremony.State, Now: now,
@@ -127,15 +140,19 @@ func (u *BeginEnroll) Execute(ctx context.Context, cmd BeginEnrollCommand) (Cere
 		if err != nil {
 			return fmt.Errorf("new challenge: %w", err)
 		}
+
 		if err := st.Challenges.Create(ctx, challenge); err != nil {
 			return fmt.Errorf("store challenge: %w", err)
 		}
+
 		result = CeremonyResult{Outcome: OutcomeOK, ChallengeID: challengeID.String(), Options: ceremony.Options}
+
 		return nil
 	})
 	if err != nil {
 		return CeremonyResult{}, fmt.Errorf("begin enroll: %w", err)
 	}
+
 	return result, nil
 }
 
@@ -151,20 +168,25 @@ func enrollSubject(ctx context.Context, st port.Stores, ticket *dpasskey.Ticket,
 	if finishing {
 		load = st.Users.GetForUpdate
 	}
+
 	user, err := load(ctx, ticket.UserID())
 	if err != nil {
 		return nil, nil, "", fmt.Errorf("load user: %w", err)
 	}
+
 	creds, err := st.Credentials.ListByUser(ctx, user.ID())
 	if err != nil {
 		return nil, nil, "", fmt.Errorf("list credentials: %w", err)
 	}
+
 	if ticket.Kind() == dpasskey.TicketRecoveryEnroll {
 		return user, nil, "", nil
 	}
+
 	if len(creds) > 0 {
 		return nil, nil, ReasonAlreadyEnrolled, nil
 	}
+
 	return user, creds, "", nil
 }
 
@@ -196,9 +218,11 @@ func NewFinishEnroll(d FinishEnrollDeps) (*FinishEnroll, error) {
 	if d.UnitOfWork == nil || d.Clock == nil || d.WebAuthn == nil || d.Bindings == nil || d.Tickets == nil || d.PasskeyIDs == nil || d.Recovery == nil {
 		return nil, errors.New("new finish enroll: all dependencies are required")
 	}
+
 	if err := d.validate("finish enroll"); err != nil {
 		return nil, err
 	}
+
 	return &FinishEnroll{d}, nil
 }
 
@@ -238,46 +262,58 @@ func (u *FinishEnroll) Execute(ctx context.Context, cmd FinishEnrollCommand) (Fi
 	if name == "" {
 		name = DefaultCredentialName
 	}
+
 	if !dpasskey.ValidName(name) || !dsession.ValidDeviceName(cmd.DeviceName) {
 		return FinishEnrollResult{}, fmt.Errorf("finish enroll: %w", ErrInvalidName)
 	}
+
 	denied := func(reason Reason) (FinishEnrollResult, error) {
 		return FinishEnrollResult{Outcome: OutcomeDenied, Reason: reason}, nil
 	}
+
 	binding, err := u.Bindings.HashBinding(cmd.BindingSecret)
 	if errors.Is(err, port.ErrInvalidBindingSecret) {
 		return denied(ReasonBadBinding)
 	}
+
 	if err != nil {
 		return FinishEnrollResult{}, fmt.Errorf("finish enroll: binding: %w", err)
 	}
+
 	hash, err := u.Tickets.HashTicketSecret(cmd.TicketSecret)
 	if errors.Is(err, port.ErrInvalidTicketSecret) {
 		return denied(ReasonBadTicket)
 	}
+
 	if err != nil {
 		return FinishEnrollResult{}, fmt.Errorf("finish enroll: ticket: %w", err)
 	}
+
 	challengeID, err := dpasskey.ParseID(cmd.ChallengeID)
 	if err != nil {
 		return denied(ReasonBadChallenge)
 	}
+
 	now := u.Clock.Now()
 
 	var result FinishEnrollResult
+
 	err = u.UnitOfWork.Do(ctx, func(ctx context.Context, st port.Stores) error {
 		ticket, err := st.Tickets.GetByHashForUpdate(ctx, hash)
 		if errors.Is(err, port.ErrNotFound) {
 			result, _ = denied(ReasonBadTicket)
 			return nil
 		}
+
 		if err != nil {
 			return fmt.Errorf("load ticket: %w", err)
 		}
+
 		if !slices.Contains(enrollKinds, ticket.Kind()) {
 			result, _ = denied(ReasonBadTicket)
 			return nil
 		}
+
 		presented := dpasskey.Presented{Kind: ticket.Kind(), Binding: binding}
 		if ticketDenied(ticket.Check(now, presented)) {
 			result, _ = denied(ReasonBadTicket)
@@ -289,6 +325,7 @@ func (u *FinishEnroll) Execute(ctx context.Context, cmd FinishEnrollCommand) (Fi
 			result, _ = denied(ReasonBadChallenge)
 			return nil
 		}
+
 		if err != nil {
 			return fmt.Errorf("load challenge: %w", err)
 		}
@@ -297,6 +334,7 @@ func (u *FinishEnroll) Execute(ctx context.Context, cmd FinishEnrollCommand) (Fi
 			result, _ = denied(ReasonBadChallenge)
 			return nil
 		}
+
 		if challengeDenied(challenge.Consume(now, dpasskey.ChallengeRegistration)) {
 			result, _ = denied(ReasonBadChallenge)
 			return nil
@@ -310,10 +348,12 @@ func (u *FinishEnroll) Execute(ctx context.Context, cmd FinishEnrollCommand) (Fi
 		if err != nil {
 			return err
 		}
+
 		if reason != "" {
 			result, _ = denied(reason)
 			return refuse(ctx, st, now, ticket.UserID(), reason)
 		}
+
 		if user.Blocked() {
 			result, _ = denied(ReasonBlocked)
 			return refuse(ctx, st, now, user.ID(), ReasonBlocked)
@@ -325,6 +365,7 @@ func (u *FinishEnroll) Execute(ctx context.Context, cmd FinishEnrollCommand) (Fi
 			result, _ = denied(ReasonCeremonyFailed)
 			return refuse(ctx, st, now, user.ID(), ReasonCeremonyFailed)
 		}
+
 		if err != nil {
 			return fmt.Errorf("finish registration: %w", err)
 		}
@@ -332,11 +373,13 @@ func (u *FinishEnroll) Execute(ctx context.Context, cmd FinishEnrollCommand) (Fi
 		// A recovery proves the old keys are lost, or that someone else holds them: none of them may open the account
 		// again. They go before the new key is stored, so the same authenticator can be registered anew.
 		fields := map[string]string{}
+
 		if ticket.Kind() == dpasskey.TicketRecoveryEnroll {
 			revoked, err := st.Credentials.DeleteAllForUser(ctx, user.ID())
 			if err != nil {
 				return fmt.Errorf("revoke old keys: %w", err)
 			}
+
 			fields["old_keys"] = "none"
 			if revoked > 0 {
 				fields["old_keys"] = "revoked"
@@ -347,6 +390,7 @@ func (u *FinishEnroll) Execute(ctx context.Context, cmd FinishEnrollCommand) (Fi
 		if err != nil {
 			return fmt.Errorf("new credential id: %w", err)
 		}
+
 		credential, err := dpasskey.NewCredential(dpasskey.NewCredentialParams{
 			ID: credentialID, UserID: user.ID(), CredentialID: registered.CredentialID, PublicKey: registered.PublicKey,
 			AAGUID: registered.AAGUID, Transports: registered.Transports, SignCount: registered.SignCount,
@@ -355,20 +399,25 @@ func (u *FinishEnroll) Execute(ctx context.Context, cmd FinishEnrollCommand) (Fi
 		if err != nil {
 			return fmt.Errorf("new credential: %w", err)
 		}
+
 		if err := st.Credentials.Create(ctx, credential); errors.Is(err, port.ErrCredentialConflict) {
 			result, _ = denied(ReasonCeremonyFailed)
+
 			if ticket.Kind() == dpasskey.TicketRecoveryEnroll {
 				// The authenticator is registered to another user. A refusal commits, and the old keys are already
 				// gone in this transaction: roll it all back instead, so a failed recovery changes nothing.
 				return errRolledBack
 			}
+
 			return refuse(ctx, st, now, user.ID(), ReasonCeremonyFailed)
 		} else if err != nil {
 			return fmt.Errorf("store credential: %w", err)
 		}
+
 		if err := ticket.Use(now, presented); err != nil {
 			return fmt.Errorf("use ticket: %w", err)
 		}
+
 		if err := st.Tickets.Save(ctx, ticket); err != nil {
 			return fmt.Errorf("store ticket: %w", err)
 		}
@@ -377,33 +426,42 @@ func (u *FinishEnroll) Execute(ctx context.Context, cmd FinishEnrollCommand) (Fi
 		if err != nil {
 			return err
 		}
+
 		amr, method := amrEnroll, "otp_passkey"
+
 		if ticket.Kind() == dpasskey.TicketRecoveryEnroll {
 			// The old keys are lost: whatever they opened must close before the new session opens.
 			if err := appsession.RevokeEverything(ctx, st, user.ID(), now); err != nil {
 				return fmt.Errorf("revoke old sessions: %w", err)
 			}
+
 			amr, method = amrRecovery, "recovery_passkey"
 		}
+
 		signed, err := u.signIn(ctx, st, now, user, ticket.Binding(), amr, cmd.DeviceName, method, cmd.ClientIP)
 		if err != nil {
 			return err
 		}
+
 		if err := st.Audit.Record(ctx, port.AuditEvent{
 			Type: port.AuditPasskeyEnrolled, Result: port.AuditSuccess, UserID: user.ID(), SessionID: signed.Session.ID(), At: now,
 			Fields: withMethod(fields, method),
 		}); err != nil {
 			return fmt.Errorf("record audit event: %w", err)
 		}
+
 		result = FinishEnrollResult{Outcome: OutcomeOK, SignedIn: signed, CredentialID: credentialID, RecoveryCodes: codes}
+
 		return nil
 	})
 	if errors.Is(err, errRolledBack) {
 		return result, nil
 	}
+
 	if err != nil {
 		return FinishEnrollResult{}, fmt.Errorf("finish enroll: %w", err)
 	}
+
 	return result, nil
 }
 

@@ -5,9 +5,9 @@ import (
 	"errors"
 	"time"
 
-	"airlance.org/auth/internal/application/port"
-	"airlance.org/auth/internal/domain/identity"
-	"airlance.org/auth/internal/domain/oidc"
+	"go.airlance.org/auth/internal/application/port"
+	"go.airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/domain/oidc"
 )
 
 // errNoOIDC is what every OpenID Provider repository answers here. The provider's rules are about row locks and

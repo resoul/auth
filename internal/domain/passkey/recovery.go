@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/domain/identity"
 )
 
 // Recovery code shape: 16 characters of the RFC 4648 base32 alphabet, 80 bits.
@@ -27,6 +27,7 @@ var ErrRecoveryCodeUsed = errors.New("recovery code already used")
 // cannot be a code.
 func NormalizeRecoveryCode(s string) (string, bool) {
 	var b strings.Builder
+
 	for _, r := range s {
 		switch {
 		case r == '-' || r == ' ':
@@ -34,14 +35,18 @@ func NormalizeRecoveryCode(s string) (string, bool) {
 		case r >= 'a' && r <= 'z':
 			r -= 'a' - 'A'
 		}
+
 		if r > 127 || !strings.ContainsRune(base32Alphabet, r) {
 			return "", false
 		}
+
 		b.WriteRune(r)
 	}
+
 	if b.Len() != RecoveryCodeLength {
 		return "", false
 	}
+
 	return b.String(), true
 }
 
@@ -50,6 +55,7 @@ func FormatRecoveryCode(code string) string {
 	if len(code) != RecoveryCodeLength {
 		return code
 	}
+
 	return code[0:4] + "-" + code[4:8] + "-" + code[8:12] + "-" + code[12:16]
 }
 
@@ -69,6 +75,7 @@ func NewRecoveryCode(id ID, userID identity.UserID, hash SecretHash, now time.Ti
 	if err := c.validate(); err != nil {
 		return nil, fmt.Errorf("new recovery code: %w", err)
 	}
+
 	return c, nil
 }
 
@@ -83,6 +90,7 @@ func (c *RecoveryCode) validate() error {
 	case c.createdAt.IsZero():
 		return errors.New("creation time is required")
 	}
+
 	return nil
 }
 
@@ -91,7 +99,9 @@ func (c *RecoveryCode) Use(now time.Time) error {
 	if !c.usedAt.IsZero() {
 		return ErrRecoveryCodeUsed
 	}
+
 	c.usedAt = now
+
 	return nil
 }
 
@@ -110,6 +120,7 @@ func RestoreRecoveryCode(r RecoveryCodeRecord) (*RecoveryCode, error) {
 	if err := c.validate(); err != nil {
 		return nil, fmt.Errorf("restore recovery code: %w", err)
 	}
+
 	return c, nil
 }
 

@@ -47,8 +47,10 @@ func (p Policy) Validate() error {
 			return errors.New("oidc policy: every lifetime must be positive")
 		}
 	}
+
 	if p.OPSessionIdle > p.OPSessionAbsolute {
 		return errors.New("oidc policy: the idle time of an OP session cannot exceed its absolute time")
 	}
+
 	return nil
 }

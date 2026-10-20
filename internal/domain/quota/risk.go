@@ -13,6 +13,7 @@ func GuessBound(codes, flowAttempts, comparisons int64) float64 {
 	if codes <= 0 || flowAttempts <= 0 || flowAttempts > codes || comparisons < 0 {
 		return 1
 	}
+
 	return math.Min(1, float64(comparisons)/float64(codes-flowAttempts+1))
 }
 
@@ -24,12 +25,15 @@ func (p Profile) ComparisonBudget(period time.Duration) (int64, error) {
 	if len(ws) == 0 {
 		return 0, errors.New("the profile does not limit the verify budget of an address")
 	}
+
 	budget := int64(math.MaxInt64)
+
 	for _, w := range ws {
 		buckets := int64((period+w.Per-1)/w.Per) + 1
 		if a := int64(w.Limit) * buckets; a < budget {
 			budget = a
 		}
 	}
+
 	return budget, nil
 }

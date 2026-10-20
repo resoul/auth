@@ -35,6 +35,7 @@ func NewRecognizedClient(id RecognizedClientID, userID UserID, email Email, bind
 	if err := c.validate(); err != nil {
 		return nil, fmt.Errorf("new recognized client: %w", err)
 	}
+
 	return c, nil
 }
 
@@ -53,6 +54,7 @@ func (c *RecognizedClient) validate() error {
 	case !c.expiresAt.After(c.verifiedAt):
 		return errors.New("expiry must be after verification")
 	}
+
 	return nil
 }
 
@@ -75,9 +77,11 @@ func (c *RecognizedClient) Extend(now time.Time) error {
 	if !c.Active(now) {
 		return ErrNotActive
 	}
+
 	if next := now.Add(RecognitionTTL); next.After(c.expiresAt) {
 		c.expiresAt = next
 	}
+
 	return nil
 }
 
@@ -109,6 +113,7 @@ func RestoreRecognizedClient(r RecognizedClientRecord) (*RecognizedClient, error
 	if err := c.validate(); err != nil {
 		return nil, fmt.Errorf("restore recognized client: %w", err)
 	}
+
 	return c, nil
 }
 

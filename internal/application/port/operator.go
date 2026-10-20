@@ -5,9 +5,9 @@ import (
 	"errors"
 	"time"
 
-	"airlance.org/auth/internal/domain/identity"
-	"airlance.org/auth/internal/domain/operator"
-	"airlance.org/auth/internal/domain/passkey"
+	"go.airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/domain/operator"
+	"go.airlance.org/auth/internal/domain/passkey"
 )
 
 // ErrOperatorExists reports an operator with the address that is already registered.

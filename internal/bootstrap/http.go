@@ -8,24 +8,24 @@ import (
 	"net"
 	"net/http"
 
-	"airlance.org/auth/internal/adapter/clock"
-	"airlance.org/auth/internal/adapter/crypto"
-	"airlance.org/auth/internal/adapter/id"
-	"airlance.org/auth/internal/adapter/metrics"
-	apasskey "airlance.org/auth/internal/adapter/passkey"
-	"airlance.org/auth/internal/adapter/postgres"
-	"airlance.org/auth/internal/application/account"
-	"airlance.org/auth/internal/application/deviceauth"
-	"airlance.org/auth/internal/application/emailauth"
-	appoidc "airlance.org/auth/internal/application/oidc"
-	"airlance.org/auth/internal/application/passkey"
-	appsession "airlance.org/auth/internal/application/session"
-	"airlance.org/auth/internal/config"
-	"airlance.org/auth/internal/domain/authflow"
-	"airlance.org/auth/internal/domain/identity"
-	"airlance.org/auth/internal/domain/session"
-	httpapi "airlance.org/auth/internal/transport/http"
-	oidcapi "airlance.org/auth/internal/transport/http/oidc"
+	"go.airlance.org/auth/internal/adapter/clock"
+	"go.airlance.org/auth/internal/adapter/crypto"
+	"go.airlance.org/auth/internal/adapter/id"
+	"go.airlance.org/auth/internal/adapter/metrics"
+	apasskey "go.airlance.org/auth/internal/adapter/passkey"
+	"go.airlance.org/auth/internal/adapter/postgres"
+	"go.airlance.org/auth/internal/application/account"
+	"go.airlance.org/auth/internal/application/deviceauth"
+	"go.airlance.org/auth/internal/application/emailauth"
+	appoidc "go.airlance.org/auth/internal/application/oidc"
+	"go.airlance.org/auth/internal/application/passkey"
+	appsession "go.airlance.org/auth/internal/application/session"
+	"go.airlance.org/auth/internal/config"
+	"go.airlance.org/auth/internal/domain/authflow"
+	"go.airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/domain/session"
+	httpapi "go.airlance.org/auth/internal/transport/http"
+	oidcapi "go.airlance.org/auth/internal/transport/http/oidc"
 )
 
 // newHTTP assembles the use cases behind the API and opens its listener.
@@ -34,12 +34,14 @@ func newHTTP(cfg config.Config, logger *slog.Logger, otp *crypto.OTP, tokens *jw
 	if otp == nil || tokens == nil {
 		return component{}, nil, errors.New("http api needs the otp_hmac and jwt_signing keys")
 	}
+
 	flowPolicy, sessionPolicy := authflow.DefaultPolicy(), session.DefaultPolicy()
 	// A configuration not made by Load has no mode; that is the open one, like an unset variable.
 	mode := cfg.Registration
 	if mode == "" {
 		mode = config.RegistrationOpen
 	}
+
 	registration, err := identity.ParseRegistrationMode(mode)
 	if err != nil {
 		return component{}, nil, err
@@ -51,18 +53,21 @@ func newHTTP(cfg config.Config, logger *slog.Logger, otp *crypto.OTP, tokens *jw
 	if err != nil {
 		return component{}, nil, err
 	}
+
 	resend, err := emailauth.NewResend(emailauth.ResendDeps{
 		UnitOfWork: store, Clock: clock.System{}, OTP: otp, Bindings: crypto.Binding{}, Policy: flowPolicy, Registration: registration,
 	})
 	if err != nil {
 		return component{}, nil, err
 	}
+
 	issuer, err := appsession.NewIssuer(appsession.IssuerDeps{
 		SessionIDs: id.Generator{}, TokenIDs: id.Generator{}, Secrets: crypto.Refresh{}, Policy: sessionPolicy,
 	})
 	if err != nil {
 		return component{}, nil, err
 	}
+
 	verify, err := emailauth.NewVerifyCode(emailauth.VerifyCodeDeps{
 		UnitOfWork: store, Clock: clock.System{}, OTP: otp, Bindings: crypto.Binding{}, UserIDs: id.Generator{},
 		RecognizedIDs: id.Generator{}, PasskeyIDs: id.Generator{}, Tickets: crypto.Ticket{}, Policy: flowPolicy, Registration: registration,
@@ -70,17 +75,21 @@ func newHTTP(cfg config.Config, logger *slog.Logger, otp *crypto.OTP, tokens *jw
 	if err != nil {
 		return component{}, nil, err
 	}
+
 	web, err := apasskey.New(apasskey.Config{RPID: cfg.WebAuthn.RPID, RPName: cfg.WebAuthn.RPName, Origins: cfg.WebAuthn.Origins})
 	if err != nil {
 		return component{}, nil, err
 	}
+
 	signedIn := passkey.SessionDeps{Sessions: issuer, Signer: tokens.signer}
+
 	beginEnroll, err := passkey.NewBeginEnroll(passkey.BeginEnrollDeps{
 		UnitOfWork: store, Clock: clock.System{}, WebAuthn: web, Bindings: crypto.Binding{}, Tickets: crypto.Ticket{}, PasskeyIDs: id.Generator{},
 	})
 	if err != nil {
 		return component{}, nil, err
 	}
+
 	finishEnroll, err := passkey.NewFinishEnroll(passkey.FinishEnrollDeps{
 		UnitOfWork: store, Clock: clock.System{}, WebAuthn: web, Bindings: crypto.Binding{}, Tickets: crypto.Ticket{},
 		PasskeyIDs: id.Generator{}, Recovery: crypto.Recovery{}, SessionDeps: signedIn,
@@ -88,22 +97,26 @@ func newHTTP(cfg config.Config, logger *slog.Logger, otp *crypto.OTP, tokens *jw
 	if err != nil {
 		return component{}, nil, err
 	}
+
 	beginLogin, err := passkey.NewBeginLogin(passkey.BeginLoginDeps{UnitOfWork: store, Clock: clock.System{}, WebAuthn: web, PasskeyIDs: id.Generator{}})
 	if err != nil {
 		return component{}, nil, err
 	}
+
 	finishLogin, err := passkey.NewFinishLogin(passkey.FinishLoginDeps{
 		UnitOfWork: store, Clock: clock.System{}, WebAuthn: web, Bindings: crypto.Binding{}, Tickets: crypto.Ticket{}, SessionDeps: signedIn,
 	})
 	if err != nil {
 		return component{}, nil, err
 	}
+
 	recovery, err := passkey.NewRedeemRecovery(passkey.RedeemRecoveryDeps{
 		UnitOfWork: store, Clock: clock.System{}, Bindings: crypto.Binding{}, Tickets: crypto.Ticket{}, Recovery: crypto.Recovery{}, PasskeyIDs: id.Generator{},
 	})
 	if err != nil {
 		return component{}, nil, err
 	}
+
 	refresh, err := appsession.NewRefresh(appsession.RefreshDeps{
 		UnitOfWork: store, Clock: clock.System{}, TokenIDs: id.Generator{}, Secrets: crypto.Refresh{},
 		Metrics: registry, Signer: tokens.signer, Policy: sessionPolicy,
@@ -111,57 +124,73 @@ func newHTTP(cfg config.Config, logger *slog.Logger, otp *crypto.OTP, tokens *jw
 	if err != nil {
 		return component{}, nil, err
 	}
+
 	auth, err := appsession.NewAuthenticator(appsession.AuthenticateDeps{UnitOfWork: store, Clock: clock.System{}, Verifier: tokens.verifier})
 	if err != nil {
 		return component{}, nil, err
 	}
+
 	reads := appsession.ReadDeps{UnitOfWork: store, Clock: clock.System{}}
+
 	me, err := appsession.NewMe(reads)
 	if err != nil {
 		return component{}, nil, err
 	}
+
 	list, err := appsession.NewListSessions(reads)
 	if err != nil {
 		return component{}, nil, err
 	}
+
 	revokes := appsession.RevokeDeps{UnitOfWork: store, Clock: clock.System{}}
+
 	signOut, err := appsession.NewSignOut(revokes)
 	if err != nil {
 		return component{}, nil, err
 	}
+
 	revokeOne, err := appsession.NewRevokeSession(revokes)
 	if err != nil {
 		return component{}, nil, err
 	}
+
 	manage := passkey.ManageDeps{UnitOfWork: store, Clock: clock.System{}}
+
 	listKeys, err := passkey.NewListCredentials(manage)
 	if err != nil {
 		return component{}, nil, err
 	}
+
 	renameKey, err := passkey.NewRenameCredential(manage)
 	if err != nil {
 		return component{}, nil, err
 	}
+
 	beginStepUp, err := passkey.NewBeginStepUp(passkey.BeginStepUpDeps{UnitOfWork: store, Clock: clock.System{}, WebAuthn: web, PasskeyIDs: id.Generator{}})
 	if err != nil {
 		return component{}, nil, err
 	}
+
 	finishStepUp, err := passkey.NewFinishStepUp(passkey.FinishStepUpDeps{UnitOfWork: store, Clock: clock.System{}, WebAuthn: web, Tickets: crypto.Ticket{}, PasskeyIDs: id.Generator{}})
 	if err != nil {
 		return component{}, nil, err
 	}
+
 	beginAddKey, err := passkey.NewBeginAddPasskey(passkey.BeginAddPasskeyDeps{UnitOfWork: store, Clock: clock.System{}, WebAuthn: web, Tickets: crypto.Ticket{}, PasskeyIDs: id.Generator{}})
 	if err != nil {
 		return component{}, nil, err
 	}
+
 	finishAddKey, err := passkey.NewFinishAddPasskey(passkey.FinishAddPasskeyDeps{UnitOfWork: store, Clock: clock.System{}, WebAuthn: web, Tickets: crypto.Ticket{}, PasskeyIDs: id.Generator{}})
 	if err != nil {
 		return component{}, nil, err
 	}
+
 	deleteKey, err := passkey.NewDeleteCredential(passkey.DeleteCredentialDeps{UnitOfWork: store, Clock: clock.System{}, Tickets: crypto.Ticket{}})
 	if err != nil {
 		return component{}, nil, err
 	}
+
 	newCodes, err := passkey.NewRegenerateRecoveryCodes(passkey.RegenerateRecoveryCodesDeps{
 		UnitOfWork: store, Clock: clock.System{}, Tickets: crypto.Ticket{}, Recovery: crypto.Recovery{}, PasskeyIDs: id.Generator{},
 	})
@@ -175,6 +204,7 @@ func newHTTP(cfg config.Config, logger *slog.Logger, otp *crypto.OTP, tokens *jw
 	if err != nil {
 		return component{}, nil, err
 	}
+
 	confirmEmailChange, err := account.NewConfirmEmailChange(account.ConfirmEmailChangeDeps{
 		UnitOfWork: store, Clock: clock.System{}, OTP: otp, Policy: flowPolicy,
 	})
@@ -188,14 +218,17 @@ func newHTTP(cfg config.Config, logger *slog.Logger, otp *crypto.OTP, tokens *jw
 	if err != nil {
 		return component{}, nil, err
 	}
+
 	statusDevice, err := deviceauth.NewStatus(deviceauth.StatusDeps{UnitOfWork: store, Clock: clock.System{}, Tickets: crypto.Ticket{}, Bindings: crypto.Binding{}})
 	if err != nil {
 		return component{}, nil, err
 	}
+
 	deviceApprover, err := deviceauth.NewApprover(deviceauth.ApproveDeps{UnitOfWork: store, Clock: clock.System{}, Tickets: crypto.Ticket{}})
 	if err != nil {
 		return component{}, nil, err
 	}
+
 	redeemDevice, err := deviceauth.NewRedeem(deviceauth.RedeemDeps{
 		UnitOfWork: store, Clock: clock.System{}, Tickets: crypto.Ticket{}, Bindings: crypto.Binding{}, SessionDeps: signedIn,
 	})
@@ -213,18 +246,22 @@ func newHTTP(cfg config.Config, logger *slog.Logger, otp *crypto.OTP, tokens *jw
 	if !cfg.Metrics.Enabled() {
 		metricsHandler = registry.Handler()
 	}
+
 	appsDeps := appoidc.Apps{UnitOfWork: store, Clock: clock.System{}}
 	if registry != nil { // a nil *Registry must not become a non-nil interface
 		appsDeps.Metrics = registry
 	}
+
 	apps, err := appoidc.NewApps(appsDeps)
 	if err != nil {
 		return component{}, nil, err
 	}
+
 	oidcRoutes, err := newOIDC(logger, oidcParts, tokens, registry)
 	if err != nil {
 		return component{}, nil, err
 	}
+
 	deps := httpapi.Deps{
 		Start: start, Resend: resend, Verify: verify, Refresh: refresh, JWKS: tokens.ring,
 		BeginEnroll: beginEnroll, FinishEnroll: finishEnroll, BeginLogin: beginLogin, FinishLogin: finishLogin, Recovery: recovery,
@@ -239,6 +276,7 @@ func newHTTP(cfg config.Config, logger *slog.Logger, otp *crypto.OTP, tokens *jw
 		// A nil *Handler must not become a non-nil interface: the routes are added only when the provider is on.
 		deps.OIDC, deps.CrossOriginBypass = oidcRoutes, oidcapi.BypassCrossOrigin()
 	}
+
 	handler, err := httpapi.New(deps)
 	if err != nil {
 		return component{}, nil, err
@@ -248,13 +286,16 @@ func newHTTP(cfg config.Config, logger *slog.Logger, otp *crypto.OTP, tokens *jw
 	if err != nil {
 		return component{}, nil, err
 	}
+
 	srv := newHTTPServer(handler, logger)
+
 	return component{
 		name: "http api",
 		run: func(context.Context) error {
 			if err := srv.Serve(ln); !errors.Is(err, http.ErrServerClosed) {
 				return err
 			}
+
 			return nil
 		},
 		// Shutdown closes the listener and waits for requests in flight.
@@ -269,6 +310,7 @@ func sameSite(value string) http.SameSite {
 	case config.SameSiteNone:
 		return http.SameSiteNoneMode
 	}
+
 	return http.SameSiteStrictMode
 }
 
@@ -278,6 +320,7 @@ func listen(addr string) (net.Listener, error) {
 	if err != nil {
 		return nil, fmt.Errorf("listen on %s: %w", addr, err)
 	}
+
 	return ln, nil
 }
 

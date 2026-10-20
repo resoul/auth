@@ -5,8 +5,8 @@ import (
 	"errors"
 	"time"
 
-	"airlance.org/auth/internal/domain/identity"
-	"airlance.org/auth/internal/domain/oidc"
+	"go.airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/domain/oidc"
 )
 
 // Errors of the OpenID Provider repositories.

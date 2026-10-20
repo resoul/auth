@@ -6,7 +6,7 @@ import (
 	"errors"
 	"time"
 
-	"airlance.org/auth/internal/domain/passkey"
+	"go.airlance.org/auth/internal/domain/passkey"
 )
 
 // Lifetimes of an operator session.
@@ -45,6 +45,7 @@ func NewSession(id passkey.ID, operatorID ID, secretHash passkey.SecretHash, now
 	case now.IsZero():
 		return nil, errors.New("new operator session: time is required")
 	}
+
 	return &Session{id: id, operatorID: operatorID, secretHash: secretHash, createdAt: now, lastSeenAt: now, expiresAt: now.Add(MaxAge)}, nil
 }
 
@@ -62,7 +63,9 @@ func (s *Session) Touch(now time.Time) bool {
 	if now.Sub(s.lastSeenAt) < TouchEvery {
 		return false
 	}
+
 	s.lastSeenAt = now
+
 	return true
 }
 
@@ -111,6 +114,7 @@ func RestoreSession(r SessionRecord) (*Session, error) {
 		r.LastSeenAt.Before(r.CreatedAt) || !r.ExpiresAt.After(r.CreatedAt) {
 		return nil, errors.New("restore operator session: incomplete or impossible record")
 	}
+
 	return &Session{id: r.ID, operatorID: r.OperatorID, secretHash: r.SecretHash, createdAt: r.CreatedAt, lastSeenAt: r.LastSeenAt, expiresAt: r.ExpiresAt, revokedAt: r.RevokedAt}, nil
 }
 

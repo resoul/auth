@@ -7,8 +7,8 @@ import (
 	"net/netip"
 	"time"
 
-	"airlance.org/auth/internal/domain/authflow"
-	"airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/domain/authflow"
+	"go.airlance.org/auth/internal/domain/identity"
 )
 
 // MaxWindow is the longest window a profile may hold, so counters never outlive a day.
@@ -96,13 +96,16 @@ func NewProfile(windows map[Scope][]Window) (Profile, error) {
 		if !knownScope(scope) {
 			return Profile{}, fmt.Errorf("quota profile: unknown scope %q", scope)
 		}
+
 		for _, w := range ws {
 			if w.Limit < 0 || w.Per <= 0 || w.Per > MaxWindow {
 				return Profile{}, fmt.Errorf("quota profile: %s: window %d per %v is out of range (0 < per <= %v)", scope, w.Limit, w.Per, MaxWindow)
 			}
 		}
+
 		p.windows[scope] = append([]Window(nil), ws...)
 	}
+
 	return p, nil
 }
 
@@ -131,6 +134,7 @@ func DefaultProfile() Profile {
 	if err != nil {
 		panic(err)
 	}
+
 	return p
 }
 
@@ -140,6 +144,7 @@ func knownScope(s Scope) bool {
 		RecognizedSendClient, RecognizedVerifyClient, RecognizedSendIP, PasskeyIP, PasskeyRef, AdminIP, DeviceIP, OIDCAuthorizeIP:
 		return true
 	}
+
 	return false
 }
 
@@ -160,59 +165,77 @@ func (p Profile) Limits(s Spend) ([]Limit, error) {
 	if s.Kind != KindSend && s.Kind != KindVerify && s.Kind != KindPasskey && s.Kind != KindAdmin && s.Kind != KindDevice && s.Kind != KindOIDC {
 		return nil, fmt.Errorf("quota: unknown spend kind %q", s.Kind)
 	}
+
 	if s.Now.IsZero() {
 		return nil, errors.New("quota: the time of the spend is required")
 	}
+
 	ip := ""
 	if s.IP.IsValid() {
 		ip = ipKey(s.IP)
 	}
 
 	var limits []Limit
+
 	add := func(scope Scope, key string) {
 		if ws := p.windows[scope]; len(ws) > 0 {
 			limits = append(limits, Limit{Scope: scope, Key: key, Windows: ws})
 		}
 	}
+
 	if s.Kind == KindOIDC {
 		if ip == "" {
 			ip = "unknown"
 		}
+
 		add(OIDCAuthorizeIP, ip)
+
 		return limits, nil
 	}
+
 	if s.Kind == KindDevice {
 		if ip == "" {
 			ip = "unknown"
 		}
+
 		add(DeviceIP, ip)
+
 		return limits, nil
 	}
+
 	if s.Kind == KindAdmin {
 		if ip == "" {
 			ip = "unknown"
 		}
+
 		add(AdminIP, ip)
+
 		return limits, nil
 	}
+
 	if s.Kind == KindPasskey {
 		// Every caller is unknown here: no email is known yet. An unknown address shares one budget
 		// rather than escaping the limit.
 		if ip == "" {
 			ip = "unknown"
 		}
+
 		add(PasskeyIP, ip)
+
 		if s.Ref != "" {
 			add(PasskeyRef, s.Ref)
 		}
+
 		return limits, nil
 	}
+
 	switch s.Class {
 	case authflow.QuotaUnknown:
 		pair := s.Email.String() + "\x00" + hex.EncodeToString(s.Binding.Bytes())
 		if s.Kind == KindSend {
 			add(UnknownSendEmail, s.Email.String())
 			add(UnknownSendPair, pair)
+
 			if ip != "" {
 				add(UnknownSendIP, ip)
 			}
@@ -224,9 +247,11 @@ func (p Profile) Limits(s Spend) ([]Limit, error) {
 		if s.RecognizedClientID.IsZero() {
 			return nil, errors.New("quota: a recognized spend needs the recognition record")
 		}
+
 		client := s.Email.String() + "\x00" + s.RecognizedClientID.String()
 		if s.Kind == KindSend {
 			add(RecognizedSendClient, client)
+
 			if ip != "" {
 				add(RecognizedSendIP, ip)
 			}
@@ -236,6 +261,7 @@ func (p Profile) Limits(s Spend) ([]Limit, error) {
 	default:
 		return nil, fmt.Errorf("quota: unknown class %q", s.Class)
 	}
+
 	return limits, nil
 }
 
@@ -247,5 +273,6 @@ func ipKey(a netip.Addr) string {
 		p, _ := a.Prefix(64)
 		return p.String()
 	}
+
 	return a.String()
 }

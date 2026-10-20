@@ -24,6 +24,7 @@ func ParseFlowID(s string) (FlowID, error) {
 	if err != nil || len(raw) != flowIDBytes || base64.RawURLEncoding.EncodeToString(raw) != s {
 		return FlowID{}, errors.New("invalid flow id")
 	}
+
 	return FlowID{value: s}, nil
 }
 
@@ -53,6 +54,7 @@ func (p Purpose) valid() bool {
 	case PurposeLogin, PurposeStepUp, PurposeChangeEmail:
 		return true
 	}
+
 	return false
 }
 
@@ -72,6 +74,7 @@ func (s State) valid() bool {
 	case StatePending, StateConsumed, StateLocked, StateExpired:
 		return true
 	}
+
 	return false
 }
 
@@ -103,5 +106,6 @@ func (p Policy) Validate() error {
 	if p.TTL <= 0 || p.MaxAttempts <= 0 || p.ResendPause < 0 {
 		return errors.New("invalid flow policy")
 	}
+
 	return nil
 }

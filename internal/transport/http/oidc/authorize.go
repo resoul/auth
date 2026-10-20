@@ -6,8 +6,8 @@ import (
 	"net/url"
 	"time"
 
-	appoidc "airlance.org/auth/internal/application/oidc"
-	httpapi "airlance.org/auth/internal/transport/http"
+	appoidc "go.airlance.org/auth/internal/application/oidc"
+	httpapi "go.airlance.org/auth/internal/transport/http"
 )
 
 // authorizeParams are the single-valued parameters of an authorization request.
@@ -19,18 +19,23 @@ var authorizeParams = []string{
 // is ambiguous, so it is refused once the redirect URI can be trusted.
 func (h *Handler) authorize(w http.ResponseWriter, r *http.Request) {
 	var values url.Values
+
 	repeated := false
+
 	if r.Method == http.MethodPost {
 		if r.URL.RawQuery != "" {
 			repeated = true
 		}
+
 		if err := r.ParseForm(); err != nil {
 			repeated = true
 		}
+
 		values = r.PostForm
 	} else {
 		values = r.URL.Query()
 	}
+
 	for _, name := range authorizeParams {
 		if len(values[name]) > 1 {
 			repeated = true
@@ -44,19 +49,23 @@ func (h *Handler) authorize(w http.ResponseWriter, r *http.Request) {
 		CodeChallengeMethod: values.Get("code_challenge_method"), Prompt: values.Get("prompt"), MaxAge: values.Get("max_age"),
 		Resources: values["resource"], Repeated: repeated, SSOSecret: cookieValue(r, ssoCookie), ClientIP: httpapi.ClientIPFromContext(r.Context()),
 	}
+
 	got, err := h.d.Authorize.Execute(r.Context(), cmd)
 	if err != nil {
 		h.serverErrorPage(w, r, err)
 		return
 	}
+
 	noStore(w)
 	w.Header().Set("Referrer-Policy", "no-referrer")
+
 	switch got.Kind {
 	case appoidc.AuthorizeRedirect:
 		status := http.StatusFound
 		if r.Method == http.MethodPost {
 			status = http.StatusSeeOther
 		}
+
 		http.Redirect(w, r, got.Location, status)
 	case appoidc.AuthorizeLogin:
 		h.setCookie(w, requestCookie, got.BindingSecret, h.d.Policy.RequestTTL)
@@ -72,6 +81,7 @@ func cookieValue(r *http.Request, name string) string {
 	if err != nil {
 		return ""
 	}
+
 	return c.Value
 }
 

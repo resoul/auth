@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"time"
 
-	appadmin "airlance.org/auth/internal/application/admin"
-	"airlance.org/auth/internal/domain/operator"
+	appadmin "go.airlance.org/auth/internal/application/admin"
+	"go.airlance.org/auth/internal/domain/operator"
 )
 
 type ceremonyBody struct {
@@ -18,6 +18,7 @@ func (h *handler) ceremony(w http.ResponseWriter, r *http.Request, operation str
 	if h.outcome(w, r, operation, res.Outcome, res.Reason) {
 		return
 	}
+
 	writeJSON(w, http.StatusOK, ceremonyBody{ChallengeID: res.ChallengeID, Options: res.Options})
 }
 
@@ -26,7 +27,9 @@ func (h *handler) refuseOrigin(w http.ResponseWriter, r *http.Request) bool {
 	if h.sameOrigin(r) {
 		return false
 	}
+
 	writeError(w, r, http.StatusForbidden, "bad_origin", "")
+
 	return true
 }
 
@@ -34,17 +37,20 @@ func (h *handler) beginEnroll(w http.ResponseWriter, r *http.Request) {
 	if h.refuseOrigin(w, r) {
 		return
 	}
+
 	var body struct {
 		Code string `json:"code"`
 	}
 	if !decode(w, r, &body) {
 		return
 	}
+
 	res, err := h.Auth.BeginEnroll(r.Context(), appadmin.BeginEnrollCommand{Code: body.Code, ClientIP: h.clientIP(r)})
 	if err != nil {
 		h.fail(w, r, err)
 		return
 	}
+
 	h.ceremony(w, r, "enroll_begin", res)
 }
 
@@ -52,6 +58,7 @@ func (h *handler) finishEnroll(w http.ResponseWriter, r *http.Request) {
 	if h.refuseOrigin(w, r) {
 		return
 	}
+
 	var body struct {
 		ChallengeID string          `json:"challenge_id"`
 		Response    json.RawMessage `json:"response"`
@@ -60,6 +67,7 @@ func (h *handler) finishEnroll(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
+
 	res, err := h.Auth.FinishEnroll(r.Context(), appadmin.FinishEnrollCommand{
 		ChallengeID: body.ChallengeID, Response: body.Response, Name: body.Name, ClientIP: h.clientIP(r),
 	})
@@ -67,9 +75,11 @@ func (h *handler) finishEnroll(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
+
 	if h.outcome(w, r, "enroll_finish", res.Outcome, res.Reason) {
 		return
 	}
+
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -77,11 +87,13 @@ func (h *handler) beginLogin(w http.ResponseWriter, r *http.Request) {
 	if h.refuseOrigin(w, r) {
 		return
 	}
+
 	res, err := h.Auth.BeginLogin(r.Context(), appadmin.BeginLoginCommand{ClientIP: h.clientIP(r)})
 	if err != nil {
 		h.fail(w, r, err)
 		return
 	}
+
 	h.ceremony(w, r, "login_begin", res)
 }
 
@@ -100,6 +112,7 @@ func (h *handler) finishLogin(w http.ResponseWriter, r *http.Request) {
 	if h.refuseOrigin(w, r) {
 		return
 	}
+
 	var body struct {
 		ChallengeID string          `json:"challenge_id"`
 		Response    json.RawMessage `json:"response"`
@@ -107,6 +120,7 @@ func (h *handler) finishLogin(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
+
 	res, err := h.Auth.FinishLogin(r.Context(), appadmin.FinishLoginCommand{
 		ChallengeID: body.ChallengeID, Response: body.Response, ClientIP: h.clientIP(r),
 	})
@@ -114,9 +128,11 @@ func (h *handler) finishLogin(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
+
 	if h.outcome(w, r, "login_finish", res.Outcome, res.Reason) {
 		return
 	}
+
 	http.SetCookie(w, h.sessionCookie(res.SessionSecret))
 	writeJSON(w, http.StatusOK, sessionBody{
 		Operator:  operatorBody{ID: res.Operator.ID().String(), Email: res.Operator.Email().String()},
@@ -138,23 +154,28 @@ func (h *handler) authed(next func(w http.ResponseWriter, r *http.Request, p pri
 		if mutating && h.refuseOrigin(w, r) {
 			return
 		}
+
 		cookie, err := r.Cookie(CookieName)
 		if err != nil {
 			writeError(w, r, http.StatusUnauthorized, "unauthenticated", "")
 			return
 		}
+
 		res, err := h.Auth.Authenticate(r.Context(), cookie.Value)
 		if err != nil {
 			h.fail(w, r, err)
 			return
 		}
+
 		if h.outcome(w, r, "session", res.Outcome, "") {
 			return
 		}
+
 		if mutating && !csrfEqual(r.Header.Get(CSRFHeader), res.CSRFToken) {
 			writeError(w, r, http.StatusForbidden, "bad_csrf", "")
 			return
 		}
+
 		next(w, r, principal{actor: res.Actor, auth: res})
 	}
 }
@@ -171,6 +192,7 @@ func (h *handler) logout(w http.ResponseWriter, r *http.Request, p principal) {
 		h.fail(w, r, err)
 		return
 	}
+
 	http.SetCookie(w, h.clearedCookie())
 	w.WriteHeader(http.StatusNoContent)
 }

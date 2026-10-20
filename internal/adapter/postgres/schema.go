@@ -14,8 +14,10 @@ func ValidateSchemaName(name string) error {
 	if !schemaName.MatchString(name) {
 		return fmt.Errorf("invalid schema name %q: want lower-case letters, digits and underscores, starting with a letter or underscore, at most 63 characters", name)
 	}
+
 	if strings.HasPrefix(name, "pg_") {
 		return fmt.Errorf("invalid schema name %q: the pg_ prefix is reserved by PostgreSQL", name)
 	}
+
 	return nil
 }

@@ -17,10 +17,14 @@ func loadSMTP(lookup LookupFunc, smtp *SMTPConfig) []error {
 				return []error{fmt.Errorf("%s is set without %s", key, EnvSMTPAddr)}
 			}
 		}
+
 		return nil
 	}
+
 	var errs []error
+
 	host, portText, err := net.SplitHostPort(addr)
+
 	portNumber, convErr := strconv.Atoi(portText)
 	if err != nil || host == "" || convErr != nil || portNumber < 1 || portNumber > 65535 {
 		errs = append(errs, fmt.Errorf("%s: want host:port", EnvSMTPAddr))
@@ -36,6 +40,7 @@ func loadSMTP(lookup LookupFunc, smtp *SMTPConfig) []error {
 			errs = append(errs, fmt.Errorf("%s: want none, starttls or tls", EnvSMTPTLS))
 		}
 	}
+
 	username, password := value(lookup, EnvSMTPUsername), value(lookup, EnvSMTPPassword)
 	switch {
 	case (username == "") != (password == ""):
@@ -52,6 +57,8 @@ func loadSMTP(lookup LookupFunc, smtp *SMTPConfig) []error {
 	} else {
 		smtp.From = from
 	}
+
 	smtp.FromName = strings.TrimSpace(value(lookup, EnvMailFromName))
+
 	return errs
 }

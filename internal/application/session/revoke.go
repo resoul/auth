@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"time"
 
-	"airlance.org/auth/internal/application/port"
-	"airlance.org/auth/internal/domain/identity"
-	dsession "airlance.org/auth/internal/domain/session"
+	"go.airlance.org/auth/internal/application/port"
+	"go.airlance.org/auth/internal/domain/identity"
+	dsession "go.airlance.org/auth/internal/domain/session"
 )
 
 // RevokeDeps are the dependencies of RevokeSession and RevokeAll.
@@ -21,6 +21,7 @@ func (d RevokeDeps) validate(name string) error {
 	if d.UnitOfWork == nil || d.Clock == nil {
 		return fmt.Errorf("new %s: all dependencies are required", name)
 	}
+
 	return nil
 }
 
@@ -34,6 +35,7 @@ func NewRevokeSession(d RevokeDeps) (*RevokeSession, error) {
 	if err := d.validate("revoke session"); err != nil {
 		return nil, err
 	}
+
 	return &RevokeSession{d}, nil
 }
 
@@ -57,29 +59,37 @@ func (u *RevokeSession) Execute(ctx context.Context, cmd RevokeSessionCommand) (
 	if err != nil || cmd.ActorUserID.IsZero() {
 		return RevokeResult{Outcome: OutcomeDenied}, nil
 	}
+
 	now := u.Clock.Now()
 
 	result := RevokeResult{Outcome: OutcomeDenied}
+
 	err = u.UnitOfWork.Do(ctx, func(ctx context.Context, st port.Stores) error {
 		sess, err := st.Sessions.GetForUpdate(ctx, id)
 		if errors.Is(err, port.ErrNotFound) {
 			return nil
 		}
+
 		if err != nil {
 			return fmt.Errorf("load session: %w", err)
 		}
+
 		if sess.UserID() != cmd.ActorUserID {
 			return nil
 		}
+
 		if err := revokeSession(ctx, st, sess, now, map[string]string{"scope": "one"}); err != nil {
 			return err
 		}
+
 		result = RevokeResult{Outcome: OutcomeOK}
+
 		return nil
 	})
 	if err != nil {
 		return RevokeResult{}, fmt.Errorf("revoke session: %w", err)
 	}
+
 	return result, nil
 }
 
@@ -87,17 +97,21 @@ func (u *RevokeSession) Execute(ctx context.Context, cmd RevokeSessionCommand) (
 // recognition of the device is not touched: signing a device out keeps it recognized.
 func revokeSession(ctx context.Context, st port.Stores, sess *dsession.Session, now time.Time, fields map[string]string) error {
 	sess.Revoke(now)
+
 	if err := st.Sessions.Save(ctx, sess); err != nil {
 		return fmt.Errorf("store session: %w", err)
 	}
+
 	if err := st.Tokens.RevokeBySession(ctx, sess.ID(), now); err != nil {
 		return fmt.Errorf("revoke tokens: %w", err)
 	}
+
 	if err := st.Audit.Record(ctx, port.AuditEvent{
 		Type: port.AuditSessionRevoked, Result: port.AuditSuccess, UserID: sess.UserID(), SessionID: sess.ID(), At: now, Fields: fields,
 	}); err != nil {
 		return fmt.Errorf("record audit event: %w", err)
 	}
+
 	return nil
 }
 
@@ -108,21 +122,26 @@ func revokeEverything(ctx context.Context, st port.Stores, userID identity.UserI
 	if err := st.OPSessions.RevokeAllForUser(ctx, userID, now); err != nil {
 		return fmt.Errorf("revoke op sessions: %w", err)
 	}
+
 	if err := st.Sessions.RevokeAllForUser(ctx, userID, now); err != nil {
 		return fmt.Errorf("revoke sessions: %w", err)
 	}
+
 	if err := st.Tokens.RevokeAllForUser(ctx, userID, now); err != nil {
 		return fmt.Errorf("revoke tokens: %w", err)
 	}
+
 	if err := st.Recognized.RevokeAll(ctx, userID, now); err != nil {
 		return fmt.Errorf("revoke recognition: %w", err)
 	}
+
 	if err := st.Audit.Record(ctx, port.AuditEvent{
 		Type: port.AuditAllSessionsRevoked, Result: port.AuditSuccess, UserID: userID, At: now,
 		Fields: map[string]string{"scope": "all"},
 	}); err != nil {
 		return fmt.Errorf("record audit event: %w", err)
 	}
+
 	return nil
 }
 
@@ -136,6 +155,7 @@ func NewRevokeAll(d RevokeDeps) (*RevokeAll, error) {
 	if err := d.validate("revoke all"); err != nil {
 		return nil, err
 	}
+
 	return &RevokeAll{d}, nil
 }
 
@@ -149,13 +169,16 @@ func (u *RevokeAll) Execute(ctx context.Context, cmd RevokeAllCommand) (RevokeRe
 	if cmd.ActorUserID.IsZero() {
 		return RevokeResult{Outcome: OutcomeDenied}, nil
 	}
+
 	now := u.Clock.Now()
+
 	err := u.UnitOfWork.Do(ctx, func(ctx context.Context, st port.Stores) error {
 		return revokeEverything(ctx, st, cmd.ActorUserID, now)
 	})
 	if err != nil {
 		return RevokeResult{}, fmt.Errorf("revoke all sessions: %w", err)
 	}
+
 	return RevokeResult{Outcome: OutcomeOK}, nil
 }
 
@@ -169,21 +192,26 @@ func RevokeOthers(ctx context.Context, st port.Stores, userID identity.UserID, k
 	if !keep.IsZero() {
 		keepID = keep.String()
 	}
+
 	if err := st.OPSessions.RevokeOthersForUser(ctx, userID, keepID, now); err != nil {
 		return fmt.Errorf("revoke other op sessions: %w", err)
 	}
+
 	if err := st.Sessions.RevokeOthersForUser(ctx, userID, keep, now); err != nil {
 		return fmt.Errorf("revoke other sessions: %w", err)
 	}
+
 	if err := st.Tokens.RevokeOthersForUser(ctx, userID, keep, now); err != nil {
 		return fmt.Errorf("revoke other tokens: %w", err)
 	}
+
 	if err := st.Audit.Record(ctx, port.AuditEvent{
 		Type: port.AuditAllSessionsRevoked, Result: port.AuditSuccess, UserID: userID, SessionID: keep, At: now,
 		Fields: map[string]string{"scope": "others", "reason": reason},
 	}); err != nil {
 		return fmt.Errorf("record audit event: %w", err)
 	}
+
 	return nil
 }
 
@@ -202,15 +230,19 @@ func RevokeDeviceSession(ctx context.Context, st port.Stores, userID identity.Us
 	if err != nil {
 		return nil
 	}
+
 	sess, err := st.Sessions.GetForUpdate(ctx, sid)
 	if errors.Is(err, port.ErrNotFound) {
 		return nil
 	}
+
 	if err != nil {
 		return fmt.Errorf("load session: %w", err)
 	}
+
 	if sess.UserID() != userID || !sess.RevokedAt().IsZero() {
 		return nil
 	}
+
 	return revokeSession(ctx, st, sess, now, map[string]string{"scope": "one"})
 }

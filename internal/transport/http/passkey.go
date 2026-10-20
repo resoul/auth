@@ -4,9 +4,9 @@ import (
 	"context"
 	"errors"
 
-	"airlance.org/auth/internal/application/emailauth"
-	"airlance.org/auth/internal/application/passkey"
-	"airlance.org/auth/internal/transport/http/openapi"
+	"go.airlance.org/auth/internal/application/emailauth"
+	"go.airlance.org/auth/internal/application/passkey"
+	"go.airlance.org/auth/internal/transport/http/openapi"
 )
 
 func invalidProof(ctx context.Context) openapi.Error {
@@ -21,6 +21,7 @@ func optional(s *string) string {
 	if s == nil {
 		return ""
 	}
+
 	return *s
 }
 
@@ -42,14 +43,17 @@ func (a *API) NativeBeginPasskeyRegistration(ctx context.Context, req openapi.Na
 	if err != nil {
 		return nil, err
 	}
+
 	if res.Outcome == passkey.OutcomeRateLimited {
 		a.denied(ctx, "passkey_register_options", string(res.Reason))
 		return openapi.NativeBeginPasskeyRegistration429JSONResponse{RateLimitedJSONResponse: openapi.RateLimitedJSONResponse(problem(ctx, openapi.ErrorCodeRateLimited))}, nil
 	}
+
 	if res.Outcome != passkey.OutcomeOK {
 		a.denied(ctx, "passkey_register_options", string(res.Reason))
 		return openapi.NativeBeginPasskeyRegistration400JSONResponse(invalidProof(ctx)), nil
 	}
+
 	return openapi.NativeBeginPasskeyRegistration200JSONResponse(ceremony(res)), nil
 }
 
@@ -59,14 +63,17 @@ func (a *API) BrowserBeginPasskeyRegistration(ctx context.Context, req openapi.B
 	if err != nil {
 		return nil, err
 	}
+
 	if res.Outcome == passkey.OutcomeRateLimited {
 		a.denied(ctx, "passkey_register_options", string(res.Reason))
 		return openapi.BrowserBeginPasskeyRegistration429JSONResponse{RateLimitedJSONResponse: openapi.RateLimitedJSONResponse(problem(ctx, openapi.ErrorCodeRateLimited))}, nil
 	}
+
 	if res.Outcome != passkey.OutcomeOK {
 		a.denied(ctx, "passkey_register_options", string(res.Reason))
 		return openapi.BrowserBeginPasskeyRegistration400JSONResponse(invalidProof(ctx)), nil
 	}
+
 	return openapi.BrowserBeginPasskeyRegistration200JSONResponse(ceremony(res)), nil
 }
 
@@ -79,13 +86,16 @@ func (a *API) NativeFinishPasskeyRegistration(ctx context.Context, req openapi.N
 	if errors.Is(err, passkey.ErrInvalidName) {
 		return openapi.NativeFinishPasskeyRegistration400JSONResponse(invalidRequest(ctx)), nil
 	}
+
 	if err != nil {
 		return nil, err
 	}
+
 	if res.Outcome != passkey.OutcomeOK {
 		a.denied(ctx, "passkey_register", string(res.Reason))
 		return openapi.NativeFinishPasskeyRegistration400JSONResponse(invalidProof(ctx)), nil
 	}
+
 	return openapi.NativeFinishPasskeyRegistration200JSONResponse{
 		User:        openapi.User{Id: res.User.ID().String(), Email: res.User.Email().String()},
 		AccessToken: res.Access.Value, ExpiresAt: res.Access.ExpiresAt, RefreshToken: res.RefreshSecret,
@@ -97,6 +107,7 @@ func (a *API) NativeFinishPasskeyRegistration(ctx context.Context, req openapi.N
 // token goes to its cookie and the binding cookie is renewed; the body never carries either.
 func (a *API) BrowserFinishPasskeyRegistration(ctx context.Context, req openapi.BrowserFinishPasskeyRegistrationRequestObject) (openapi.BrowserFinishPasskeyRegistrationResponseObject, error) {
 	binding := requestCookie(ctx, BindingCookieName)
+
 	res, err := a.finishEnroll(ctx, passkey.FinishEnrollCommand{
 		TicketSecret: req.Body.Ticket, BindingSecret: binding, ChallengeID: req.Body.ChallengeId,
 		Response: req.Body.Credential, CredentialName: optional(req.Body.Name), DeviceName: optional(req.Body.DeviceName), ClientIP: clientIP(ctx),
@@ -104,15 +115,19 @@ func (a *API) BrowserFinishPasskeyRegistration(ctx context.Context, req openapi.
 	if errors.Is(err, passkey.ErrInvalidName) {
 		return openapi.BrowserFinishPasskeyRegistration400JSONResponse(invalidRequest(ctx)), nil
 	}
+
 	if err != nil {
 		return nil, err
 	}
+
 	if res.Outcome != passkey.OutcomeOK {
 		a.denied(ctx, "passkey_register", string(res.Reason))
 		return openapi.BrowserFinishPasskeyRegistration400JSONResponse(invalidProof(ctx)), nil
 	}
+
 	setCookie(ctx, a.cookies.refresh(res.RefreshSecret, res.RefreshExpiresAt))
 	setCookie(ctx, a.cookies.binding(binding))
+
 	return openapi.BrowserFinishPasskeyRegistration200JSONResponse{
 		User:        openapi.User{Id: res.User.ID().String(), Email: res.User.Email().String()},
 		AccessToken: res.Access.Value, ExpiresAt: res.Access.ExpiresAt, RecoveryCodes: res.RecoveryCodes,
@@ -129,10 +144,12 @@ func (a *API) NativeBeginPasskeyLogin(ctx context.Context, _ openapi.NativeBegin
 	if err != nil {
 		return nil, err
 	}
+
 	if res.Outcome == passkey.OutcomeRateLimited {
 		a.denied(ctx, "passkey_login_options", string(res.Reason))
 		return openapi.NativeBeginPasskeyLogin429JSONResponse{RateLimitedJSONResponse: openapi.RateLimitedJSONResponse(problem(ctx, openapi.ErrorCodeRateLimited))}, nil
 	}
+
 	return openapi.NativeBeginPasskeyLogin200JSONResponse(ceremony(res)), nil
 }
 
@@ -142,10 +159,12 @@ func (a *API) BrowserBeginPasskeyLogin(ctx context.Context, _ openapi.BrowserBeg
 	if err != nil {
 		return nil, err
 	}
+
 	if res.Outcome == passkey.OutcomeRateLimited {
 		a.denied(ctx, "passkey_login_options", string(res.Reason))
 		return openapi.BrowserBeginPasskeyLogin429JSONResponse{RateLimitedJSONResponse: openapi.RateLimitedJSONResponse(problem(ctx, openapi.ErrorCodeRateLimited))}, nil
 	}
+
 	return openapi.BrowserBeginPasskeyLogin200JSONResponse(ceremony(res)), nil
 }
 
@@ -158,13 +177,16 @@ func (a *API) NativeFinishPasskeyLogin(ctx context.Context, req openapi.NativeFi
 	if errors.Is(err, passkey.ErrInvalidName) {
 		return openapi.NativeFinishPasskeyLogin400JSONResponse(invalidRequest(ctx)), nil
 	}
+
 	if err != nil {
 		return nil, err
 	}
+
 	if res.Outcome != passkey.OutcomeOK {
 		a.denied(ctx, "passkey_login", string(res.Reason))
 		return openapi.NativeFinishPasskeyLogin400JSONResponse(invalidProof(ctx)), nil
 	}
+
 	body := openapi.NativeFinishPasskeyLogin200JSONResponse{
 		User:        openapi.User{Id: res.User.ID().String(), Email: res.User.Email().String()},
 		AccessToken: res.Access.Value, ExpiresAt: res.Access.ExpiresAt, RefreshToken: res.RefreshSecret,
@@ -172,6 +194,7 @@ func (a *API) NativeFinishPasskeyLogin(ctx context.Context, req openapi.NativeFi
 	if res.NewBindingSecret != "" {
 		body.ClientBinding = &res.NewBindingSecret
 	}
+
 	return body, nil
 }
 
@@ -182,31 +205,38 @@ func (a *API) BrowserFinishPasskeyLogin(ctx context.Context, req openapi.Browser
 		ChallengeID: req.Body.ChallengeId, Response: req.Body.Credential, TicketSecret: optional(req.Body.Ticket),
 		BindingSecret: requestCookie(ctx, BindingCookieName), DeviceName: optional(req.Body.DeviceName), ClientIP: clientIP(ctx),
 	}
+
 	res, err := a.finishLoginUC.Execute(ctx, cmd)
 	if err == nil && res.Outcome == passkey.OutcomeDenied && res.Reason == passkey.ReasonBadBinding && cmd.TicketSecret == "" {
 		// A malformed cookie is replaced like a missing one, but only when no ticket depends on it.
 		cmd.BindingSecret = ""
 		res, err = a.finishLoginUC.Execute(ctx, cmd)
 	}
+
 	if errors.Is(err, passkey.ErrInvalidName) {
 		return openapi.BrowserFinishPasskeyLogin400JSONResponse(invalidRequest(ctx)), nil
 	}
+
 	if err != nil {
 		return nil, err
 	}
+
 	if res.Outcome != passkey.OutcomeOK {
 		a.denied(ctx, "passkey_login", string(res.Reason))
 		return openapi.BrowserFinishPasskeyLogin400JSONResponse(invalidProof(ctx)), nil
 	}
+
 	setCookie(ctx, a.cookies.refresh(res.RefreshSecret, res.RefreshExpiresAt))
 	// The binding cookie is renewed, or issued when the browser had none or a malformed one.
 	binding := res.NewBindingSecret
 	if binding == "" {
 		binding = cmd.BindingSecret
 	}
+
 	if binding != "" {
 		setCookie(ctx, a.cookies.binding(binding))
 	}
+
 	return openapi.BrowserFinishPasskeyLogin200JSONResponse{
 		User:        openapi.User{Id: res.User.ID().String(), Email: res.User.Email().String()},
 		AccessToken: res.Access.Value, ExpiresAt: res.Access.ExpiresAt,
@@ -229,10 +259,12 @@ func (a *API) NativeRedeemRecoveryCode(ctx context.Context, req openapi.NativeRe
 	if err != nil {
 		return nil, err
 	}
+
 	if res.Outcome != passkey.OutcomeOK {
 		a.denied(ctx, "recovery", string(res.Reason))
 		return openapi.NativeRedeemRecoveryCode400JSONResponse(invalidProof(ctx)), nil
 	}
+
 	return openapi.NativeRedeemRecoveryCode200JSONResponse(recoveryTicket(res)), nil
 }
 
@@ -242,9 +274,11 @@ func (a *API) BrowserRedeemRecoveryCode(ctx context.Context, req openapi.Browser
 	if err != nil {
 		return nil, err
 	}
+
 	if res.Outcome != passkey.OutcomeOK {
 		a.denied(ctx, "recovery", string(res.Reason))
 		return openapi.BrowserRedeemRecoveryCode400JSONResponse(invalidProof(ctx)), nil
 	}
+
 	return openapi.BrowserRedeemRecoveryCode200JSONResponse(recoveryTicket(res)), nil
 }

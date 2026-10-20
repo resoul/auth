@@ -3,7 +3,7 @@ package operator
 import (
 	"errors"
 
-	"airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/domain/identity"
 )
 
 // ErrInvalidID reports a malformed operator identifier.
@@ -20,6 +20,7 @@ func ParseID(s string) (ID, error) {
 	if err != nil {
 		return ID{}, ErrInvalidID
 	}
+
 	return ID{value: u.String()}, nil
 }
 
@@ -37,6 +38,7 @@ func (id ID) Owner() identity.UserID {
 	if err != nil {
 		return identity.UserID{}
 	}
+
 	return u
 }
 

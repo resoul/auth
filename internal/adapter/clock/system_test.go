@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"airlance.org/auth/internal/adapter/clock"
+	"go.airlance.org/auth/internal/adapter/clock"
 )
 
 func TestSystemNowIsCurrentUTC(t *testing.T) {
@@ -15,6 +15,7 @@ func TestSystemNowIsCurrentUTC(t *testing.T) {
 	if got.Location() != time.UTC {
 		t.Errorf("location = %v, want UTC", got.Location())
 	}
+
 	if got.Before(before.Add(-time.Second)) || got.After(after.Add(time.Second)) {
 		t.Errorf("Now() = %v, outside [%v, %v]", got, before, after)
 	}

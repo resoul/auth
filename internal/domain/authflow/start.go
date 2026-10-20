@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/domain/identity"
 )
 
 // StartParams are the server-chosen inputs of a new flow.
@@ -29,9 +29,11 @@ func Start(p StartParams, now time.Time, policy Policy) (*Flow, error) {
 	if err := policy.Validate(); err != nil {
 		return nil, fmt.Errorf("start flow: %w", err)
 	}
+
 	if now.IsZero() {
 		return nil, errors.New("start flow: time is required")
 	}
+
 	f := &Flow{
 		id: p.ID, email: p.Email, purpose: p.Purpose, generation: 1,
 		salt: append([]byte(nil), p.Salt...), keyID: p.KeyID, bindingHash: p.Binding,
@@ -42,5 +44,6 @@ func Start(p StartParams, now time.Time, policy Policy) (*Flow, error) {
 	if err := f.validate(); err != nil {
 		return nil, fmt.Errorf("start flow: %w", err)
 	}
+
 	return f, nil
 }

@@ -4,11 +4,12 @@ import (
 	"errors"
 	"testing"
 
-	"airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/domain/identity"
 )
 
 func TestParseUserID(t *testing.T) {
 	const valid = "3f1b7c0e-5d2a-4b8e-9c61-0a1b2c3d4e5f"
+
 	id, err := identity.ParseUserID(valid)
 	if err != nil || id.String() != valid || id.IsZero() {
 		t.Fatalf("ParseUserID(%q) = %q, %v", valid, id, err)
@@ -33,10 +34,12 @@ func TestParseUserID(t *testing.T) {
 
 func TestParseRecognizedClientID(t *testing.T) {
 	const valid = "3f1b7c0e-5d2a-4b8e-9c61-0a1b2c3d4e5f"
+
 	id, err := identity.ParseRecognizedClientID(valid)
 	if err != nil || id.String() != valid {
 		t.Fatalf("ParseRecognizedClientID(%q) = %q, %v", valid, id, err)
 	}
+
 	if _, err := identity.ParseRecognizedClientID("nope"); !errors.Is(err, identity.ErrInvalidID) {
 		t.Errorf("error = %v, want ErrInvalidID", err)
 	}

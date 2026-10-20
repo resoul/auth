@@ -14,6 +14,7 @@ func version() string {
 	if buildVersion != "" {
 		return buildVersion
 	}
+
 	if info, ok := debug.ReadBuildInfo(); ok {
 		for _, s := range info.Settings {
 			if s.Key == "vcs.revision" && s.Value != "" {
@@ -21,6 +22,7 @@ func version() string {
 			}
 		}
 	}
+
 	return "dev"
 }
 

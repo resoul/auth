@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	"airlance.org/auth/internal/application/port"
-	dpasskey "airlance.org/auth/internal/domain/passkey"
+	"go.airlance.org/auth/internal/application/port"
+	dpasskey "go.airlance.org/auth/internal/domain/passkey"
 )
 
 // CredentialSummary is what a signed-in user sees of a passkey: nothing that helps use it.
@@ -37,5 +37,6 @@ func (d ManageDeps) validate(name string) error {
 	if d.UnitOfWork == nil || d.Clock == nil {
 		return fmt.Errorf("new %s: all dependencies are required", name)
 	}
+
 	return nil
 }

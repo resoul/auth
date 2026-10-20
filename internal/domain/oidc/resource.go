@@ -37,6 +37,7 @@ func ParseResourceID(s string) (string, error) {
 	if !resourceIDShape.MatchString(s) {
 		return "", ErrInvalidResourceID
 	}
+
 	return s, nil
 }
 
@@ -77,18 +78,23 @@ func NewResource(p NewResourceParams, now time.Time) (*Resource, error) {
 	if _, err := ParseResourceID(p.ID); err != nil {
 		return nil, err
 	}
+
 	if p.Name == "" || len(p.Name) > 100 {
 		return nil, fmt.Errorf("%w: a name of 1 to 100 characters is required", ErrInvalidResource)
 	}
+
 	if err := CheckResourceURI(p.URI); err != nil {
 		return nil, fmt.Errorf("%w: resource URI: %w", ErrInvalidResource, err)
 	}
+
 	if err := CheckAudience(p.Audience); err != nil {
 		return nil, fmt.Errorf("%w: audience: %w", ErrInvalidResource, err)
 	}
+
 	if err := checkCatalog(p.Scopes); err != nil {
 		return nil, err
 	}
+
 	return &Resource{
 		ID: p.ID, Name: p.Name, Status: ResourceActive, URI: p.URI, Audience: p.Audience, Scopes: slices.Clone(p.Scopes),
 		PolicyVersion: 1, CreatedAt: now.UTC(), UpdatedAt: now.UTC(),
@@ -101,12 +107,15 @@ func CheckResourceURI(raw string) error {
 	if len(raw) > maxResourceURILen {
 		return fmt.Errorf("longer than %d characters", maxResourceURILen)
 	}
+
 	if err := checkRedirectURI(raw); err != nil {
 		return err
 	}
+
 	if u, err := url.Parse(raw); err != nil || u.RawQuery != "" || u.ForceQuery || strings.Contains(raw, "?") {
 		return fmt.Errorf("must not have a query")
 	}
+
 	return nil
 }
 
@@ -116,11 +125,13 @@ func CheckAudience(s string) error {
 	if s == "" || len(s) > maxAudienceLen {
 		return fmt.Errorf("1 to %d characters are required", maxAudienceLen)
 	}
+
 	for _, r := range s {
 		if r <= ' ' || r >= 0x7f || r == '"' || r == '\\' || r == '#' {
 			return fmt.Errorf("must be printable ASCII without spaces, quotes, backslashes or a fragment")
 		}
 	}
+
 	return nil
 }
 
@@ -129,11 +140,13 @@ func checkCatalog(scopes []string) error {
 	if len(scopes) == 0 || len(scopes) > maxResourceScopes {
 		return fmt.Errorf("%w: 1 to %d scopes are required", ErrInvalidResource, maxResourceScopes)
 	}
+
 	for i, s := range scopes {
 		if !ValidAPIScope(s) || slices.Contains(scopes[:i], s) {
 			return fmt.Errorf("%w: scope %q", ErrInvalidScope, s)
 		}
 	}
+
 	return nil
 }
 
@@ -149,12 +162,15 @@ func (r *Resource) SetScopes(scopes []string, now time.Time) (removed []string, 
 	if err := checkCatalog(scopes); err != nil {
 		return nil, err
 	}
+
 	for _, s := range r.Scopes {
 		if !slices.Contains(scopes, s) {
 			removed = append(removed, s)
 		}
 	}
+
 	r.Scopes, r.UpdatedAt = slices.Clone(scopes), now.UTC()
+
 	return removed, nil
 }
 
@@ -171,11 +187,13 @@ func (r *Resource) CheckPermission(scopes []string) error {
 	if len(scopes) == 0 || len(scopes) > maxResourceScopes {
 		return fmt.Errorf("%w: 1 to %d scopes are required", ErrInvalidScope, maxResourceScopes)
 	}
+
 	for i, s := range scopes {
 		if !r.Defines(s) || slices.Contains(scopes[:i], s) {
 			return fmt.Errorf("%w: scope %q", ErrInvalidScope, s)
 		}
 	}
+
 	return nil
 }
 
@@ -194,6 +212,7 @@ func FindResource(list []ResourceScopes, resourceID string) *ResourceScopes {
 			return &list[i]
 		}
 	}
+
 	return nil
 }
 
@@ -204,23 +223,27 @@ func CoversResources(granted, asked []ResourceScopes) bool {
 		if g == nil {
 			return false
 		}
+
 		for _, s := range a.Scopes {
 			if !slices.Contains(g.Scopes, s) {
 				return false
 			}
 		}
 	}
+
 	return true
 }
 
 // Intersect returns the scopes of a that are also in b, in the order of a.
 func Intersect(a, b []string) []string {
 	var out []string
+
 	for _, s := range a {
 		if slices.Contains(b, s) {
 			out = append(out, s)
 		}
 	}
+
 	return out
 }
 
@@ -230,11 +253,13 @@ func ParseResourceURIs(raw []string) ([]string, error) {
 	if len(raw) > maxRequestedAPIs {
 		return nil, ErrInvalidTarget
 	}
+
 	for i, u := range raw {
 		if CheckResourceURI(u) != nil || slices.Contains(raw[:i], u) {
 			return nil, ErrInvalidTarget
 		}
 	}
+
 	return raw, nil
 }
 
@@ -253,15 +278,19 @@ func ParseScopeRequest(raw string) (ScopeRequest, error) {
 	if raw == "" || len(raw) > maxScopeParamLen || strings.TrimSpace(raw) != raw || strings.Contains(raw, "  ") {
 		return ScopeRequest{}, ErrInvalidScope
 	}
+
 	list := strings.Split(raw, " ")
 	if len(list) > maxRequestedScopes {
 		return ScopeRequest{}, ErrInvalidScope
 	}
+
 	var out ScopeRequest
+
 	for i, s := range list {
 		if slices.Contains(list[:i], s) {
 			return ScopeRequest{}, ErrInvalidScope
 		}
+
 		switch {
 		case slices.Contains(SupportedScopes(), s):
 			out.Protocol = append(out.Protocol, s)
@@ -271,9 +300,11 @@ func ParseScopeRequest(raw string) (ScopeRequest, error) {
 			return ScopeRequest{}, ErrInvalidScope
 		}
 	}
+
 	if !slices.Contains(out.Protocol, ScopeOpenID) {
 		return ScopeRequest{}, ErrInvalidScope
 	}
+
 	return out, nil
 }
 
@@ -283,15 +314,18 @@ func ParseAPIScopes(raw string) ([]string, error) {
 	if raw == "" || len(raw) > maxScopeParamLen || strings.TrimSpace(raw) != raw || strings.Contains(raw, "  ") {
 		return nil, ErrInvalidScope
 	}
+
 	list := strings.Split(raw, " ")
 	if len(list) > maxResourceScopes {
 		return nil, ErrInvalidScope
 	}
+
 	for i, s := range list {
 		if !ValidAPIScope(s) || slices.Contains(list[:i], s) {
 			return nil, ErrInvalidScope
 		}
 	}
+
 	return list, nil
 }
 
@@ -304,34 +338,44 @@ func AgreeScopes(resources []*Resource, perms map[string][]string, api []string)
 		if len(api) > 0 {
 			return nil, ErrInvalidScope
 		}
+
 		return nil, nil
 	}
+
 	if len(api) == 0 {
 		return nil, ErrInvalidScope
 	}
+
 	out := make([]ResourceScopes, 0, len(resources))
 	used := make(map[string]bool, len(api))
+
 	for _, r := range resources {
 		allowed, ok := perms[r.ID]
 		if !ok {
 			return nil, ErrInvalidTarget
 		}
+
 		var agreed []string
+
 		for _, s := range api {
 			if r.Defines(s) && slices.Contains(allowed, s) {
 				agreed = append(agreed, s)
 				used[s] = true
 			}
 		}
+
 		if len(agreed) == 0 {
 			return nil, ErrInvalidScope
 		}
+
 		out = append(out, ResourceScopes{ResourceID: r.ID, PolicyVersion: r.PolicyVersion, Scopes: agreed})
 	}
+
 	for _, s := range api {
 		if !used[s] {
 			return nil, ErrInvalidScope
 		}
 	}
+
 	return out, nil
 }

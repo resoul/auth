@@ -8,7 +8,7 @@ import (
 
 	gomail "github.com/wneessen/go-mail"
 
-	"airlance.org/auth/internal/application/port"
+	"go.airlance.org/auth/internal/application/port"
 )
 
 var _ port.MailSender = (*SMTPSender)(nil)
@@ -54,23 +54,29 @@ func NewSMTPSender(cfg SMTPConfig, clock port.Clock) (*SMTPSender, error) {
 	if clock == nil {
 		return nil, errors.New("new smtp sender: a clock is required")
 	}
+
 	if cfg.Host == "" || cfg.Port <= 0 || cfg.Port > 65535 || cfg.FromAddress == "" {
 		return nil, errors.New("new smtp sender: host, port and from address are required")
 	}
+
 	switch cfg.TLS {
 	case TLSNone, TLSStartTLS, TLSImplicit:
 	default:
 		return nil, fmt.Errorf("new smtp sender: unknown tls mode %q", cfg.TLS)
 	}
+
 	if (cfg.Username == "") != (cfg.Password == "") {
 		return nil, errors.New("new smtp sender: username and password go together")
 	}
+
 	if cfg.Username != "" && cfg.TLS == TLSNone {
 		return nil, errors.New("new smtp sender: credentials are not sent without TLS")
 	}
+
 	if cfg.Timeout <= 0 {
 		return nil, errors.New("new smtp sender: a positive timeout is required")
 	}
+
 	return &SMTPSender{cfg: cfg, clock: clock}, nil
 }
 
@@ -87,12 +93,15 @@ func (s *SMTPSender) Send(ctx context.Context, m port.Mail) error {
 	} else {
 		err = msg.From(s.cfg.FromAddress)
 	}
+
 	if err != nil {
 		return fmt.Errorf("build mail: sender address: %w", err)
 	}
+
 	if err := msg.To(m.To.String()); err != nil {
 		return fmt.Errorf("build mail: recipient address: %w", err)
 	}
+
 	msg.Subject(subject)
 	msg.SetBodyString(gomail.TypeTextPlain, text)
 	msg.AddAlternativeString(gomail.TypeTextHTML, html)
@@ -108,9 +117,11 @@ func (s *SMTPSender) Send(ctx context.Context, m port.Mail) error {
 			timeout = remaining
 		}
 	}
+
 	if timeout <= 0 {
 		return fmt.Errorf("%w: no time left to send", port.ErrMailTemporary)
 	}
+
 	opts := []gomail.Option{gomail.WithPort(s.cfg.Port), gomail.WithTimeout(timeout)}
 	switch s.cfg.TLS {
 	case TLSNone:
@@ -120,21 +131,26 @@ func (s *SMTPSender) Send(ctx context.Context, m port.Mail) error {
 	case TLSImplicit:
 		opts = append(opts, gomail.WithSSL())
 	}
+
 	if s.cfg.Username != "" {
 		opts = append(opts, gomail.WithSMTPAuth(gomail.SMTPAuthAutoDiscover),
 			gomail.WithUsername(s.cfg.Username), gomail.WithPassword(s.cfg.Password))
 	}
+
 	client, err := gomail.NewClient(s.cfg.Host, opts...)
 	if err != nil {
 		return fmt.Errorf("%w: create smtp client", port.ErrMailTemporary)
 	}
+
 	done := make(chan error, 1)
 	go func() { done <- client.DialAndSendWithContext(ctx, msg) }()
+
 	select {
 	case err := <-done:
 		if err != nil {
 			return classify(err)
 		}
+
 		return nil
 	case <-ctx.Done():
 		return fmt.Errorf("%w: %w", port.ErrMailTemporary, context.Cause(ctx))
@@ -149,10 +165,12 @@ func classify(err error) error {
 		// Connection, TLS, authentication, timeout or cancellation: worth retrying.
 		return fmt.Errorf("%w: connection or protocol error", port.ErrMailTemporary)
 	}
+
 	code := sendErr.ErrorCode()
 	if sendErr.IsTemp() {
 		return fmt.Errorf("%w: smtp code %d", port.ErrMailTemporary, code)
 	}
+
 	switch sendErr.Reason {
 	case gomail.ErrSMTPRcptTo, gomail.ErrSMTPData, gomail.ErrSMTPDataClose:
 		// The server looked at this recipient or message and said no for good.

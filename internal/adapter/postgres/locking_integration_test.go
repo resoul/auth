@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"airlance.org/auth/internal/application/port"
-	"airlance.org/auth/internal/domain/identity"
-	"airlance.org/auth/internal/domain/oidc"
-	"airlance.org/auth/internal/testutil"
+	"go.airlance.org/auth/internal/application/port"
+	"go.airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/domain/oidc"
+	"go.airlance.org/auth/internal/testutil"
 )
 
 // These tests hold two transactions at known points to check the order in which row locks are taken. The order
@@ -25,6 +25,7 @@ const quiet = 400 * time.Millisecond
 func inTx(store port.UnitOfWork, fn func(ctx context.Context, st port.Stores) error) <-chan error {
 	done := make(chan error, 1)
 	go func() { done <- store.Do(context.Background(), fn) }()
+
 	return done
 }
 
@@ -32,15 +33,20 @@ func inTx(store port.UnitOfWork, fn func(ctx context.Context, st port.Stores) er
 // while a transaction is held must not leave it holding, or closing the pool waits for it forever.
 func gate(t *testing.T) (wait <-chan struct{}, open func()) {
 	t.Helper()
+
 	ch := make(chan struct{})
+
 	var once sync.Once
+
 	open = func() { once.Do(func() { close(ch) }) }
 	t.Cleanup(open)
+
 	return ch, open
 }
 
 func within(t *testing.T, name string, done <-chan error, d time.Duration) error {
 	t.Helper()
+
 	select {
 	case err := <-done:
 		return err
@@ -55,10 +61,12 @@ func TestLookingUpAKeyAndReplacingKeysQueueOnTheUser(t *testing.T) {
 	f := testutil.NewFactory(t, time.Now())
 	user := f.User(testutil.UserSpec{})
 	key := f.Credential(testutil.CredentialSpec{User: user})
+
 	seed := store.Do(context.Background(), func(ctx context.Context, st port.Stores) error {
 		if _, _, err := st.Users.Ensure(ctx, user); err != nil {
 			return err
 		}
+
 		return st.Credentials.Create(ctx, key)
 	})
 	if seed != nil {
@@ -73,22 +81,29 @@ func TestLookingUpAKeyAndReplacingKeysQueueOnTheUser(t *testing.T) {
 		if _, err := st.Credentials.GetForUpdate(ctx, key.CredentialID()); err != nil {
 			return err
 		}
+
 		close(holding)
 		<-release
+
 		_, err := st.Users.GetForShare(ctx, user.ID())
+
 		return err
 	})
+
 	<-holding
+
 	recovery := inTx(store, func(ctx context.Context, st port.Stores) error {
 		_, err := st.Credentials.DeleteAllForUser(ctx, user.ID())
 		return err
 	})
+
 	time.Sleep(quiet) // the recovery is now at its first lock
 	open()
 
 	if err := within(t, "the sign-in", signIn, 5*time.Second); err != nil {
 		t.Errorf("sign-in: %v", err)
 	}
+
 	if err := within(t, "the recovery", recovery, 5*time.Second); err != nil {
 		t.Errorf("recovery: %v", err)
 	}
@@ -98,12 +113,14 @@ func TestRevokingEverythingWaitsForASessionBeingOpened(t *testing.T) {
 	store := testutil.PostgresStore(t)
 	f := testutil.NewFactory(t, time.Now())
 	user := f.User(testutil.UserSpec{})
+
 	if err := store.Do(context.Background(), func(ctx context.Context, st port.Stores) error {
 		_, _, err := st.Users.Ensure(ctx, user)
 		return err
 	}); err != nil {
 		t.Fatal(err)
 	}
+
 	opened := f.Session(testutil.SessionSpec{User: user})
 
 	// An issuer reads the user the way every sign-in does (a shared lock) and opens a session.
@@ -113,11 +130,15 @@ func TestRevokingEverythingWaitsForASessionBeingOpened(t *testing.T) {
 		if _, err := st.Users.GetForShare(ctx, user.ID()); err != nil {
 			return err
 		}
+
 		close(holding)
 		<-release
+
 		return st.Sessions.Create(ctx, opened)
 	})
+
 	<-holding
+
 	revoker := inTx(store, func(ctx context.Context, st port.Stores) error {
 		return st.Sessions.RevokeAllForUser(ctx, user.ID(), time.Now())
 	})
@@ -127,22 +148,28 @@ func TestRevokingEverythingWaitsForASessionBeingOpened(t *testing.T) {
 		t.Fatalf("the revocation finished (%v) while a session was still being opened: it would miss it", err)
 	case <-time.After(quiet):
 	}
+
 	open()
+
 	if err := within(t, "the issuer", issuer, 5*time.Second); err != nil {
 		t.Fatal(err)
 	}
+
 	if err := within(t, "the revocation", revoker, 5*time.Second); err != nil {
 		t.Fatal(err)
 	}
 
 	active := -1
+
 	if err := store.Do(context.Background(), func(ctx context.Context, st port.Stores) error {
 		list, err := st.Sessions.ListActive(ctx, user.ID(), time.Now(), 10)
 		active = len(list)
+
 		return err
 	}); err != nil {
 		t.Fatal(err)
 	}
+
 	if active != 0 {
 		t.Errorf("%d sessions are active after the revocation, want none: it ran before the new session was visible", active)
 	}
@@ -151,15 +178,20 @@ func TestRevokingEverythingWaitsForASessionBeingOpened(t *testing.T) {
 // oidcRows seeds a user with a client, a sign-in, a grant and an unexchanged code, and returns what a test needs.
 func oidcRows(t *testing.T, store port.UnitOfWork, f *testutil.Factory) (user identity.UserID, code oidc.SecretHash, grantID string) {
 	t.Helper()
+
 	u := f.User(testutil.UserSpec{})
 	now := time.Now().UTC()
+
 	client, err := oidc.NewClient(oidc.NewClientParams{ID: "lock-app", Name: "x", RedirectURIs: []string{"https://app.example.test/cb"}, Trusted: true}, now)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	opID, _ := f.IDs.NewOIDCID()
 	grantID, _ = f.IDs.NewOIDCID()
+
 	var secret, codeHash oidc.SecretHash
+
 	secret[0], codeHash[0] = 1, 2
 	op := &oidc.OPSession{ID: opID, UserID: u.ID(), SecretHash: secret, AuthTime: now, AMR: []string{"passkey"}, CreatedAt: now, LastSeenAt: now, ExpiresAt: now.Add(time.Hour)}
 	grant := &oidc.Grant{ID: grantID, ClientID: client.ID, UserID: u.ID(), OPSessionID: opID, Scopes: []string{"openid"}, PolicyVersion: 1, CreatedAt: now, LastUsedAt: now, ExpiresAt: now.Add(time.Hour)}
@@ -167,13 +199,17 @@ func oidcRows(t *testing.T, store port.UnitOfWork, f *testutil.Factory) (user id
 		Hash: codeHash, GrantID: grantID, RedirectURI: "https://app.example.test/cb", CodeChallenge: oidc.Challenge("v" + strings.Repeat("a", 42)),
 		Nonce: "n", Scopes: []string{"openid"}, AuthTime: now, AMR: []string{"passkey"}, CreatedAt: now, ExpiresAt: now.Add(time.Minute),
 	}
+
 	var clientSecret oidc.SecretHash
+
 	clientSecret[0] = 3
 	secretID, _ := f.IDs.NewOIDCID()
+
 	err = store.Do(context.Background(), func(ctx context.Context, st port.Stores) error {
 		if _, _, err := st.Users.Ensure(ctx, u); err != nil {
 			return err
 		}
+
 		for _, step := range []func() error{
 			func() error { return st.OIDCClients.Create(ctx, client, secretID, clientSecret) },
 			func() error { return st.OPSessions.Create(ctx, op) },
@@ -184,11 +220,13 @@ func oidcRows(t *testing.T, store port.UnitOfWork, f *testutil.Factory) (user id
 				return err
 			}
 		}
+
 		return nil
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	return u.ID(), codeHash, grantID
 }
 
@@ -204,14 +242,18 @@ func TestRevokingEverythingWaitsForAnExchangeInProgress(t *testing.T) {
 		if _, _, err := st.OIDCCodes.GetByHashForUpdate(ctx, code); err != nil {
 			return err
 		}
+
 		close(holding)
 		<-release
 		// Issuing tokens reads the user next. If the exchange held the grant but not the user, the revocation would hold
 		// the user and wait for the grant while this waited for the user: the database would abort one of them.
 		_, err := st.Users.GetForShare(ctx, user)
+
 		return err
 	})
+
 	<-holding
+
 	revoker := inTx(store, func(ctx context.Context, st port.Stores) error {
 		return st.OPSessions.RevokeAllForUser(ctx, user, time.Now())
 	})
@@ -220,21 +262,27 @@ func TestRevokingEverythingWaitsForAnExchangeInProgress(t *testing.T) {
 		t.Fatalf("the revocation finished (%v) while an exchange held the grant: it would miss the tokens being issued", err)
 	case <-time.After(quiet):
 	}
+
 	open()
+
 	if err := within(t, "the exchange", exchange, 5*time.Second); err != nil {
 		t.Fatal(err)
 	}
+
 	if err := within(t, "the revocation", revoker, 5*time.Second); err != nil {
 		t.Fatal(err)
 	}
+
 	if err := store.Do(context.Background(), func(ctx context.Context, st port.Stores) error {
 		g, err := st.OIDCGrants.Get(ctx, grantID)
 		if err != nil {
 			return err
 		}
+
 		if g.RevokedAt.IsZero() {
 			t.Error("the grant is not revoked after revoke-all")
 		}
+
 		return nil
 	}); err != nil {
 		t.Fatal(err)
@@ -253,19 +301,27 @@ func TestTwoExchangesOfOneCodeQueueOnTheGrant(t *testing.T) {
 		if err != nil {
 			return err
 		}
+
 		close(holding)
 		<-release
+
 		c.ConsumedAt = time.Now().UTC()
+
 		return st.OIDCCodes.Consume(ctx, c)
 	})
+
 	<-holding
+
 	var seenConsumed bool
+
 	second := inTx(store, func(ctx context.Context, st port.Stores) error {
 		c, _, err := st.OIDCCodes.GetByHashForUpdate(ctx, code)
 		if err != nil {
 			return err
 		}
+
 		seenConsumed = !c.ConsumedAt.IsZero()
+
 		return nil
 	})
 	select {
@@ -273,13 +329,17 @@ func TestTwoExchangesOfOneCodeQueueOnTheGrant(t *testing.T) {
 		t.Fatalf("the second exchange read the code (%v) while the first held it", err)
 	case <-time.After(quiet):
 	}
+
 	open()
+
 	if err := within(t, "the first", first, 5*time.Second); err != nil {
 		t.Fatal(err)
 	}
+
 	if err := within(t, "the second", second, 5*time.Second); err != nil {
 		t.Fatal(err)
 	}
+
 	if !seenConsumed {
 		t.Error("the second exchange did not see the code consumed by the first")
 	}
@@ -295,7 +355,9 @@ func TestRevokingEverythingWaitsForAGrantBeingOpened(t *testing.T) {
 	// a grant that did not exist when a revocation started.
 	opID, _ := f.IDs.NewOIDCID()
 	grantID, _ := f.IDs.NewOIDCID()
+
 	var secret oidc.SecretHash
+
 	secret[0] = 9
 	holding := make(chan struct{})
 	release, open := gate(t)
@@ -303,14 +365,19 @@ func TestRevokingEverythingWaitsForAGrantBeingOpened(t *testing.T) {
 		if _, err := st.Users.GetForShare(ctx, user); err != nil {
 			return err
 		}
+
 		close(holding)
 		<-release
+
 		if err := st.OPSessions.Create(ctx, &oidc.OPSession{ID: opID, UserID: user, SecretHash: secret, AuthTime: now, AMR: []string{"passkey"}, CreatedAt: now, LastSeenAt: now, ExpiresAt: now.Add(time.Hour)}); err != nil {
 			return err
 		}
+
 		return st.OIDCGrants.Create(ctx, &oidc.Grant{ID: grantID, ClientID: "lock-app", UserID: user, OPSessionID: opID, Scopes: []string{"openid"}, PolicyVersion: 1, CreatedAt: now, LastUsedAt: now, ExpiresAt: now.Add(time.Hour)})
 	})
+
 	<-holding
+
 	revoker := inTx(store, func(ctx context.Context, st port.Stores) error {
 		return st.OPSessions.RevokeAllForUser(ctx, user, time.Now())
 	})
@@ -319,25 +386,32 @@ func TestRevokingEverythingWaitsForAGrantBeingOpened(t *testing.T) {
 		t.Fatalf("the revocation finished (%v) while a grant was being opened: it would miss it", err)
 	case <-time.After(quiet):
 	}
+
 	open()
+
 	if err := within(t, "the issuer", issuer, 5*time.Second); err != nil {
 		t.Fatal(err)
 	}
+
 	if err := within(t, "the revocation", revoker, 5*time.Second); err != nil {
 		t.Fatal(err)
 	}
+
 	if err := store.Do(context.Background(), func(ctx context.Context, st port.Stores) error {
 		g, err := st.OIDCGrants.Get(ctx, grantID)
 		if err != nil {
 			return err
 		}
+
 		op, err := st.OPSessions.Get(ctx, opID)
 		if err != nil {
 			return err
 		}
+
 		if g.RevokedAt.IsZero() || op.RevokedAt.IsZero() {
 			t.Errorf("the sign-in opened during the revocation survives it (grant revoked %v, session revoked %v)", !g.RevokedAt.IsZero(), !op.RevokedAt.IsZero())
 		}
+
 		return nil
 	}); err != nil {
 		t.Fatal(err)
@@ -350,21 +424,29 @@ func TestEndingASignInWaitsForAGrantBeingOpenedOnIt(t *testing.T) {
 	user, _, firstGrant := oidcRows(t, store, f)
 	now := time.Now().UTC()
 
-	var opID string
-	var secondClient *oidc.Client
+	var (
+		opID         string
+		secondClient *oidc.Client
+	)
+
 	if err := store.Do(context.Background(), func(ctx context.Context, st port.Stores) error {
 		g, err := st.OIDCGrants.Get(ctx, firstGrant)
 		if err != nil {
 			return err
 		}
+
 		opID = g.OPSessionID
+
 		secondClient, err = oidc.NewClient(oidc.NewClientParams{ID: "second-app", Name: "x", RedirectURIs: []string{"https://two.example.test/cb"}, Trusted: true, BackchannelLogoutURI: "https://two.example.test/bc"}, now)
 		if err != nil {
 			return err
 		}
+
 		var secret oidc.SecretHash
+
 		secret[0] = 77
 		secretID, _ := f.IDs.NewOIDCID()
+
 		return st.OIDCClients.Create(ctx, secondClient, secretID, secret)
 	}); err != nil {
 		t.Fatal(err)
@@ -379,29 +461,38 @@ func TestEndingASignInWaitsForAGrantBeingOpenedOnIt(t *testing.T) {
 		if _, err := st.Users.GetForShare(ctx, user); err != nil {
 			return err
 		}
+
 		close(holding)
 		<-release
+
 		return st.OIDCGrants.Create(ctx, &oidc.Grant{ID: grantID, ClientID: secondClient.ID, UserID: user, OPSessionID: opID, Scopes: []string{"openid"}, PolicyVersion: 1, CreatedAt: now, LastUsedAt: now, ExpiresAt: now.Add(time.Hour)})
 	})
+
 	<-holding
+
 	ender := inTx(store, func(ctx context.Context, st port.Stores) error { return st.OPSessions.End(ctx, opID, time.Now()) })
 	select {
 	case err := <-ender:
 		t.Fatalf("the logout finished (%v) while a grant was being opened on the sign-in: it would miss it", err)
 	case <-time.After(quiet):
 	}
+
 	open()
+
 	if err := within(t, "the issuer", issuer, 5*time.Second); err != nil {
 		t.Fatal(err)
 	}
+
 	if err := within(t, "the logout", ender, 5*time.Second); err != nil {
 		t.Fatal(err)
 	}
+
 	if err := store.Do(context.Background(), func(ctx context.Context, st port.Stores) error {
 		g, err := st.OIDCGrants.Get(ctx, grantID)
 		if err != nil {
 			return err
 		}
+
 		if g.RevokedAt.IsZero() {
 			t.Error("the grant opened while the sign-in was ending survived the logout")
 		}
@@ -410,6 +501,7 @@ func TestEndingASignInWaitsForAGrantBeingOpenedOnIt(t *testing.T) {
 		if err != nil || n.ClientID != "second-app" || n.SessionID != opID {
 			t.Errorf("notice = %+v, %v; want one for second-app on %s", n, err, opID)
 		}
+
 		return nil
 	}); err != nil {
 		t.Fatal(err)

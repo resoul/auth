@@ -15,15 +15,15 @@ import (
 	"github.com/go-jose/go-jose/v4"
 	josejwt "github.com/go-jose/go-jose/v4/jwt"
 
-	"airlance.org/auth/internal/adapter/crypto"
-	"airlance.org/auth/internal/adapter/jwt"
-	"airlance.org/auth/internal/adapter/postgres"
-	appoidc "airlance.org/auth/internal/application/oidc"
-	"airlance.org/auth/internal/application/port"
-	"airlance.org/auth/internal/domain/identity"
-	doidc "airlance.org/auth/internal/domain/oidc"
-	dsession "airlance.org/auth/internal/domain/session"
-	"airlance.org/auth/internal/testutil"
+	"go.airlance.org/auth/internal/adapter/crypto"
+	"go.airlance.org/auth/internal/adapter/jwt"
+	"go.airlance.org/auth/internal/adapter/postgres"
+	appoidc "go.airlance.org/auth/internal/application/oidc"
+	"go.airlance.org/auth/internal/application/port"
+	"go.airlance.org/auth/internal/domain/identity"
+	doidc "go.airlance.org/auth/internal/domain/oidc"
+	dsession "go.airlance.org/auth/internal/domain/session"
+	"go.airlance.org/auth/internal/testutil"
 )
 
 const (
@@ -102,12 +102,15 @@ func newEnv(t *testing.T) *env {
 	must(t, err)
 	e.apps, err = appoidc.NewApps(appoidc.Apps{UnitOfWork: e.store, Clock: e.clock, Metrics: e.metrics})
 	must(t, err)
+
 	e.signer = tokens
+
 	return e
 }
 
 func must(t *testing.T, err error) {
 	t.Helper()
+
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,6 +132,7 @@ func (e *env) register(id, redirect string, scopes ...string) client {
 		ID: id, Name: id, RedirectURIs: []string{redirect}, AllowedScopes: scopes,
 	})
 	must(e.t, err)
+
 	return client{id: id, secret: got.Secret, redirect: redirect}
 }
 
@@ -144,6 +148,7 @@ func (e *env) newPerson() person {
 		_, _, err := st.Users.Ensure(ctx, user)
 		return err
 	})
+
 	return person{user: user}
 }
 
@@ -154,6 +159,7 @@ func (e *env) signIn(p person) string {
 	e.do(func(ctx context.Context, st port.Stores) error { return st.Sessions.Create(ctx, sess) })
 	token, err := e.device.SignAccess(port.AccessClaims{UserID: p.user.ID(), SessionID: sess.ID(), AuthTime: e.clock.Now(), AMR: []string{"otp", "passkey"}})
 	must(e.t, err)
+
 	return token.Value
 }
 
@@ -176,6 +182,7 @@ func (e *env) newFlow(c client) flow {
 	must(e.t, err)
 	nonce, _, err := e.secrets.NewOIDCSecret()
 	must(e.t, err)
+
 	return flow{client: c, state: state, nonce: nonce, verifier: verifier}
 }
 
@@ -184,6 +191,7 @@ func (f flow) command(sso string) appoidc.AuthorizeCommand {
 	if scope == "" {
 		scope = "openid email"
 	}
+
 	return appoidc.AuthorizeCommand{
 		ResponseType: "code", ClientID: f.client.id, RedirectURI: f.client.redirect, Scope: scope, State: f.state, Nonce: f.nonce,
 		CodeChallenge: doidc.Challenge(f.verifier), CodeChallengeMethod: "S256", SSOSecret: sso, Resources: f.resources,
@@ -194,43 +202,53 @@ func (e *env) authorizeWith(cmd appoidc.AuthorizeCommand) appoidc.AuthorizeResul
 	e.t.Helper()
 	got, err := e.authorize.Execute(context.Background(), cmd)
 	must(e.t, err)
+
 	return got
 }
 
 // signedIn runs a flow through the sign-in page and returns the code and the new SSO cookie.
 func (e *env) signedIn(f flow, p person) (code, sso string) {
 	e.t.Helper()
+
 	asked := e.authorizeWith(f.command(""))
 	if asked.Kind != appoidc.AuthorizeLogin {
 		e.t.Fatalf("authorize = %+v, want the sign-in page", asked)
 	}
+
 	done, err := e.login.Execute(context.Background(), appoidc.CompleteLoginCommand{
 		RequestSecret: asked.RequestID, BindingSecret: asked.BindingSecret, AccessToken: e.signIn(p),
 	})
 	must(e.t, err)
+
 	if done.Failure != nil || done.SSOSecret == "" {
 		e.t.Fatalf("complete login = %+v", done)
 	}
+
 	return e.codeOf(f, done.Location), done.SSOSecret
 }
 
 // codeOf reads the code from the redirect back to the application and checks what must be there.
 func (e *env) codeOf(f flow, location string) string {
 	e.t.Helper()
+
 	q := e.query(location, f.client.redirect)
 	if q.Get("state") != f.state || q.Get("iss") != issuer || q.Get("code") == "" || q.Get("error") != "" {
 		e.t.Fatalf("redirect %q does not carry a code, the state and the issuer", location)
 	}
+
 	return q.Get("code")
 }
 
 func (e *env) query(location, wantPrefix string) url.Values {
 	e.t.Helper()
+
 	if !strings.HasPrefix(location, wantPrefix+"?") {
 		e.t.Fatalf("redirect %q does not go to %s", location, wantPrefix)
 	}
+
 	u, err := url.Parse(location)
 	must(e.t, err)
+
 	return u.Query()
 }
 
@@ -241,6 +259,7 @@ func (e *env) exchange(f flow, code string) appoidc.TokenResult {
 		RedirectURI: f.client.redirect, CodeVerifier: f.verifier,
 	})
 	must(e.t, err)
+
 	return got
 }
 
@@ -250,6 +269,7 @@ func (e *env) refresh(c client, refreshToken string) appoidc.TokenResult {
 		ClientID: c.id, ClientSecret: c.secret, GrantType: "refresh_token", RefreshToken: refreshToken,
 	})
 	must(e.t, err)
+
 	return got
 }
 
@@ -257,20 +277,25 @@ func (e *env) refresh(c client, refreshToken string) appoidc.TokenResult {
 func (e *env) tokens(f flow, p person) (*appoidc.TokenResponse, string) {
 	e.t.Helper()
 	code, sso := e.signedIn(f, p)
+
 	got := e.exchange(f, code)
 	if got.Response == nil {
 		e.t.Fatalf("exchange = %+v", got.Failure)
 	}
+
 	return got.Response, sso
 }
 
 // idClaims verifies an ID Token's signature against the published keys and returns its claims.
 func (e *env) idClaims(token string) map[string]any {
 	e.t.Helper()
+
 	parsed, err := josejwt.ParseSigned(token, []jose.SignatureAlgorithm{jose.RS256})
 	must(e.t, err)
+
 	var claims map[string]any
 	must(e.t, parsed.Claims(e.oidcKeys.PublicKeys()["oidc-a"], &claims))
+
 	return claims
 }
 
@@ -278,12 +303,15 @@ func (e *env) idClaims(token string) map[string]any {
 // endpoint to be told when a sign-in ends.
 func (e *env) registerWithLogout(id, redirect, postLogout, backchannel string) client {
 	e.t.Helper()
+
 	cmd := appoidc.RegisterCommand{ID: id, Name: id, RedirectURIs: []string{redirect}, BackchannelLogoutURI: backchannel}
 	if postLogout != "" {
 		cmd.PostLogoutRedirectURIs = []string{postLogout}
 	}
+
 	got, err := e.clients.Register(context.Background(), cmd)
 	must(e.t, err)
+
 	return client{id: id, secret: got.Secret, redirect: redirect}
 }
 
@@ -292,12 +320,17 @@ func (e *env) opSessionOf(sso string) *doidc.OPSession {
 	e.t.Helper()
 	hash, err := e.secrets.HashOIDCSecret(sso)
 	must(e.t, err)
+
 	var op *doidc.OPSession
+
 	e.do(func(ctx context.Context, st port.Stores) error {
 		var err error
+
 		op, err = st.OPSessions.GetBySecret(ctx, hash)
+
 		return err
 	})
+
 	return op
 }
 
@@ -307,6 +340,7 @@ func appsessionByID(ctx context.Context, st port.Stores, id string) (*dsession.S
 	if err != nil {
 		return nil, err
 	}
+
 	return st.Sessions.Get(ctx, sid)
 }
 
@@ -321,12 +355,14 @@ type recordedMetrics struct {
 func (m *recordedMetrics) ResourceToken(resource, outcome string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
 	m.counts["token:"+resource+":"+outcome]++
 }
 
 func (m *recordedMetrics) PermissionChange(change string, ended int) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
 	m.counts["change:"+change]++
 	m.counts["ended:"+change] += ended
 }
@@ -334,11 +370,13 @@ func (m *recordedMetrics) PermissionChange(change string, ended int) {
 func (m *recordedMetrics) Introspection(resource, outcome string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
 	m.counts["introspect:"+resource+":"+outcome]++
 }
 
 func (m *recordedMetrics) count(key string) int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
 	return m.counts[key]
 }

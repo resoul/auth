@@ -40,6 +40,7 @@ type smtpScript struct {
 func (s *FakeSMTP) Reply(command, line string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	switch command {
 	case "greeting":
 		s.script.greeting = line
@@ -58,28 +59,35 @@ func (s *FakeSMTP) Reply(command, line string) {
 func (s *FakeSMTP) Hang() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	s.script.hang = true
 }
 
 func (s *FakeSMTP) scripted() smtpScript {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	return s.script
 }
 
 // NewFakeSMTP starts a server on a free loopback port and stops it with the test.
 func NewFakeSMTP(t testing.TB) *FakeSMTP {
 	t.Helper()
+
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen: %v", err)
 	}
+
 	s := &FakeSMTP{ln: ln, done: make(chan struct{})}
 	go s.serve()
+
 	t.Cleanup(func() {
 		close(s.done)
+
 		_ = ln.Close()
 	})
+
 	return s
 }
 
@@ -93,6 +101,7 @@ func (s *FakeSMTP) Addr() (string, int) {
 func (s *FakeSMTP) Messages() []SMTPMessage {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	return append([]SMTPMessage(nil), s.messages...)
 }
 
@@ -100,6 +109,7 @@ func (s *FakeSMTP) Messages() []SMTPMessage {
 func (s *FakeSMTP) Connections() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	return s.conns
 }
 
@@ -107,6 +117,7 @@ func reply(configured, fallback string) string {
 	if configured != "" {
 		return configured
 	}
+
 	return fallback
 }
 
@@ -116,8 +127,10 @@ func (s *FakeSMTP) serve() {
 		if err != nil {
 			return
 		}
+
 		s.mu.Lock()
 		s.conns++
+
 		s.mu.Unlock()
 		go s.handle(conn)
 	}
@@ -125,30 +138,37 @@ func (s *FakeSMTP) serve() {
 
 func (s *FakeSMTP) handle(conn net.Conn) {
 	defer func() { _ = conn.Close() }()
+
 	script := s.scripted()
 	if script.hang {
 		select {
 		case <-s.done:
 		case <-time.After(time.Minute):
 		}
+
 		return
 	}
+
 	write := func(line string) { _, _ = io.WriteString(conn, line+"\r\n") }
 	r := bufio.NewReader(conn)
 
 	greeting := reply(script.greeting, "220 fake ESMTP")
 	write(greeting)
+
 	if !strings.HasPrefix(greeting, "2") {
 		return
 	}
 
 	var msg SMTPMessage
+
 	for {
 		line, err := r.ReadString('\n')
 		if err != nil {
 			return
 		}
+
 		line = strings.TrimRight(line, "\r\n")
+
 		verb := strings.ToUpper(line)
 		switch {
 		case strings.HasPrefix(verb, "EHLO"), strings.HasPrefix(verb, "HELO"):
@@ -159,36 +179,46 @@ func (s *FakeSMTP) handle(conn net.Conn) {
 			if strings.HasPrefix(reply, "2") {
 				msg = SMTPMessage{From: addressOf(line)}
 			}
+
 			write(reply)
 		case strings.HasPrefix(verb, "RCPT TO:"):
 			reply := reply(script.rcpt, "250 OK")
 			if strings.HasPrefix(reply, "2") {
 				msg.To = append(msg.To, addressOf(line))
 			}
+
 			write(reply)
 		case verb == "DATA":
 			write("354 go ahead")
+
 			var data strings.Builder
+
 			for {
 				l, err := r.ReadString('\n')
 				if err != nil {
 					return
 				}
+
 				if l == ".\r\n" {
 					break
 				}
+
 				data.WriteString(strings.TrimPrefix(l, "."))
 			}
+
 			reply := reply(script.data, "250 queued")
 			if strings.HasPrefix(reply, "2") {
 				msg.Data = data.String()
+
 				s.mu.Lock()
 				s.messages = append(s.messages, msg)
 				s.mu.Unlock()
 			}
+
 			write(reply)
 		case verb == "RSET":
 			msg = SMTPMessage{}
+
 			write("250 OK")
 		case verb == "NOOP":
 			write("250 OK")
@@ -207,5 +237,6 @@ func addressOf(line string) string {
 	if start < 0 || end < start {
 		return ""
 	}
+
 	return line[start+1 : end]
 }

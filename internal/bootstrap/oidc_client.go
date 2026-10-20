@@ -8,12 +8,12 @@ import (
 	"strings"
 	"time"
 
-	"airlance.org/auth/internal/adapter/clock"
-	"airlance.org/auth/internal/adapter/crypto"
-	"airlance.org/auth/internal/adapter/id"
-	appoidc "airlance.org/auth/internal/application/oidc"
-	"airlance.org/auth/internal/application/port"
-	"airlance.org/auth/internal/config"
+	"go.airlance.org/auth/internal/adapter/clock"
+	"go.airlance.org/auth/internal/adapter/crypto"
+	"go.airlance.org/auth/internal/adapter/id"
+	appoidc "go.airlance.org/auth/internal/application/oidc"
+	"go.airlance.org/auth/internal/application/port"
+	"go.airlance.org/auth/internal/config"
 )
 
 // OIDCClientAction selects what the oidc client command does.
@@ -52,11 +52,13 @@ func OIDCClient(ctx context.Context, cfg config.Config, req OIDCClientRequest, o
 	if !cfg.Database.URL.IsSet() {
 		return fmt.Errorf("%s is required for oidc client", config.EnvDatabaseURL)
 	}
+
 	store, err := openStore(ctx, cfg, 2)
 	if err != nil {
 		return err
 	}
 	defer store.Close()
+
 	clients, err := appoidc.NewClients(appoidc.Deps{UnitOfWork: store, Clock: clock.System{}, Secrets: crypto.OIDC{}, IDs: id.Generator{}})
 	if err != nil {
 		return err
@@ -69,64 +71,83 @@ func OIDCClient(ctx context.Context, cfg config.Config, req OIDCClientRequest, o
 		if err != nil {
 			return err
 		}
+
 		if req.Service {
 			_, err = fmt.Fprintf(out, "registered service %s\nclient_id:     %s\nclient_secret: %s\nThe secret is shown only now. It asks for no tokens until `oidc resource allow` names an API it may call.\n",
 				got.Client.Name, got.Client.ID, got.Secret)
+
 			return err
 		}
+
 		_, err = fmt.Fprintf(out, "registered %s\nclient_id:     %s\nclient_secret: %s\nThe secret is shown only now; store it in the application's backend, never in a browser.\n",
 			got.Client.Name, got.Client.ID, got.Secret)
+
 		return err
 	case OIDCClientList:
 		list, err := clients.List(ctx)
 		if err != nil {
 			return err
 		}
+
 		for _, c := range list {
 			if c.Service() {
 				if _, err := fmt.Fprintf(out, "%s\t%s\tservice\n", c.ID, c.Status); err != nil {
 					return err
 				}
+
 				continue
 			}
+
 			if _, err := fmt.Fprintf(out, "%s\t%s\t%s\t%s\tlogout: %s\n", c.ID, c.Status, strings.Join(c.AllowedScopes, " "), strings.Join(c.RedirectURIs, " "), logoutSummary(c.PostLogoutRedirectURIs, c.BackchannelLogoutURI)); err != nil {
 				return err
 			}
 		}
+
 		return nil
 	case OIDCClientDisable, OIDCClientEnable:
 		if err := clients.SetActive(ctx, req.ID, req.Action == OIDCClientEnable); err != nil {
 			if errors.Is(err, port.ErrNotFound) {
 				return fmt.Errorf("no client %q", req.ID)
 			}
+
 			return err
 		}
+
 		verb := "disabled; every grant and refresh token of it is revoked"
 		if req.Action == OIDCClientEnable {
 			verb = "enabled; earlier grants stay revoked and users sign in again"
 		}
+
 		_, err := fmt.Fprintf(out, "%s %s\n", req.ID, verb)
+
 		return err
 	case OIDCClientLogout:
 		if err := clients.SetLogout(ctx, req.ID, req.PostLogoutURIs, req.BackchannelURI); err != nil {
 			if errors.Is(err, port.ErrNotFound) {
 				return fmt.Errorf("no client %q", req.ID)
 			}
+
 			return err
 		}
+
 		_, err := fmt.Fprintf(out, "%s: logout settings replaced (%d return addresses, back-channel endpoint %s)\n", req.ID, len(req.PostLogoutURIs), setOrNone(req.BackchannelURI))
+
 		return err
 	case OIDCClientRotate:
 		secret, err := clients.RotateSecret(ctx, req.ID, req.Overlap)
 		if errors.Is(err, port.ErrNotFound) {
 			return fmt.Errorf("no client %q", req.ID)
 		}
+
 		if err != nil {
 			return err
 		}
+
 		_, err = fmt.Fprintf(out, "new client_secret: %s\nThe previous secrets work for %s more. The new one is shown only now.\n", secret, req.Overlap)
+
 		return err
 	}
+
 	return errors.New("unknown oidc client action")
 }
 
@@ -134,6 +155,7 @@ func setOrNone(s string) string {
 	if s == "" {
 		return "none"
 	}
+
 	return "set"
 }
 

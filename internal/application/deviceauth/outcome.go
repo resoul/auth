@@ -3,7 +3,7 @@ package deviceauth
 import (
 	"errors"
 
-	"airlance.org/auth/internal/domain/deviceauth"
+	"go.airlance.org/auth/internal/domain/deviceauth"
 )
 
 // Outcome is the externally visible result class of a use case.
@@ -62,6 +62,7 @@ func denial(err error) (Reason, bool) {
 	case errors.Is(err, deviceauth.ErrMismatch):
 		return ReasonBadSecret, true
 	}
+
 	return "", false
 }
 

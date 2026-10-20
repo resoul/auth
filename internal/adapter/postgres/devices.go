@@ -7,12 +7,12 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"airlance.org/auth/internal/adapter/postgres/sqlc"
-	"airlance.org/auth/internal/application/port"
-	"airlance.org/auth/internal/domain/deviceauth"
-	"airlance.org/auth/internal/domain/identity"
-	"airlance.org/auth/internal/domain/passkey"
-	"airlance.org/auth/internal/domain/session"
+	"go.airlance.org/auth/internal/adapter/postgres/sqlc"
+	"go.airlance.org/auth/internal/application/port"
+	"go.airlance.org/auth/internal/domain/deviceauth"
+	"go.airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/domain/passkey"
+	"go.airlance.org/auth/internal/domain/session"
 )
 
 type devices struct{ q *sqlc.Queries }
@@ -22,9 +22,11 @@ func (r *devices) Create(ctx context.Context, req *deviceauth.Request) error {
 	if err != nil {
 		return fmt.Errorf("create device request: %w", err)
 	}
+
 	if err := r.q.CreateDeviceRequest(ctx, sqlc.CreateDeviceRequestParams(args)); err != nil {
 		return fmt.Errorf("create device request: %w", err)
 	}
+
 	return nil
 }
 
@@ -33,9 +35,11 @@ func (r *devices) Get(ctx context.Context, id deviceauth.RequestID) (*deviceauth
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, port.ErrNotFound
 	}
+
 	if err != nil {
 		return nil, fmt.Errorf("get device request: %w", err)
 	}
+
 	return deviceFromRow(row)
 }
 
@@ -44,18 +48,22 @@ func (r *devices) GetForUpdate(ctx context.Context, id deviceauth.RequestID) (*d
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, port.ErrNotFound
 	}
+
 	if err != nil {
 		return nil, fmt.Errorf("get device request: %w", err)
 	}
+
 	return deviceFromRow(row)
 }
 
 func (r *devices) Save(ctx context.Context, req *deviceauth.Request) error {
 	rec := req.Record()
+
 	args, err := deviceParams(rec)
 	if err != nil {
 		return fmt.Errorf("save device request: %w", err)
 	}
+
 	n, err := r.q.UpdateDeviceRequest(ctx, sqlc.UpdateDeviceRequestParams{
 		ID: args.ID, State: args.State, Attempts: args.Attempts, UserID: args.UserID, SessionID: args.SessionID,
 		DecidedAt: args.DecidedAt, RedeemedAt: args.RedeemedAt,
@@ -63,9 +71,11 @@ func (r *devices) Save(ctx context.Context, req *deviceauth.Request) error {
 	if err != nil {
 		return fmt.Errorf("save device request: %w", err)
 	}
+
 	if n == 0 {
 		return port.ErrNotFound
 	}
+
 	return nil
 }
 
@@ -75,6 +85,7 @@ func deviceParams(rec deviceauth.Record) (sqlc.CreateDeviceRequestParams, error)
 	if err != nil {
 		return sqlc.CreateDeviceRequestParams{}, err
 	}
+
 	out := sqlc.CreateDeviceRequestParams{
 		ID: rec.ID.String(), PollHash: rec.PollHash.Bytes(), BindingHash: rec.Binding.Bytes(), DeviceName: rec.DeviceName,
 		PairingCode: rec.Code, State: string(rec.State), Attempts: int16(rec.Attempts), UserID: userID,
@@ -85,8 +96,10 @@ func deviceParams(rec deviceauth.Record) (sqlc.CreateDeviceRequestParams, error)
 		if err != nil {
 			return sqlc.CreateDeviceRequestParams{}, err
 		}
+
 		out.SessionID = &s
 	}
+
 	return out, nil
 }
 
@@ -95,24 +108,29 @@ func deviceFromRow(row sqlc.DeviceRequest) (*deviceauth.Request, error) {
 	if err != nil {
 		return nil, fmt.Errorf("stored device request id: %w", err)
 	}
+
 	poll, err := passkey.NewSecretHash(row.PollHash)
 	if err != nil {
 		return nil, fmt.Errorf("stored device request poll hash: %w", err)
 	}
+
 	binding, err := identity.NewBindingHash(row.BindingHash)
 	if err != nil {
 		return nil, fmt.Errorf("stored device request binding: %w", err)
 	}
+
 	userID, err := userFromOptional(row.UserID)
 	if err != nil {
 		return nil, fmt.Errorf("stored device request user: %w", err)
 	}
+
 	var sessionID session.ID
 	if row.SessionID != nil {
 		if sessionID, err = session.ParseID(row.SessionID.String()); err != nil {
 			return nil, fmt.Errorf("stored device request session: %w", err)
 		}
 	}
+
 	return deviceauth.Restore(deviceauth.Record{
 		ID: id, PollHash: poll, Binding: binding, DeviceName: row.DeviceName, Code: row.PairingCode, State: deviceauth.State(row.State),
 		Attempts: int(row.Attempts), UserID: userID, SessionID: sessionID, CreatedAt: goTime(row.CreatedAt), ExpiresAt: goTime(row.ExpiresAt),

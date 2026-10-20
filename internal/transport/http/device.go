@@ -4,9 +4,9 @@ import (
 	"context"
 	"errors"
 
-	appdevice "airlance.org/auth/internal/application/deviceauth"
-	"airlance.org/auth/internal/application/port"
-	"airlance.org/auth/internal/transport/http/openapi"
+	appdevice "go.airlance.org/auth/internal/application/deviceauth"
+	"go.airlance.org/auth/internal/application/port"
+	"go.airlance.org/auth/internal/transport/http/openapi"
 )
 
 func deviceState(s appdevice.State) openapi.DeviceStatusResponseState {
@@ -23,19 +23,23 @@ func (a *API) NativeStartDeviceSignIn(ctx context.Context, req openapi.NativeSta
 	if errors.Is(err, appdevice.ErrInvalidName) {
 		return openapi.NativeStartDeviceSignIn400JSONResponse(invalidRequest(ctx)), nil
 	}
+
 	if err != nil {
 		return nil, err
 	}
+
 	if res.Outcome == appdevice.OutcomeRateLimited {
 		a.denied(ctx, "device_start", string(res.Reason))
 		return openapi.NativeStartDeviceSignIn429JSONResponse{RateLimitedJSONResponse: rateLimited(ctx)}, nil
 	}
+
 	body := openapi.NativeDeviceStartResponse{
 		RequestId: res.RequestID.String(), PollSecret: res.PollSecret, PairingCode: res.PairingCode, ExpiresAt: res.ExpiresAt,
 	}
 	if res.NewBindingSecret != "" {
 		body.ClientBinding = &res.NewBindingSecret
 	}
+
 	return openapi.NativeStartDeviceSignIn200JSONResponse(body), nil
 }
 
@@ -43,25 +47,32 @@ func (a *API) NativeStartDeviceSignIn(ctx context.Context, req openapi.NativeSta
 // binding is the cookie too (a browser that has none, or a malformed one, gets a new one); the body carries neither.
 func (a *API) BrowserStartDeviceSignIn(ctx context.Context, req openapi.BrowserStartDeviceSignInRequestObject) (openapi.BrowserStartDeviceSignInResponseObject, error) {
 	binding := requestCookie(ctx, BindingCookieName)
+
 	res, err := a.startDevice(ctx, optional(req.Body.DeviceName), binding)
 	if binding != "" && errors.Is(err, port.ErrInvalidBindingSecret) {
 		binding = ""
 		res, err = a.startDevice(ctx, optional(req.Body.DeviceName), binding)
 	}
+
 	if errors.Is(err, appdevice.ErrInvalidName) {
 		return openapi.BrowserStartDeviceSignIn400JSONResponse(invalidRequest(ctx)), nil
 	}
+
 	if err != nil {
 		return nil, err
 	}
+
 	if res.Outcome == appdevice.OutcomeRateLimited {
 		a.denied(ctx, "device_start", string(res.Reason))
 		return openapi.BrowserStartDeviceSignIn429JSONResponse{RateLimitedJSONResponse: rateLimited(ctx)}, nil
 	}
+
 	if res.NewBindingSecret != "" {
 		setCookie(ctx, a.cookies.binding(res.NewBindingSecret))
 	}
+
 	setCookie(ctx, a.cookies.device(res.PollSecret, res.ExpiresAt))
+
 	return openapi.BrowserStartDeviceSignIn200JSONResponse{RequestId: res.RequestID.String(), PairingCode: res.PairingCode, ExpiresAt: res.ExpiresAt}, nil
 }
 
@@ -75,10 +86,12 @@ func (a *API) NativeDeviceSignInStatus(ctx context.Context, req openapi.NativeDe
 	if err != nil {
 		return nil, err
 	}
+
 	if res.Outcome != appdevice.OutcomeOK {
 		a.denied(ctx, "device_status", string(res.Reason))
 		return openapi.NativeDeviceSignInStatus400JSONResponse(invalidProof(ctx)), nil
 	}
+
 	return openapi.NativeDeviceSignInStatus200JSONResponse{State: deviceState(res.State)}, nil
 }
 
@@ -88,10 +101,12 @@ func (a *API) BrowserDeviceSignInStatus(ctx context.Context, req openapi.Browser
 	if err != nil {
 		return nil, err
 	}
+
 	if res.Outcome != appdevice.OutcomeOK {
 		a.denied(ctx, "device_status", string(res.Reason))
 		return openapi.BrowserDeviceSignInStatus400JSONResponse(invalidProof(ctx)), nil
 	}
+
 	return openapi.BrowserDeviceSignInStatus200JSONResponse{State: deviceState(res.State)}, nil
 }
 
@@ -105,10 +120,12 @@ func (a *API) NativeRedeemDeviceSignIn(ctx context.Context, req openapi.NativeRe
 	if err != nil {
 		return nil, err
 	}
+
 	if res.Outcome != appdevice.OutcomeOK {
 		a.denied(ctx, "device_redeem", string(res.Reason))
 		return openapi.NativeRedeemDeviceSignIn400JSONResponse(invalidProof(ctx)), nil
 	}
+
 	return openapi.NativeRedeemDeviceSignIn200JSONResponse{
 		User:        openapi.User{Id: res.User.ID().String(), Email: res.User.Email().String()},
 		AccessToken: res.Access.Value, ExpiresAt: res.Access.ExpiresAt, RefreshToken: res.RefreshSecret,
@@ -119,17 +136,21 @@ func (a *API) NativeRedeemDeviceSignIn(ctx context.Context, req openapi.NativeRe
 // renewed and the poll secret, now spent, is cleared. The body carries only the access token.
 func (a *API) BrowserRedeemDeviceSignIn(ctx context.Context, req openapi.BrowserRedeemDeviceSignInRequestObject) (openapi.BrowserRedeemDeviceSignInResponseObject, error) {
 	binding := requestCookie(ctx, BindingCookieName)
+
 	res, err := a.redeemDevice(ctx, req.Body.RequestId, requestCookie(ctx, DeviceCookieName), binding)
 	if err != nil {
 		return nil, err
 	}
+
 	if res.Outcome != appdevice.OutcomeOK {
 		a.denied(ctx, "device_redeem", string(res.Reason))
 		return openapi.BrowserRedeemDeviceSignIn400JSONResponse(invalidProof(ctx)), nil
 	}
+
 	setCookie(ctx, a.cookies.refresh(res.RefreshSecret, res.RefreshExpiresAt))
 	setCookie(ctx, a.cookies.binding(binding))
 	setCookie(ctx, a.cookies.clearDevice())
+
 	return openapi.BrowserRedeemDeviceSignIn200JSONResponse{
 		User:        openapi.User{Id: res.User.ID().String(), Email: res.User.Email().String()},
 		AccessToken: res.Access.Value, ExpiresAt: res.Access.ExpiresAt,
@@ -146,19 +167,23 @@ func (a *API) NativeGetDeviceRequest(ctx context.Context, req openapi.NativeGetD
 	if err != nil {
 		return nil, err
 	}
+
 	if !ok {
 		return openapi.NativeGetDeviceRequest401JSONResponse{UnauthenticatedJSONResponse: unauthenticated(ctx)}, nil
 	}
+
 	res, err := a.approverUC.Inspect(ctx, actor, req.RequestId)
 	if err != nil {
 		return nil, err
 	}
+
 	switch res.Outcome {
 	case appdevice.OutcomeOK:
 		return openapi.NativeGetDeviceRequest200JSONResponse(deviceView(res.View)), nil
 	case appdevice.OutcomeDenied:
 		return openapi.NativeGetDeviceRequest401JSONResponse{UnauthenticatedJSONResponse: unauthenticated(ctx)}, nil
 	}
+
 	return openapi.NativeGetDeviceRequest404JSONResponse(notFound(ctx)), nil
 }
 
@@ -168,19 +193,23 @@ func (a *API) BrowserGetDeviceRequest(ctx context.Context, req openapi.BrowserGe
 	if err != nil {
 		return nil, err
 	}
+
 	if !ok {
 		return openapi.BrowserGetDeviceRequest401JSONResponse{UnauthenticatedJSONResponse: unauthenticated(ctx)}, nil
 	}
+
 	res, err := a.approverUC.Inspect(ctx, actor, req.RequestId)
 	if err != nil {
 		return nil, err
 	}
+
 	switch res.Outcome {
 	case appdevice.OutcomeOK:
 		return openapi.BrowserGetDeviceRequest200JSONResponse(deviceView(res.View)), nil
 	case appdevice.OutcomeDenied:
 		return openapi.BrowserGetDeviceRequest401JSONResponse{UnauthenticatedJSONResponse: unauthenticated(ctx)}, nil
 	}
+
 	return openapi.BrowserGetDeviceRequest404JSONResponse(notFound(ctx)), nil
 }
 
@@ -189,7 +218,9 @@ func (a *API) approveDevice(ctx context.Context, id, code string, stepUp *string
 	if err != nil || !ok {
 		return appdevice.Result{}, false, err
 	}
+
 	res, err := a.approverUC.Approve(ctx, appdevice.ApproveCommand{Actor: actor, RequestID: id, PairingCode: code, StepUpSecret: stepUpToken(stepUp)})
+
 	return res, true, err
 }
 
@@ -202,7 +233,9 @@ func (a *API) NativeApproveDeviceRequest(ctx context.Context, req openapi.Native
 	case !authed:
 		return openapi.NativeApproveDeviceRequest401JSONResponse{UnauthenticatedJSONResponse: unauthenticated(ctx)}, nil
 	}
+
 	a.deniedDevice(ctx, "device_approve", res)
+
 	switch res.Outcome {
 	case appdevice.OutcomeOK:
 		return openapi.NativeApproveDeviceRequest204Response{}, nil
@@ -214,10 +247,12 @@ func (a *API) NativeApproveDeviceRequest(ctx context.Context, req openapi.Native
 		if res.Reason == appdevice.ReasonNoSession {
 			return openapi.NativeApproveDeviceRequest401JSONResponse{UnauthenticatedJSONResponse: unauthenticated(ctx)}, nil
 		}
+
 		if res.Reason == appdevice.ReasonExpired || res.Reason == appdevice.ReasonNotPending {
 			return openapi.NativeApproveDeviceRequest404JSONResponse(notFound(ctx)), nil
 		}
 	}
+
 	return openapi.NativeApproveDeviceRequest400JSONResponse(invalidProof(ctx)), nil
 }
 
@@ -230,7 +265,9 @@ func (a *API) BrowserApproveDeviceRequest(ctx context.Context, req openapi.Brows
 	case !authed:
 		return openapi.BrowserApproveDeviceRequest401JSONResponse{UnauthenticatedJSONResponse: unauthenticated(ctx)}, nil
 	}
+
 	a.deniedDevice(ctx, "device_approve", res)
+
 	switch res.Outcome {
 	case appdevice.OutcomeOK:
 		return openapi.BrowserApproveDeviceRequest204Response{}, nil
@@ -242,10 +279,12 @@ func (a *API) BrowserApproveDeviceRequest(ctx context.Context, req openapi.Brows
 		if res.Reason == appdevice.ReasonNoSession {
 			return openapi.BrowserApproveDeviceRequest401JSONResponse{UnauthenticatedJSONResponse: unauthenticated(ctx)}, nil
 		}
+
 		if res.Reason == appdevice.ReasonExpired || res.Reason == appdevice.ReasonNotPending {
 			return openapi.BrowserApproveDeviceRequest404JSONResponse(notFound(ctx)), nil
 		}
 	}
+
 	return openapi.BrowserApproveDeviceRequest400JSONResponse(invalidProof(ctx)), nil
 }
 
@@ -262,19 +301,23 @@ func (a *API) NativeDenyDeviceRequest(ctx context.Context, req openapi.NativeDen
 	if err != nil {
 		return nil, err
 	}
+
 	if !ok {
 		return openapi.NativeDenyDeviceRequest401JSONResponse{UnauthenticatedJSONResponse: unauthenticated(ctx)}, nil
 	}
+
 	res, err := a.approverUC.Deny(ctx, actor, req.RequestId)
 	if err != nil {
 		return nil, err
 	}
+
 	switch {
 	case res.Outcome == appdevice.OutcomeOK:
 		return openapi.NativeDenyDeviceRequest204Response{}, nil
 	case res.Reason == appdevice.ReasonNoSession:
 		return openapi.NativeDenyDeviceRequest401JSONResponse{UnauthenticatedJSONResponse: unauthenticated(ctx)}, nil
 	}
+
 	return openapi.NativeDenyDeviceRequest404JSONResponse(notFound(ctx)), nil
 }
 
@@ -284,18 +327,22 @@ func (a *API) BrowserDenyDeviceRequest(ctx context.Context, req openapi.BrowserD
 	if err != nil {
 		return nil, err
 	}
+
 	if !ok {
 		return openapi.BrowserDenyDeviceRequest401JSONResponse{UnauthenticatedJSONResponse: unauthenticated(ctx)}, nil
 	}
+
 	res, err := a.approverUC.Deny(ctx, actor, req.RequestId)
 	if err != nil {
 		return nil, err
 	}
+
 	switch {
 	case res.Outcome == appdevice.OutcomeOK:
 		return openapi.BrowserDenyDeviceRequest204Response{}, nil
 	case res.Reason == appdevice.ReasonNoSession:
 		return openapi.BrowserDenyDeviceRequest401JSONResponse{UnauthenticatedJSONResponse: unauthenticated(ctx)}, nil
 	}
+
 	return openapi.BrowserDenyDeviceRequest404JSONResponse(notFound(ctx)), nil
 }

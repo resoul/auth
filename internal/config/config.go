@@ -250,6 +250,7 @@ func Load(lookup LookupFunc) (Config, error) {
 		SMTP:            SMTPConfig{TLS: SMTPTLSStartTLS},
 		Registration:    RegistrationOpen,
 	}
+
 	var errs []error
 
 	if v := value(lookup, EnvLogLevel); v != "" {
@@ -257,6 +258,7 @@ func Load(lookup LookupFunc) (Config, error) {
 			errs = append(errs, fmt.Errorf("%s: want debug, info, warn or error", EnvLogLevel))
 		}
 	}
+
 	if v := value(lookup, EnvLogFormat); v != "" {
 		switch v {
 		case LogFormatJSON, LogFormatText:
@@ -265,6 +267,7 @@ func Load(lookup LookupFunc) (Config, error) {
 			errs = append(errs, fmt.Errorf("%s: want %s or %s", EnvLogFormat, LogFormatJSON, LogFormatText))
 		}
 	}
+
 	if v := value(lookup, EnvShutdownTimeout); v != "" {
 		d, err := time.ParseDuration(v)
 		if err != nil || d <= 0 {
@@ -273,7 +276,9 @@ func Load(lookup LookupFunc) (Config, error) {
 			cfg.ShutdownTimeout = d
 		}
 	}
+
 	cfg.JWT.Issuer = strings.TrimSpace(value(lookup, EnvJWTIssuer))
+
 	cfg.JWT.Audience = strings.TrimSpace(value(lookup, EnvJWTAudience))
 	if v := value(lookup, EnvAccessTTL); v != "" {
 		d, err := time.ParseDuration(v)
@@ -283,6 +288,7 @@ func Load(lookup LookupFunc) (Config, error) {
 			cfg.JWT.AccessTTL = d
 		}
 	}
+
 	if v := value(lookup, EnvRegistration); v != "" {
 		switch v {
 		case RegistrationOpen, RegistrationInvite:
@@ -291,6 +297,7 @@ func Load(lookup LookupFunc) (Config, error) {
 			errs = append(errs, fmt.Errorf("%s: want %s or %s", EnvRegistration, RegistrationOpen, RegistrationInvite))
 		}
 	}
+
 	if v := value(lookup, EnvInvitationURL); v != "" {
 		if err := checkInvitationURL(v); err != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", EnvInvitationURL, err))
@@ -300,16 +307,20 @@ func Load(lookup LookupFunc) (Config, error) {
 	} else if err := checkInvitationURL(cfg.JWT.Issuer); err == nil {
 		cfg.InvitationURL = cfg.JWT.Issuer
 	}
+
 	errs = append(errs, loadSMTP(lookup, &cfg.SMTP)...)
 	cfg.WebAuthn.RPID = strings.ToLower(value(lookup, EnvWebAuthnRPID))
+
 	cfg.WebAuthn.RPName = value(lookup, EnvWebAuthnRPName)
 	if cfg.WebAuthn.RPID != "" && !validRPID(cfg.WebAuthn.RPID) {
 		errs = append(errs, fmt.Errorf("%s: want a domain such as example.com or localhost, without scheme, port or path", EnvWebAuthnRPID))
 		cfg.WebAuthn.RPID = ""
 	}
+
 	if len(cfg.WebAuthn.RPName) > 64 {
 		errs = append(errs, fmt.Errorf("%s: at most 64 characters", EnvWebAuthnRPName))
 	}
+
 	if v := value(lookup, EnvWebAuthnOrigins); v != "" {
 		origins, err := parseWebAuthnOrigins(v)
 		if err != nil {
@@ -322,6 +333,7 @@ func Load(lookup LookupFunc) (Config, error) {
 			}
 		}
 	}
+
 	if v := value(lookup, EnvMetricsAddr); v != "" {
 		if err := checkListenAddr(v); err != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", EnvMetricsAddr, err))
@@ -329,6 +341,7 @@ func Load(lookup LookupFunc) (Config, error) {
 			cfg.Metrics.Addr = v
 		}
 	}
+
 	if v := value(lookup, EnvHTTPAddr); v != "" {
 		if err := checkListenAddr(v); err != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", EnvHTTPAddr, err))
@@ -336,6 +349,7 @@ func Load(lookup LookupFunc) (Config, error) {
 			cfg.HTTP.Addr = v
 		}
 	}
+
 	errs = append(errs, loadAdmin(lookup, &cfg)...)
 	if v := value(lookup, EnvBrowserOrigins); v != "" {
 		origins, err := parseBrowserOrigins(v)
@@ -345,6 +359,7 @@ func Load(lookup LookupFunc) (Config, error) {
 			cfg.HTTP.BrowserOrigins = origins
 		}
 	}
+
 	if v := value(lookup, EnvCookieSameSite); v != "" {
 		switch strings.ToLower(v) {
 		case SameSiteStrict, SameSiteLax, SameSiteNone:
@@ -353,6 +368,7 @@ func Load(lookup LookupFunc) (Config, error) {
 			errs = append(errs, fmt.Errorf("%s: want strict, lax or none", EnvCookieSameSite))
 		}
 	}
+
 	if v := value(lookup, EnvTrustedProxies); v != "" {
 		proxies, err := parseTrustedProxies(v)
 		if err != nil {
@@ -368,6 +384,7 @@ func Load(lookup LookupFunc) (Config, error) {
 			errs = append(errs, fmt.Errorf("%s listens beyond the loopback, so %s is required: TLS and the client address come from the proxy in front of the service", l.env, EnvTrustedProxies))
 		}
 	}
+
 	if v := value(lookup, EnvDatabaseMaxConns); v != "" {
 		if n, err := strconv.Atoi(v); err != nil || n < 1 || n > maxDatabaseConns {
 			errs = append(errs, fmt.Errorf("%s: want a number from 1 to %d", EnvDatabaseMaxConns, maxDatabaseConns))
@@ -375,15 +392,18 @@ func Load(lookup LookupFunc) (Config, error) {
 			cfg.Database.MaxConns = int32(n)
 		}
 	}
+
 	schemaSet := false
 	if v := value(lookup, EnvDatabaseSchema); v != "" {
 		schemaSet = true
+
 		if !databaseSchema.MatchString(v) || strings.HasPrefix(v, "pg_") {
 			errs = append(errs, fmt.Errorf("%s: want lower-case letters, digits and underscores, starting with a letter or underscore, at most 63 characters, not starting with pg_", EnvDatabaseSchema))
 		} else {
 			cfg.Database.Schema = v
 		}
 	}
+
 	if v := value(lookup, EnvDatabaseURL); v != "" {
 		if u, err := url.Parse(v); err != nil || (u.Scheme != "postgres" && u.Scheme != "postgresql") || u.Host == "" {
 			// The message must not echo the value: it contains a password.
@@ -396,6 +416,7 @@ func Load(lookup LookupFunc) (Config, error) {
 			}
 		}
 	}
+
 	if v := value(lookup, EnvKeyringFile); v != "" {
 		ring, err := LoadKeyring(v)
 		if err != nil {
@@ -409,6 +430,7 @@ func Load(lookup LookupFunc) (Config, error) {
 		if cfg.JWT.Issuer == "" {
 			errs = append(errs, fmt.Errorf("%s is required when the keyring has jwt_signing", EnvJWTIssuer))
 		}
+
 		if cfg.JWT.Audience == "" {
 			errs = append(errs, fmt.Errorf("%s is required when the keyring has jwt_signing", EnvJWTAudience))
 		}
@@ -418,6 +440,7 @@ func Load(lookup LookupFunc) (Config, error) {
 		if !cfg.Database.URL.IsSet() {
 			errs = append(errs, fmt.Errorf("%s is required when %s is set: the mail worker reads the queue from the database", EnvDatabaseURL, EnvSMTPAddr))
 		}
+
 		if cfg.Keyring == nil || cfg.Keyring.OTPHMAC == nil {
 			errs = append(errs, fmt.Errorf("an otp_hmac keyring is required when %s is set: the worker derives the codes", EnvSMTPAddr))
 		}
@@ -427,36 +450,45 @@ func Load(lookup LookupFunc) (Config, error) {
 		if !cfg.Database.URL.IsSet() {
 			errs = append(errs, fmt.Errorf("%s is required when %s is set: the API stores flows and sessions", EnvDatabaseURL, EnvHTTPAddr))
 		}
+
 		if cfg.Keyring == nil || cfg.Keyring.OTPHMAC == nil {
 			errs = append(errs, fmt.Errorf("an otp_hmac keyring is required when %s is set: start and verify derive the codes", EnvHTTPAddr))
 		}
+
 		if cfg.Keyring == nil || cfg.Keyring.JWTSigning == nil {
 			errs = append(errs, fmt.Errorf("a jwt_signing keyring is required when %s is set: verify and refresh sign access tokens", EnvHTTPAddr))
 		}
+
 		if value(lookup, EnvWebAuthnRPID) == "" {
 			errs = append(errs, fmt.Errorf("%s is required when %s is set: a session needs a passkey", EnvWebAuthnRPID, EnvHTTPAddr))
 		}
+
 		if value(lookup, EnvWebAuthnOrigins) == "" {
 			errs = append(errs, fmt.Errorf("%s is required when %s is set: a session needs a passkey", EnvWebAuthnOrigins, EnvHTTPAddr))
 		}
 	}
+
 	errs = append(errs, loadOIDC(lookup, &cfg)...)
 	if cfg.Admin.Enabled() {
 		if !cfg.Database.URL.IsSet() {
 			errs = append(errs, fmt.Errorf("%s is required when %s is set: operators and their sessions are stored there", EnvDatabaseURL, EnvAdminAddr))
 		}
+
 		if cfg.Admin.Addr == cfg.HTTP.Addr || cfg.Admin.Addr == cfg.Metrics.Addr {
 			errs = append(errs, fmt.Errorf("%s must differ from %s and %s: the point is a separate listener", EnvAdminAddr, EnvHTTPAddr, EnvMetricsAddr))
 		}
 	}
+
 	if cfg.Metrics.Enabled() {
 		if !cfg.SMTP.Enabled() && !cfg.HTTP.Enabled() {
 			errs = append(errs, fmt.Errorf("%s needs %s or %s: there is nothing to measure otherwise", EnvMetricsAddr, EnvHTTPAddr, EnvSMTPAddr))
 		}
+
 		if cfg.Metrics.Addr == cfg.HTTP.Addr {
 			errs = append(errs, fmt.Errorf("%s must differ from %s: the point is a separate listener", EnvMetricsAddr, EnvHTTPAddr))
 		}
 	}
+
 	if cfg.HTTP.CookieSameSite == SameSiteNone && len(cfg.HTTP.BrowserOrigins) == 0 {
 		errs = append(errs, fmt.Errorf("%s=none needs a trusted origin in %s: SameSite=None cookies are sent cross-site", EnvCookieSameSite, EnvBrowserOrigins))
 	}
@@ -464,6 +496,7 @@ func Load(lookup LookupFunc) (Config, error) {
 	if err := errors.Join(errs...); err != nil {
 		return Config{}, err
 	}
+
 	return cfg, nil
 }
 
@@ -493,5 +526,6 @@ func knownLevel(v string) bool {
 	case "debug", "info", "warn", "error", "DEBUG", "INFO", "WARN", "ERROR":
 		return true
 	}
+
 	return false
 }

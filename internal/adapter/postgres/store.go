@@ -10,9 +10,9 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"airlance.org/auth/internal/adapter/postgres/sqlc"
-	"airlance.org/auth/internal/application/port"
-	"airlance.org/auth/internal/domain/quota"
+	"go.airlance.org/auth/internal/adapter/postgres/sqlc"
+	"go.airlance.org/auth/internal/application/port"
+	"go.airlance.org/auth/internal/domain/quota"
 )
 
 var _ port.UnitOfWork = (*Store)(nil)
@@ -54,32 +54,41 @@ func Open(ctx context.Context, dsn string, ids RecordIDs, opts ...Option) (*Stor
 	if ids == nil {
 		return nil, errors.New("open postgres: record id generator is required")
 	}
+
 	s := &Store{ids: ids, profile: quota.DefaultProfile()}
 	for _, opt := range opts {
 		opt(s)
 	}
+
 	cfg, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
 		return nil, errors.New("open postgres: invalid connection string")
 	}
+
 	if s.maxConns > 0 {
 		cfg.MaxConns = s.maxConns
 	}
+
 	if s.schema != "" {
 		if err := ValidateSchemaName(s.schema); err != nil {
 			return nil, fmt.Errorf("open postgres: %w", err)
 		}
+
 		cfg.ConnConfig.RuntimeParams["search_path"] = s.schema
 	}
+
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("open postgres: %w", err)
 	}
+
 	if err := pool.Ping(ctx); err != nil {
 		pool.Close()
 		return nil, fmt.Errorf("open postgres: ping: %w", err)
 	}
+
 	s.pool = pool
+
 	return s, nil
 }
 
@@ -95,6 +104,7 @@ func (s *Store) Do(ctx context.Context, fn func(ctx context.Context, st port.Sto
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
+
 	finished := false
 	defer func() {
 		if finished {
@@ -103,6 +113,7 @@ func (s *Store) Do(ctx context.Context, fn func(ctx context.Context, st port.Sto
 		// A cancelled request must still release the transaction.
 		rollbackCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		defer cancel()
+
 		_ = tx.Rollback(rollbackCtx) // the original error or panic is what the caller needs
 	}()
 
@@ -148,8 +159,10 @@ func (s *Store) Do(ctx context.Context, fn func(ctx context.Context, st port.Sto
 	}
 
 	finished = true
+
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("commit transaction: %w", err)
 	}
+
 	return nil
 }

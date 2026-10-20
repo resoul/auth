@@ -7,8 +7,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"airlance.org/auth/internal/bootstrap"
-	"airlance.org/auth/internal/config"
+	"go.airlance.org/auth/internal/bootstrap"
+	"go.airlance.org/auth/internal/config"
 )
 
 func newServeCommand() *cobra.Command {
@@ -21,10 +21,12 @@ func newServeCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+
 			logger := bootstrap.NewLogger(cmd.ErrOrStderr(), cfg.Log).With("version", version())
 
 			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
+
 			go func() {
 				<-ctx.Done()
 				stop()

@@ -11,9 +11,9 @@ import (
 	"net/http"
 	"time"
 
-	appoidc "airlance.org/auth/internal/application/oidc"
-	"airlance.org/auth/internal/application/port"
-	doidc "airlance.org/auth/internal/domain/oidc"
+	appoidc "go.airlance.org/auth/internal/application/oidc"
+	"go.airlance.org/auth/internal/application/port"
+	doidc "go.airlance.org/auth/internal/domain/oidc"
 )
 
 // Cookies of the provider. Both are host-only (no Domain), HttpOnly, Secure and Path=/, as the __Host- prefix makes the
@@ -58,17 +58,21 @@ func New(d Deps) (*Handler, error) {
 	if d.Issuer == "" || d.Authorize == nil || d.Login == nil || d.Token == nil || d.UserInfo == nil || d.Logout == nil || d.Revoke == nil || d.JWKS == nil || d.Logger == nil || d.Clock == nil {
 		return nil, errors.New("new oidc handler: all dependencies are required")
 	}
+
 	if d.Requests == nil {
 		d.Requests = discardRequests{}
 	}
+
 	keys, err := d.JWKS.JWKS()
 	if err != nil {
 		return nil, err
 	}
+
 	doc, err := json.Marshal(discoveryDocument(d.Issuer, d.Introspect != nil))
 	if err != nil {
 		return nil, err
 	}
+
 	return &Handler{d: d, jwks: keys, discovery: doc}, nil
 }
 
@@ -92,9 +96,11 @@ func (h *Handler) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /oauth2/userinfo", h.userinfo)
 	mux.HandleFunc("POST /oauth2/userinfo", h.userinfo)
 	mux.HandleFunc("POST /oauth2/revoke", h.revoke)
+
 	if h.d.Introspect != nil {
 		mux.HandleFunc("POST /oauth2/introspect", h.introspect)
 	}
+
 	mux.HandleFunc("GET /oauth2/logout", h.logout)
 	mux.HandleFunc("POST /oauth2/logout", h.logout)
 	mux.HandleFunc("GET /oauth2/login", h.loginPage)
@@ -134,6 +140,7 @@ func discoveryDocument(issuer string, introspection bool) map[string]any {
 		doc["introspection_endpoint"] = issuer + "/oauth2/introspect"
 		doc["introspection_endpoint_auth_methods_supported"] = []string{"client_secret_basic"}
 	}
+
 	return doc
 }
 
@@ -179,6 +186,7 @@ func (h *Handler) asset(name, contentType string) http.HandlerFunc {
 	if err != nil {
 		panic(err) // the file is part of the embed pattern
 	}
+
 	return func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", contentType)
 		w.Header().Set("Cache-Control", "no-cache")

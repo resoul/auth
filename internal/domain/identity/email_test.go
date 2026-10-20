@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/domain/identity"
 )
 
 func TestParseEmailNormalizes(t *testing.T) {
@@ -23,6 +23,7 @@ func TestParseEmailNormalizes(t *testing.T) {
 			if err != nil {
 				t.Fatalf("ParseEmail(%q): %v", tt.in, err)
 			}
+
 			if got.String() != tt.want {
 				t.Errorf("ParseEmail(%q) = %q, want %q", tt.in, got, tt.want)
 			}
@@ -32,6 +33,7 @@ func TestParseEmailNormalizes(t *testing.T) {
 
 func TestParseEmailSameAddressDifferentSpelling(t *testing.T) {
 	a, _ := identity.ParseEmail("Alice@Example.com ")
+
 	b, _ := identity.ParseEmail("alice@example.COM")
 	if a != b {
 		t.Errorf("%q and %q should be equal", a, b)
@@ -66,6 +68,7 @@ func TestParseEmailRejects(t *testing.T) {
 			if !errors.Is(err, identity.ErrInvalidEmail) {
 				t.Fatalf("ParseEmail(%q) = %q, %v; want ErrInvalidEmail", tt.in, got, err)
 			}
+
 			if !got.IsZero() {
 				t.Errorf("ParseEmail(%q) returned non-zero value %q", tt.in, got)
 			}

@@ -5,9 +5,9 @@ import (
 	"log/slog"
 	"time"
 
-	"airlance.org/auth/internal/adapter/clock"
-	"airlance.org/auth/internal/adapter/postgres"
-	"airlance.org/auth/internal/application/port"
+	"go.airlance.org/auth/internal/adapter/clock"
+	"go.airlance.org/auth/internal/adapter/postgres"
+	"go.airlance.org/auth/internal/application/port"
 )
 
 // cleanupEvery is how often the retention sweep runs. Each sweep is bounded, so a backlog
@@ -38,6 +38,7 @@ func newCleanup(logger *slog.Logger, s sweeper) component {
 func sweepEvery(ctx context.Context, logger *slog.Logger, s sweeper, clk port.Clock, p postgres.CleanupPolicy, every time.Duration) {
 	ticker := time.NewTicker(every)
 	defer ticker.Stop()
+
 	for {
 		res, err := s.Cleanup(ctx, clk.Now(), p)
 		switch {
@@ -51,10 +52,12 @@ func sweepEvery(ctx context.Context, logger *slog.Logger, s sweeper, clk port.Cl
 				"audit_events", res.AuditEvents, "quota_events", res.QuotaEvents,
 				"challenges", res.Challenges, "tickets", res.Tickets, "more", res.More)
 		}
+
 		wait := every
 		if res.More {
 			wait = time.Second // a backlog is left: continue soon instead of waiting a whole interval
 		}
+
 		select {
 		case <-ctx.Done():
 			return

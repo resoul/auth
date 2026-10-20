@@ -6,21 +6,24 @@ import (
 	"testing"
 	"time"
 
-	"airlance.org/auth/internal/adapter/memory"
-	"airlance.org/auth/internal/application/port"
-	"airlance.org/auth/internal/domain/authflow"
-	"airlance.org/auth/internal/domain/quota"
+	"go.airlance.org/auth/internal/adapter/memory"
+	"go.airlance.org/auth/internal/application/port"
+	"go.airlance.org/auth/internal/domain/authflow"
+	"go.airlance.org/auth/internal/domain/quota"
 )
 
 // emailChangeNotices counts the notices to the old address that were queued.
 func (e *env) emailChangeNotices() int {
 	e.t.Helper()
+
 	n := 0
+
 	for _, job := range e.store.OutboxJobs() {
 		if job.Kind == port.JobEmailChanged {
 			n++
 		}
 	}
+
 	return n
 }
 
@@ -38,11 +41,13 @@ func TestAChangeIsLostWhenTheSessionThatAskedForItEnds(t *testing.T) {
 			if rec := e.call(http.MethodDelete, "/v1/native/sessions/"+e.sessionOf(doomed.token).String(), kept.token, ""); rec.Code != http.StatusNoContent {
 				t.Fatalf("revoke = %d %s", rec.Code, rec.Body)
 			}
+
 			e.wantUnauthenticated(doomed.confirmChange(started.FlowID, code))
 
 			if _, ok := e.store.User(mustEmail(t, name+"-old@example.test")); !ok {
 				t.Error("the account moved although the session that asked for the change had ended")
 			}
+
 			if n := e.emailChangeNotices(); n != 0 {
 				t.Errorf("%d notices queued for a change that did not happen", n)
 			}
@@ -60,6 +65,7 @@ func TestWrongCodesExhaustAChangeEvenForTheRightCode(t *testing.T) {
 	m := nativeManage(t, e, "alice@example.test")
 	started := m.beginChange("fresh@example.test")
 	code := e.code(started.FlowID)
+
 	wrong := "00000000"
 	if code == wrong {
 		wrong = "11111111"
@@ -68,11 +74,13 @@ func TestWrongCodesExhaustAChangeEvenForTheRightCode(t *testing.T) {
 	for range authflow.DefaultPolicy().MaxAttempts {
 		wantProblem(t, m.confirmChange(started.FlowID, wrong), http.StatusBadRequest, "invalid_code")
 	}
+
 	wantProblem(t, m.confirmChange(started.FlowID, code), http.StatusBadRequest, "invalid_code")
 
 	if _, ok := e.store.User(mustEmail(t, "alice@example.test")); !ok {
 		t.Error("the account moved after the attempts ran out")
 	}
+
 	if n := e.emailChangeNotices(); n != 0 {
 		t.Errorf("%d notices queued", n)
 	}
@@ -89,6 +97,7 @@ func TestAnExpiredChangeCannotBeConfirmed(t *testing.T) {
 	e.clock.Advance(authflow.DefaultPolicy().TTL + time.Second)
 	m.token = decode[tokenResponse](t, e.refresh(signed.RefreshToken), http.StatusOK).AccessToken
 	wantProblem(t, m.confirmChange(started.FlowID, code), http.StatusBadRequest, "invalid_code")
+
 	if _, ok := e.store.User(mustEmail(t, "alice@example.test")); !ok {
 		t.Error("an expired change moved the account")
 	}
@@ -106,11 +115,13 @@ func TestTwoChangesToOneAddressMoveTheAccountOnce(t *testing.T) {
 	if done.Email != "shared@example.test" {
 		t.Errorf("email = %q", done.Email)
 	}
+
 	wantProblem(t, m.confirmChange(second.FlowID, e.code(second.FlowID)), http.StatusBadRequest, "invalid_code")
 
 	if n := e.emailChangeNotices(); n != 1 {
 		t.Errorf("%d notices, want exactly one to the old address", n)
 	}
+
 	if _, ok := e.store.User(mustEmail(t, "shared@example.test")); !ok {
 		t.Error("the account is not on the shared address")
 	}
@@ -131,10 +142,12 @@ func TestEmailChangeRefusalsAreTheSameInBothProfiles(t *testing.T) {
 
 			started := m.beginChange(name + "-new@example.test")
 			code := e.code(started.FlowID)
+
 			wrong := "00000000"
 			if code == wrong {
 				wrong = "11111111"
 			}
+
 			wantProblem(t, m.confirmChange(started.FlowID, wrong), http.StatusBadRequest, "invalid_code")
 
 			// An address that has an account only shows at the proof of its mailbox, and then as a conflict.
@@ -144,6 +157,7 @@ func TestEmailChangeRefusalsAreTheSameInBothProfiles(t *testing.T) {
 			if _, ok := e.store.User(mustEmail(t, name+"-old@example.test")); !ok {
 				t.Error("a refused change moved the account")
 			}
+
 			if n := e.emailChangeNotices(); n != 0 {
 				t.Errorf("%d notices queued by refused changes", n)
 			}
@@ -157,6 +171,7 @@ func TestEmailConfirmationIsBoundedByItsVerifyBudget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	for name, build := range map[string]func(*testing.T, *env, string) manage{"native": nativeManage, "browser": browserManage} {
 		t.Run(name, func(t *testing.T) {
 			e := newEnv(t, memory.WithQuota(profile))
@@ -165,6 +180,7 @@ func TestEmailConfirmationIsBoundedByItsVerifyBudget(t *testing.T) {
 
 			wantProblem(t, m.confirmChange(started.FlowID, "00000000"), http.StatusBadRequest, "invalid_code")
 			wantProblem(t, m.confirmChange(started.FlowID, e.code(started.FlowID)), http.StatusTooManyRequests, "rate_limited")
+
 			if _, ok := e.store.User(mustEmail(t, name+"@example.test")); !ok {
 				t.Error("the account moved although the budget was spent")
 			}

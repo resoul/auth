@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	"airlance.org/auth/internal/application/port"
-	doidc "airlance.org/auth/internal/domain/oidc"
+	"go.airlance.org/auth/internal/application/port"
+	doidc "go.airlance.org/auth/internal/domain/oidc"
 )
 
 // Introspect is the token introspection endpoint (RFC 7662) for the APIs. An API checks the signature of a token itself;
@@ -28,6 +28,7 @@ func NewIntrospect(d Deps) (*Introspect, error) {
 	if err := d.validate("introspect"); err != nil {
 		return nil, err
 	}
+
 	return &Introspect{d}, nil
 }
 
@@ -60,15 +61,21 @@ type IntrospectResult struct {
 func (u *Introspect) Execute(ctx context.Context, cmd IntrospectCommand) (IntrospectResult, error) {
 	now := u.Clock.Now()
 	refused := IntrospectResult{Failure: fail(ErrInvalidClient, "The resource could not be authenticated.")}
+
 	hash, err := u.Secrets.HashOIDCSecret(cmd.Secret)
 	if errors.Is(err, port.ErrInvalidOIDCSecret) {
 		return refused, nil
 	}
+
 	if err != nil {
 		return IntrospectResult{}, fmt.Errorf("introspect: hash secret: %w", err)
 	}
-	var result IntrospectResult
-	var asked string
+
+	var (
+		result IntrospectResult
+		asked  string
+	)
+
 	err = u.UnitOfWork.Do(ctx, func(ctx context.Context, st port.Stores) error {
 		// The resource is read first and shared, as when a token is issued, so an answer is never given halfway through a
 		// change of its rights.
@@ -76,31 +83,40 @@ func (u *Introspect) Execute(ctx context.Context, cmd IntrospectCommand) (Intros
 		if err != nil {
 			return fmt.Errorf("load resource: %w", err)
 		}
+
 		if len(found) != 1 {
 			result = refused
 			return nil
 		}
+
 		res := found[0]
 		asked = res.ID
+
 		ok, err := st.OIDCResources.SecretValid(ctx, res.ID, hash, now)
 		if err != nil {
 			return err
 		}
+
 		if !ok || !res.Active() {
 			result = refused
 			return nil
 		}
+
 		info, err := u.live(ctx, st, now, res, cmd.Token)
 		if err != nil {
 			return err
 		}
+
 		result = IntrospectResult{Token: info}
+
 		return nil
 	})
 	if err != nil {
 		return IntrospectResult{}, fmt.Errorf("introspect: %w", err)
 	}
+
 	u.count(asked, result)
+
 	return result, nil
 }
 
@@ -108,6 +124,7 @@ func (u *Introspect) count(resource string, r IntrospectResult) {
 	if u.Metrics == nil {
 		return
 	}
+
 	switch {
 	case r.Failure != nil:
 		// The name belongs to a caller that was not authenticated, so it is not a label.
@@ -126,6 +143,7 @@ func (u *Introspect) live(ctx context.Context, st port.Stores, now time.Time, re
 		// Not a user's token: it may be a service's.
 		return u.liveService(ctx, st, res, raw)
 	}
+
 	if err != nil {
 		return nil, fmt.Errorf("verify token: %w", err)
 	}
@@ -133,40 +151,50 @@ func (u *Introspect) live(ctx context.Context, st port.Stores, now time.Time, re
 	if len(claims.Scope) == 0 {
 		return nil, nil
 	}
+
 	grant, err := st.OIDCGrants.Get(ctx, claims.GrantID)
 	if errors.Is(err, port.ErrNotFound) {
 		return nil, nil
 	}
+
 	if err != nil {
 		return nil, fmt.Errorf("load grant: %w", err)
 	}
+
 	held := grant.Resource(res.ID)
 	if grant.ClientID != claims.ClientID || grant.UserID != claims.Subject || grant.OPSessionID != claims.SessionID ||
 		held == nil || !covers(held.Scopes, claims.Scope) {
 		return nil, nil
 	}
+
 	for _, s := range claims.Scope {
 		if !res.Defines(s) {
 			return nil, nil
 		}
 	}
+
 	client, err := st.OIDCClients.Get(ctx, grant.ClientID)
 	if errors.Is(err, port.ErrNotFound) {
 		return nil, nil
 	}
+
 	if err != nil {
 		return nil, fmt.Errorf("load client: %w", err)
 	}
+
 	if !client.Active() {
 		return nil, nil
 	}
+
 	op, _, err := u.liveGrant(ctx, st, now, grant)
 	if err != nil {
 		return nil, err
 	}
+
 	if op == nil {
 		return nil, nil
 	}
+
 	return &TokenInfo{
 		Scope: claims.Scope, ClientID: claims.ClientID, Subject: claims.Subject.String(), Audience: claims.Audience,
 		JTI: claims.JTI, IssuedAt: claims.IssuedAt, ExpiresAt: claims.ExpiresAt,
@@ -181,32 +209,40 @@ func (u *Introspect) liveService(ctx context.Context, st port.Stores, res *doidc
 	if errors.Is(err, port.ErrInvalidOIDCToken) {
 		return nil, nil
 	}
+
 	if err != nil {
 		return nil, fmt.Errorf("verify service token: %w", err)
 	}
+
 	client, err := st.OIDCClients.Get(ctx, claims.ClientID)
 	if errors.Is(err, port.ErrNotFound) {
 		return nil, nil
 	}
+
 	if err != nil {
 		return nil, fmt.Errorf("load client: %w", err)
 	}
+
 	if !client.Active() || !client.Service() {
 		return nil, nil
 	}
+
 	perms, err := st.OIDCResources.ClientScopes(ctx, client.ID, []string{res.ID})
 	if err != nil {
 		return nil, fmt.Errorf("load client resources: %w", err)
 	}
+
 	allowed, ok := perms[res.ID]
 	if !ok || !covers(allowed, claims.Scope) {
 		return nil, nil
 	}
+
 	for _, s := range claims.Scope {
 		if !res.Defines(s) {
 			return nil, nil
 		}
 	}
+
 	return &TokenInfo{
 		Scope: claims.Scope, ClientID: claims.ClientID, Subject: claims.ClientID, Audience: claims.Audience,
 		JTI: claims.JTI, IssuedAt: claims.IssuedAt, ExpiresAt: claims.ExpiresAt,

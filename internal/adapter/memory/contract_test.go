@@ -3,10 +3,10 @@ package memory_test
 import (
 	"testing"
 
-	"airlance.org/auth/internal/adapter/memory"
-	"airlance.org/auth/internal/application/port"
-	"airlance.org/auth/internal/domain/quota"
-	"airlance.org/auth/internal/testutil"
+	"go.airlance.org/auth/internal/adapter/memory"
+	"go.airlance.org/auth/internal/application/port"
+	"go.airlance.org/auth/internal/domain/quota"
+	"go.airlance.org/auth/internal/testutil"
 )
 
 func TestStoreContract(t *testing.T) {

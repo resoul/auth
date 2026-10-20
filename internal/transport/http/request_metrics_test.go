@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"airlance.org/auth/internal/application/port"
-	httpapi "airlance.org/auth/internal/transport/http"
+	"go.airlance.org/auth/internal/application/port"
+	httpapi "go.airlance.org/auth/internal/transport/http"
 )
 
 type servedRecord struct {
@@ -28,36 +28,44 @@ type recorder struct {
 func (r *recorder) RequestServed(route string, status int, _ time.Duration) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+
 	r.served = append(r.served, servedRecord{route, status})
 }
 
 func (r *recorder) AuthDenied(operation, reason string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+
 	r.denied = append(r.denied, deniedRecord{operation, reason})
 }
 
 func (r *recorder) count(route string, status int) int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+
 	n := 0
+
 	for _, s := range r.served {
 		if s.route == route && s.status == status {
 			n++
 		}
 	}
+
 	return n
 }
 
 func (r *recorder) denials(operation, reason string) int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+
 	n := 0
+
 	for _, d := range r.denied {
 		if d.operation == operation && d.reason == reason {
 			n++
 		}
 	}
+
 	return n
 }
 
@@ -69,6 +77,7 @@ func TestRequestsAndRefusalsAreReportedByRouteAndReason(t *testing.T) {
 	if got := e.verify(started.FlowID, "00000000", started.ClientBinding); got.Code != http.StatusBadRequest {
 		t.Fatalf("verify = %d", got.Code)
 	}
+
 	e.get("/health/alive")
 	e.get("/no/such/route")
 
@@ -84,6 +93,7 @@ func TestRequestsAndRefusalsAreReportedByRouteAndReason(t *testing.T) {
 			t.Errorf("%s %d: counted %d, want %d (all: %+v)", route, want.status, got, want.n, rec.served)
 		}
 	}
+
 	if got := rec.denials("verify", "wrong_code"); got != 1 {
 		t.Errorf("verify/wrong_code denials = %d (all: %+v)", got, rec.denied)
 	}
@@ -104,6 +114,7 @@ func TestTheRecordsCarryNoRequestData(t *testing.T) {
 			}
 		}
 	}
+
 	for _, d := range rec.denied {
 		for _, forbidden := range []string{"alice", "bob", "0198a2b4", "@"} {
 			if strings.Contains(d.operation, forbidden) || strings.Contains(d.reason, forbidden) {
@@ -122,6 +133,7 @@ func TestAServerFailureIsReportedAsAFiveHundredClass(t *testing.T) {
 	if got.Code < 500 {
 		t.Fatalf("start = %d, want a server failure", got.Code)
 	}
+
 	if rec.count("POST "+startPath, got.Code) != 1 {
 		t.Errorf("the failure was not reported: %+v", rec.served)
 	}
@@ -129,10 +141,12 @@ func TestAServerFailureIsReportedAsAFiveHundredClass(t *testing.T) {
 
 func TestTheMetricsScrapeIsNotCountedAsTraffic(t *testing.T) {
 	rec := &recorder{}
+
 	e := newEnvWith(t, func(d *httpapi.Deps) { d.Requests = rec })
 	if got := e.get("/metrics"); got.Code != http.StatusOK {
 		t.Fatalf("/metrics = %d", got.Code)
 	}
+
 	if len(rec.served) != 0 {
 		t.Errorf("the scrape was counted: %+v", rec.served)
 	}

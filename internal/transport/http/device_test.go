@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"airlance.org/auth/internal/adapter/memory"
-	"airlance.org/auth/internal/domain/quota"
-	httpapi "airlance.org/auth/internal/transport/http"
+	"go.airlance.org/auth/internal/adapter/memory"
+	"go.airlance.org/auth/internal/domain/quota"
+	httpapi "go.airlance.org/auth/internal/transport/http"
 )
 
 type deviceStart struct {
@@ -31,6 +31,7 @@ func phoneOf(m manage) manage {
 	} else {
 		m.base = "/v1/native/device"
 	}
+
 	return m
 }
 
@@ -42,6 +43,7 @@ func stepUpOf(m manage) string {
 	} else {
 		me.base = "/v1/native/me"
 	}
+
 	return me.stepUp(m.auth, "approve_device")
 }
 
@@ -55,37 +57,45 @@ type newDevice struct {
 
 func (d *newDevice) call(step string, body map[string]any) *httptest.ResponseRecorder {
 	d.e.t.Helper()
+
 	if d.browser != nil {
 		return d.browser.post("/v1/auth/device/"+step, body)
 	}
+
 	b := map[string]any{"request_id": d.start.RequestID, "poll_secret": d.start.PollSecret, "client_binding": d.start.ClientBinding}
 	for k, v := range body {
 		b[k] = v
 	}
+
 	return d.e.post("/v1/native/auth/device/"+step, b)
 }
 
 func (d *newDevice) begin(name string) *httptest.ResponseRecorder {
 	d.e.t.Helper()
+
 	body := map[string]string{}
 	if name != "" {
 		body["device_name"] = name
 	}
+
 	var rec *httptest.ResponseRecorder
 	if d.browser != nil {
 		rec = d.browser.post("/v1/auth/device/start", body)
 	} else {
 		rec = d.e.post("/v1/native/auth/device/start", body)
 	}
+
 	if rec.Code == http.StatusOK {
 		d.start = decode[deviceStart](d.e.t, rec, http.StatusOK)
 	}
+
 	return rec
 }
 
 func (d *newDevice) state() string {
 	d.e.t.Helper()
 	rec := d.call("status", map[string]any{"request_id": d.start.RequestID})
+
 	return decode[deviceState](d.e.t, rec, http.StatusOK).State
 }
 
@@ -94,6 +104,7 @@ func newDeviceOf(e *env, browserProfile bool) *newDevice {
 	if browserProfile {
 		d.browser = newBrowser(e)
 	}
+
 	return d
 }
 
@@ -110,10 +121,12 @@ func TestADeviceSignsInWithTheApprovalOfAPhoneInBothProfiles(t *testing.T) {
 	profiles(t, func(t *testing.T, e *env, signedIn func(*env, string) manage, browserProfile bool) {
 		phone := signedIn(e, "owner@example.test")
 		device := newDeviceOf(e, browserProfile)
+
 		rec := device.begin("Office laptop")
 		if rec.Code != http.StatusOK {
 			t.Fatalf("start = %d %s", rec.Code, rec.Body)
 		}
+
 		start := device.start
 		if start.RequestID == "" || len(start.PairingCode) != 6 || start.ExpiresAt.IsZero() {
 			t.Fatalf("start = %+v", start)
@@ -123,7 +136,9 @@ func TestADeviceSignsInWithTheApprovalOfAPhoneInBothProfiles(t *testing.T) {
 			if start.PollSecret != "" || start.ClientBinding != "" || strings.Contains(rec.Body.String(), "secret") || strings.Contains(rec.Body.String(), "binding") {
 				t.Errorf("the browser body carries a secret: %s", rec.Body)
 			}
+
 			var device, binding *http.Cookie
+
 			for _, c := range rec.Result().Cookies() {
 				switch c.Name {
 				case httpapi.DeviceCookieName:
@@ -132,6 +147,7 @@ func TestADeviceSignsInWithTheApprovalOfAPhoneInBothProfiles(t *testing.T) {
 					binding = c
 				}
 			}
+
 			if device == nil || binding == nil || device.Path != "/v1/auth/device" || !device.Secure || !device.HttpOnly || device.Value == "" || device.Expires.IsZero() {
 				t.Errorf("cookies: device %+v, binding %+v", device, binding)
 			}
@@ -144,6 +160,7 @@ func TestADeviceSignsInWithTheApprovalOfAPhoneInBothProfiles(t *testing.T) {
 		}
 
 		pm := phoneOf(phone)
+
 		view := decode[struct {
 			DeviceName string    `json:"device_name"`
 			ExpiresAt  time.Time `json:"expires_at"`
@@ -151,6 +168,7 @@ func TestADeviceSignsInWithTheApprovalOfAPhoneInBothProfiles(t *testing.T) {
 		if view.DeviceName != "Office laptop" {
 			t.Errorf("view = %+v", view)
 		}
+
 		if body := pm.call(http.MethodGet, "/requests/"+start.RequestID, "", "").Body.String(); strings.Contains(body, start.PairingCode) {
 			t.Errorf("the phone is told the pairing code: %s", body)
 		}
@@ -160,9 +178,11 @@ func TestADeviceSignsInWithTheApprovalOfAPhoneInBothProfiles(t *testing.T) {
 		}
 		wantProblem(t, approve(start.PairingCode, ""), http.StatusForbidden, "step_up_required")
 		wantProblem(t, approve("000000", stepUpOf(phone)), http.StatusBadRequest, "invalid_proof")
+
 		if rec := approve(start.PairingCode, stepUpOf(phone)); rec.Code != http.StatusNoContent {
 			t.Fatalf("approve = %d %s", rec.Code, rec.Body)
 		}
+
 		if got := device.state(); got != "approved" {
 			t.Fatalf("state after approval = %s", got)
 		}
@@ -171,20 +191,25 @@ func TestADeviceSignsInWithTheApprovalOfAPhoneInBothProfiles(t *testing.T) {
 		if redeemed.Code != http.StatusOK {
 			t.Fatalf("redeem = %d %s", redeemed.Code, redeemed.Body)
 		}
+
 		signed := decode[tokenResponse](t, redeemed, http.StatusOK)
 		if signed.AccessToken == "" || signed.User.Email != "owner@example.test" {
 			t.Fatalf("session = %+v", signed)
 		}
+
 		if browserProfile {
 			var refresh *http.Cookie
+
 			for _, c := range redeemed.Result().Cookies() {
 				if c.Name == httpapi.RefreshCookieName && c.Value != "" {
 					refresh = c
 				}
+
 				if c.Name == httpapi.DeviceCookieName && c.MaxAge >= 0 {
 					t.Errorf("the spent poll secret was not cleared: %+v", c)
 				}
 			}
+
 			if refresh == nil || signed.RefreshToken != "" || strings.Contains(redeemed.Body.String(), "refresh") {
 				t.Errorf("browser redeem: refresh cookie %+v, body %s", refresh, redeemed.Body)
 			}
@@ -195,6 +220,7 @@ func TestADeviceSignsInWithTheApprovalOfAPhoneInBothProfiles(t *testing.T) {
 		if signed.AccessToken == phone.token || e.meStatus(signed.AccessToken) != http.StatusOK {
 			t.Errorf("the new session: same token as the phone %v, status %d", signed.AccessToken == phone.token, e.meStatus(signed.AccessToken))
 		}
+
 		if e.store.SessionCount() != 2 {
 			t.Errorf("%d sessions, want the phone's and the new device's", e.store.SessionCount())
 		}
@@ -208,8 +234,10 @@ func TestEveryRefusalTheNewDeviceSeesIsTheSameInvalidProof(t *testing.T) {
 		phone := signedIn(e, "owner@example.test")
 		device := newDeviceOf(e, browserProfile)
 		device.begin("laptop")
+
 		other := newDeviceOf(e, browserProfile)
 		other.begin("other")
+
 		pm := phoneOf(phone)
 		pm.json(http.MethodPost, "/requests/"+device.start.RequestID+"/approve", stepUpOf(phone), map[string]string{"pairing_code": device.start.PairingCode})
 
@@ -218,9 +246,12 @@ func TestEveryRefusalTheNewDeviceSeesIsTheSameInvalidProof(t *testing.T) {
 			if i := strings.Index(s, `"request_id"`); i >= 0 {
 				s = s[:i]
 			}
+
 			return s
 		}
+
 		var bodies []string
+
 		for _, step := range []string{"status", "redeem"} {
 			for name, req := range map[string]string{"unknown id": "AAECAwQFBgcICQoLDA0ODw", "malformed id": "nope", "empty id": ""} {
 				rec := device.call(step, map[string]any{"request_id": req})
@@ -228,6 +259,7 @@ func TestEveryRefusalTheNewDeviceSeesIsTheSameInvalidProof(t *testing.T) {
 				bodies = append(bodies, body(rec))
 				_ = name
 			}
+
 			if !browserProfile {
 				for name, secret := range map[string]string{"another's secret": other.start.PollSecret, "malformed secret": "x", "empty secret": ""} {
 					rec := device.call(step, map[string]any{"request_id": device.start.RequestID, "poll_secret": secret})
@@ -235,6 +267,7 @@ func TestEveryRefusalTheNewDeviceSeesIsTheSameInvalidProof(t *testing.T) {
 					bodies = append(bodies, body(rec))
 					_ = name
 				}
+
 				rec := device.call(step, map[string]any{"request_id": device.start.RequestID, "client_binding": other.start.ClientBinding})
 				wantProblem(t, rec, http.StatusBadRequest, "invalid_proof")
 				bodies = append(bodies, body(rec))
@@ -250,6 +283,7 @@ func TestEveryRefusalTheNewDeviceSeesIsTheSameInvalidProof(t *testing.T) {
 				bodies = append(bodies, body(rec))
 			}
 		}
+
 		for _, b := range bodies {
 			if b != bodies[0] {
 				t.Errorf("a refusal differs: %q vs %q", b, bodies[0])
@@ -264,6 +298,7 @@ func TestEveryRefusalTheNewDeviceSeesIsTheSameInvalidProof(t *testing.T) {
 
 func TestTheDeviceRoutesNeedASignedInUserForTheApprovingSide(t *testing.T) {
 	e := newEnv(t)
+
 	const id = "AAECAwQFBgcICQoLDA0ODw"
 	for _, base := range []string{"/v1/native/device", "/v1/device"} {
 		for _, r := range []struct{ method, path string }{
@@ -272,12 +307,15 @@ func TestTheDeviceRoutesNeedASignedInUserForTheApprovingSide(t *testing.T) {
 			for _, token := range []string{"", "x.y.z"} {
 				req := httptest.NewRequest(r.method, base+r.path, strings.NewReader(`{"pairing_code":"123456"}`))
 				req.Header.Set("Content-Type", "application/json")
+
 				if token != "" {
 					req.Header.Set("Authorization", "Bearer "+token)
 				}
+
 				if base == "/v1/device" {
 					req.Header.Set("Sec-Fetch-Site", "same-origin")
 				}
+
 				e.wantUnauthenticated(e.do(req))
 			}
 		}
@@ -290,16 +328,20 @@ func TestAPhoneCanRefuseAndTheRefusalIsFinal(t *testing.T) {
 		pm := phoneOf(phone)
 		device := newDeviceOf(e, browserProfile)
 		device.begin("laptop")
+
 		if rec := pm.call(http.MethodPost, "/requests/"+device.start.RequestID+"/deny", "", ""); rec.Code != http.StatusNoContent {
 			t.Fatalf("deny = %d %s", rec.Code, rec.Body)
 		}
+
 		if got := device.state(); got != "denied" {
 			t.Errorf("state = %s", got)
 		}
+
 		wantProblem(t, pm.call(http.MethodPost, "/requests/"+device.start.RequestID+"/deny", "", ""), http.StatusNotFound, "not_found")
 		wantProblem(t, pm.call(http.MethodGet, "/requests/"+device.start.RequestID, "", ""), http.StatusNotFound, "not_found")
 		wantProblem(t, pm.json(http.MethodPost, "/requests/"+device.start.RequestID+"/approve", stepUpOf(phone), map[string]string{"pairing_code": device.start.PairingCode}), http.StatusNotFound, "not_found")
 		wantProblem(t, device.call("redeem", map[string]any{"request_id": device.start.RequestID}), http.StatusBadRequest, "invalid_proof")
+
 		for _, id := range []string{"AAECAwQFBgcICQoLDA0ODw", "nope"} {
 			wantProblem(t, pm.call(http.MethodGet, "/requests/"+id, "", ""), http.StatusNotFound, "not_found")
 			wantProblem(t, pm.call(http.MethodPost, "/requests/"+id+"/deny", "", ""), http.StatusNotFound, "not_found")
@@ -313,16 +355,21 @@ func TestThreeWrongCodesKillTheRequestOverHTTP(t *testing.T) {
 		pm := phoneOf(phone)
 		device := newDeviceOf(e, browserProfile)
 		device.begin("laptop")
+
 		wrong := "000000"
 		if device.start.PairingCode == wrong {
 			wrong = "111111"
 		}
+
 		proof := stepUpOf(phone)
+
 		path := "/requests/" + device.start.RequestID + "/approve"
 		for i := 0; i < 3; i++ {
 			wantProblem(t, pm.json(http.MethodPost, path, proof, map[string]string{"pairing_code": wrong}), http.StatusBadRequest, "invalid_proof")
 		}
+
 		wantProblem(t, pm.json(http.MethodPost, path, proof, map[string]string{"pairing_code": device.start.PairingCode}), http.StatusNotFound, "not_found")
+
 		if got := device.state(); got != "denied" {
 			t.Errorf("state = %s", got)
 		}
@@ -334,9 +381,11 @@ func TestARequestExpiresAndTheDeviceMustStartAgain(t *testing.T) {
 		device := newDeviceOf(e, browserProfile)
 		device.begin("laptop")
 		e.clock.Advance(5 * time.Minute)
+
 		if got := device.state(); got != "expired" {
 			t.Errorf("state = %s", got)
 		}
+
 		wantProblem(t, device.call("redeem", map[string]any{"request_id": device.start.RequestID}), http.StatusBadRequest, "invalid_proof")
 	})
 }
@@ -348,6 +397,7 @@ func TestStartRefusesABadNameAndTheNativeAndBrowserRoutesAreSeparate(t *testing.
 	b := newBrowser(e)
 	wantProblem(t, b.post("/v1/auth/device/start", map[string]string{"device_name": long}), http.StatusBadRequest, "invalid_request")
 	wantProblem(t, e.postRaw("/v1/native/auth/device/start", `{"device_name": 5}`), http.StatusBadRequest, "invalid_request")
+
 	if rec := e.postRaw("/v1/native/auth/device/start", `{}`); rec.Code != http.StatusOK {
 		t.Errorf("an empty start = %d %s", rec.Code, rec.Body)
 	}
@@ -363,8 +413,10 @@ func TestDeviceStartsAreCountedAgainstTheAddressInBothProfiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	rec := &recorder{}
 	e := newEnvWith(t, func(d *httpapi.Deps) { d.Requests = rec }, memory.WithQuota(profile))
+
 	b := newBrowser(e)
 	for i := 0; i < 2; i++ {
 		if rec := e.postRaw("/v1/native/auth/device/start", `{}`); rec.Code != http.StatusOK {
@@ -374,6 +426,7 @@ func TestDeviceStartsAreCountedAgainstTheAddressInBothProfiles(t *testing.T) {
 	// One budget serves both profiles: the address is the same.
 	wantProblem(t, e.postRaw("/v1/native/auth/device/start", `{}`), http.StatusTooManyRequests, "rate_limited")
 	wantProblem(t, b.postRaw("/v1/auth/device/start", `{}`), http.StatusTooManyRequests, "rate_limited")
+
 	if got := rec.denials("device_start", "quota"); got != 2 {
 		t.Errorf("device_start/quota denials = %d (all: %+v)", got, rec.denied)
 	}

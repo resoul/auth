@@ -13,13 +13,16 @@ func TestNativeRefreshRotatesTheToken(t *testing.T) {
 	e.clock.Advance(time.Hour)
 
 	rec := e.refresh(signedIn.RefreshToken)
+
 	res := decode[tokenResponse](t, rec, http.StatusOK)
 	if rec.Header().Get("Cache-Control") != "no-store" {
 		t.Error("the token response may be cached")
 	}
+
 	if res.RefreshToken == "" || res.RefreshToken == signedIn.RefreshToken || res.AccessToken == signedIn.AccessToken {
 		t.Fatalf("refresh = %+v, want new tokens", res)
 	}
+
 	claims, err := e.verifier.VerifyAccess(res.AccessToken)
 	if err != nil || claims.UserID.String() != signedIn.User.ID || !res.ExpiresAt.Equal(t0.Add(time.Hour+5*time.Minute)) {
 		t.Errorf("claims = %+v (%v), expires_at = %v", claims, err, res.ExpiresAt)
@@ -45,6 +48,7 @@ func TestNativeRefreshReplayIsRefusedAndRevokesTheSession(t *testing.T) {
 
 func TestNativeRefreshRefusesUnknownAndMalformedTokens(t *testing.T) {
 	e := newEnv(t)
+
 	signedIn, _ := e.signIn("alice@example.test")
 	for name, token := range map[string]string{
 		"empty":     "",
@@ -56,6 +60,7 @@ func TestNativeRefreshRefusesUnknownAndMalformedTokens(t *testing.T) {
 			wantProblem(t, e.refresh(token), http.StatusUnauthorized, "invalid_refresh")
 		})
 	}
+
 	wantProblem(t, e.postRaw(refreshPath, `{"refresh_token": `), http.StatusBadRequest, "invalid_request")
 	// None of the refusals touched the real token.
 	decode[tokenResponse](t, e.refresh(signedIn.RefreshToken), http.StatusOK)
@@ -74,5 +79,6 @@ func (e *env) refreshRequest(token string) *http.Request {
 	if err != nil {
 		e.t.Fatal(err)
 	}
+
 	return req
 }

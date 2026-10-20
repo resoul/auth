@@ -30,27 +30,35 @@ func adoptLegacyVersionTable(ctx context.Context, db *sql.DB) error {
 	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock($1)`, migrationLockKey); err != nil {
 		return fmt.Errorf("adopt version table: lock: %w", err)
 	}
+
 	has := func(table string) (bool, error) {
 		var ok bool
+
 		err := tx.QueryRowContext(ctx,
 			`SELECT EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = current_schema() AND tablename = $1)`, table).Scan(&ok)
+
 		return ok, err
 	}
+
 	current, err := has(VersionTable)
 	if err != nil {
 		return fmt.Errorf("adopt version table: %w", err)
 	}
+
 	if current {
 		return nil
 	}
+
 	legacy, err := has(legacyVersionTable)
 	if err != nil {
 		return fmt.Errorf("adopt version table: %w", err)
 	}
+
 	ours, err := has(legacyFingerprint)
 	if err != nil {
 		return fmt.Errorf("adopt version table: %w", err)
 	}
+
 	if !legacy || !ours {
 		return nil
 	}
@@ -63,9 +71,11 @@ func adoptLegacyVersionTable(ctx context.Context, db *sql.DB) error {
 	)`); err != nil {
 		return fmt.Errorf("adopt version table: create: %w", err)
 	}
+
 	if _, err := tx.ExecContext(ctx, `INSERT INTO `+VersionTable+` (version_id, is_applied, tstamp)
 		SELECT version_id, is_applied, tstamp FROM `+legacyVersionTable+` ORDER BY id`); err != nil {
 		return fmt.Errorf("adopt version table: copy: %w", err)
 	}
+
 	return tx.Commit()
 }

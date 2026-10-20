@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"airlance.org/auth/internal/domain/session"
+	"go.airlance.org/auth/internal/domain/session"
 )
 
 const hashLength = 32
@@ -34,6 +34,7 @@ func ParseID(s string) (ID, error) {
 	if !isUUIDv7(s) {
 		return ID{}, ErrInvalidID
 	}
+
 	return ID{value: s}, nil
 }
 
@@ -42,6 +43,7 @@ func ParseFamilyID(s string) (FamilyID, error) {
 	if !isUUIDv7(s) {
 		return FamilyID{}, ErrInvalidID
 	}
+
 	return FamilyID{value: s}, nil
 }
 
@@ -61,6 +63,7 @@ func isUUIDv7(s string) bool {
 	if len(s) != 36 {
 		return false
 	}
+
 	for i := 0; i < len(s); i++ {
 		c := s[i]
 		switch i {
@@ -74,6 +77,7 @@ func isUUIDv7(s string) bool {
 			}
 		}
 	}
+
 	return s[14] == '7' && (s[19] == '8' || s[19] == '9' || s[19] == 'a' || s[19] == 'b')
 }
 
@@ -88,9 +92,11 @@ func NewHash(b []byte) (Hash, error) {
 	if len(b) != hashLength {
 		return Hash{}, errors.New("token hash must be 32 bytes")
 	}
+
 	var h Hash
 	copy(h.value[:], b)
 	h.set = true
+
 	return h, nil
 }
 
@@ -119,6 +125,7 @@ func NewRoot(id ID, sessionID session.ID, familyID FamilyID, hash Hash, now, exp
 	if err := t.validate(); err != nil {
 		return nil, fmt.Errorf("new refresh token: %w", err)
 	}
+
 	return t, nil
 }
 
@@ -137,6 +144,7 @@ func (t *RefreshToken) validate() error {
 	case t.parentID == t.id && !t.id.IsZero():
 		return errors.New("a token cannot be its own parent")
 	}
+
 	return nil
 }
 
@@ -151,6 +159,7 @@ func (t *RefreshToken) CheckUsable(now time.Time) error {
 	case !now.Before(t.expiresAt):
 		return ErrExpired
 	}
+
 	return nil
 }
 
@@ -160,6 +169,7 @@ func (t *RefreshToken) Rotate(now time.Time, childID ID, childHash Hash, childEx
 	if err := t.CheckUsable(now); err != nil {
 		return nil, err
 	}
+
 	child := &RefreshToken{
 		id: childID, sessionID: t.sessionID, familyID: t.familyID, parentID: t.id,
 		hash: childHash, createdAt: now, expiresAt: childExpiresAt,
@@ -167,7 +177,9 @@ func (t *RefreshToken) Rotate(now time.Time, childID ID, childHash Hash, childEx
 	if err := child.validate(); err != nil {
 		return nil, fmt.Errorf("rotate refresh token: %w", err)
 	}
+
 	t.usedAt = now
+
 	return child, nil
 }
 
@@ -201,6 +213,7 @@ func Restore(r Record) (*RefreshToken, error) {
 	if err := t.validate(); err != nil {
 		return nil, fmt.Errorf("restore refresh token: %w", err)
 	}
+
 	return t, nil
 }
 

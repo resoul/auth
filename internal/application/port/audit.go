@@ -8,9 +8,9 @@ import (
 	"slices"
 	"time"
 
-	"airlance.org/auth/internal/domain/identity"
-	"airlance.org/auth/internal/domain/operator"
-	"airlance.org/auth/internal/domain/session"
+	"go.airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/domain/operator"
+	"go.airlance.org/auth/internal/domain/session"
 )
 
 // AuditType names what happened. The set is closed.
@@ -75,11 +75,13 @@ func (e AuditEvent) Lasting() bool {
 	if (e.Type == AuditPasskeyRefused || e.Type == AuditOperatorLogin) && e.Fields["reason"] == CloneSuspectedReason {
 		return true
 	}
+
 	for _, t := range lastingTypes {
 		if e.Type == t {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -132,20 +134,25 @@ func (e AuditEvent) Validate() error {
 	if !e.Type.Valid() {
 		return fmt.Errorf("audit: unknown event type %q", e.Type)
 	}
+
 	if e.Result != AuditSuccess && e.Result != AuditDenied {
 		return fmt.Errorf("audit: unknown result %q", e.Result)
 	}
+
 	if e.At.IsZero() {
 		return errors.New("audit: time is required")
 	}
+
 	for key, value := range e.Fields {
 		if !auditFieldKeys[key] {
 			return fmt.Errorf("audit: field %q is not allowed", key)
 		}
+
 		if !auditFieldValue.MatchString(value) {
 			return fmt.Errorf("audit: field %q must be a short code of lower-case letters, digits, _ and -", key)
 		}
 	}
+
 	return nil
 }
 

@@ -6,8 +6,8 @@ import (
 	"slices"
 	"time"
 
-	"airlance.org/auth/internal/domain/identity"
-	"airlance.org/auth/internal/domain/session"
+	"go.airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/domain/session"
 )
 
 // ChallengeTTL is how long a WebAuthn ceremony may take.
@@ -41,6 +41,7 @@ func (p ChallengePurpose) valid() bool {
 	case ChallengeRegistration, ChallengeLogin, ChallengeStepUp:
 		return true
 	}
+
 	return false
 }
 
@@ -85,6 +86,7 @@ func NewChallenge(p NewChallengeParams) (*Challenge, error) {
 	if err := c.validate(); err != nil {
 		return nil, fmt.Errorf("new challenge: %w", err)
 	}
+
 	return c, nil
 }
 
@@ -107,6 +109,7 @@ func (c *Challenge) validate() error {
 	case !c.expiresAt.After(c.createdAt):
 		return errors.New("expiry must be after creation")
 	}
+
 	return nil
 }
 
@@ -120,7 +123,9 @@ func (c *Challenge) Consume(now time.Time, purpose ChallengePurpose) error {
 	case !now.Before(c.expiresAt):
 		return ErrChallengeExpired
 	}
+
 	c.consumedAt = now
+
 	return nil
 }
 
@@ -148,6 +153,7 @@ func RestoreChallenge(r ChallengeRecord) (*Challenge, error) {
 	if err := c.validate(); err != nil {
 		return nil, fmt.Errorf("restore challenge: %w", err)
 	}
+
 	return c, nil
 }
 

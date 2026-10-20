@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/domain/identity"
 )
 
 // Cookie names carry the __Secure- prefix, so a browser refuses to set them without the
@@ -53,6 +53,7 @@ func (c *cookieWriter) flush() {
 	if c.flushed {
 		return
 	}
+
 	c.flushed = true
 	for _, ck := range c.jar.set {
 		http.SetCookie(c.ResponseWriter, ck)
@@ -77,10 +78,12 @@ func requestCookie(ctx context.Context, name string) string {
 	if jar == nil {
 		return ""
 	}
+
 	ck, err := jar.req.Cookie(name)
 	if err != nil {
 		return ""
 	}
+
 	return ck.Value
 }
 
@@ -90,6 +93,7 @@ func requestHeaderValues(ctx context.Context, name string) []string {
 	if jar == nil {
 		return nil
 	}
+
 	return jar.req.Header.Values(name)
 }
 
@@ -112,6 +116,7 @@ func (c cookies) base(name, path, value string) *http.Cookie {
 func (c cookies) refresh(secret string, expires time.Time) *http.Cookie {
 	ck := c.base(RefreshCookieName, refreshCookiePath, secret)
 	ck.Expires = expires.UTC()
+
 	return ck
 }
 
@@ -119,6 +124,7 @@ func (c cookies) refresh(secret string, expires time.Time) *http.Cookie {
 func (c cookies) binding(secret string) *http.Cookie {
 	ck := c.base(BindingCookieName, bindingCookiePath, secret)
 	ck.MaxAge = int(identity.RecognitionTTL / time.Second)
+
 	return ck
 }
 
@@ -126,23 +132,27 @@ func (c cookies) binding(secret string) *http.Cookie {
 func (c cookies) device(secret string, expires time.Time) *http.Cookie {
 	ck := c.base(DeviceCookieName, deviceCookiePath, secret)
 	ck.Expires = expires.UTC()
+
 	return ck
 }
 
 func (c cookies) clearDevice() *http.Cookie {
 	ck := c.base(DeviceCookieName, deviceCookiePath, "")
 	ck.MaxAge = -1
+
 	return ck
 }
 
 func (c cookies) clearBinding() *http.Cookie {
 	ck := c.base(BindingCookieName, bindingCookiePath, "")
 	ck.MaxAge = -1
+
 	return ck
 }
 
 func (c cookies) clearRefresh() *http.Cookie {
 	ck := c.base(RefreshCookieName, refreshCookiePath, "")
 	ck.MaxAge = -1
+
 	return ck
 }

@@ -7,23 +7,27 @@ import (
 	"strings"
 	"testing"
 
-	"airlance.org/auth/internal/adapter/crypto"
-	"airlance.org/auth/internal/application/port"
+	"go.airlance.org/auth/internal/adapter/crypto"
+	"go.airlance.org/auth/internal/application/port"
 )
 
 func TestNewBindingIssuesHashableSecret(t *testing.T) {
 	var b crypto.Binding
+
 	secret, hash, err := b.NewBinding()
 	if err != nil {
 		t.Fatalf("NewBinding: %v", err)
 	}
+
 	if len(secret) != 43 {
 		t.Errorf("secret %q has %d chars, want 43 (32 bytes in base64url)", secret, len(secret))
 	}
+
 	again, err := b.HashBinding(secret)
 	if err != nil || again != hash {
 		t.Errorf("HashBinding(secret) = %v, %v; want the issued hash", again, err)
 	}
+
 	other, otherHash, _ := b.NewBinding()
 	if other == secret || otherHash == hash {
 		t.Error("two clients got the same binding")
@@ -32,13 +36,16 @@ func TestNewBindingIssuesHashableSecret(t *testing.T) {
 
 func TestBindingHashIsSHA256OfDecodedBytes(t *testing.T) {
 	raw := seq(0, 32)
+
 	secret, hash, err := crypto.Binding{Source: bytes.NewReader(raw)}.NewBinding()
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if secret != "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8" {
 		t.Errorf("secret = %q", secret)
 	}
+
 	want := sha256.Sum256(raw)
 	if !bytes.Equal(hash.Bytes(), want[:]) {
 		t.Errorf("hash = %x, want %x", hash.Bytes(), want)
@@ -63,6 +70,7 @@ func TestHashBindingRejectsMalformedSecrets(t *testing.T) {
 			}
 		})
 	}
+
 	if _, err := (crypto.Binding{}).HashBinding(valid); err != nil {
 		t.Errorf("valid secret rejected: %v", err)
 	}

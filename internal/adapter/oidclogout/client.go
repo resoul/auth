@@ -31,6 +31,7 @@ func mustPrefixes(list ...string) []netip.Prefix {
 	for _, s := range list {
 		out = append(out, netip.MustParsePrefix(s))
 	}
+
 	return out
 }
 
@@ -43,11 +44,13 @@ func allowed(ip netip.Addr, allow []netip.Prefix) bool {
 			return true
 		}
 	}
+
 	for _, p := range neverCall {
 		if p.Contains(ip) {
 			return false
 		}
 	}
+
 	return true
 }
 
@@ -62,9 +65,11 @@ func NewHTTPClient(allow []netip.Prefix, timeout time.Duration) *http.Client {
 			if err != nil || !allowed(addrPort.Addr(), allow) {
 				return errBlocked
 			}
+
 			return nil
 		},
 	}
+
 	return &http.Client{
 		Timeout: timeout,
 		Transport: &http.Transport{

@@ -7,17 +7,17 @@ import (
 	"testing"
 	"time"
 
-	"airlance.org/auth/internal/adapter/crypto"
-	"airlance.org/auth/internal/adapter/jwt"
-	"airlance.org/auth/internal/adapter/memory"
-	"airlance.org/auth/internal/application/deviceauth"
-	"airlance.org/auth/internal/application/passkey"
-	"airlance.org/auth/internal/application/port"
-	appsession "airlance.org/auth/internal/application/session"
-	"airlance.org/auth/internal/domain/identity"
-	dpasskey "airlance.org/auth/internal/domain/passkey"
-	"airlance.org/auth/internal/domain/session"
-	"airlance.org/auth/internal/testutil"
+	"go.airlance.org/auth/internal/adapter/crypto"
+	"go.airlance.org/auth/internal/adapter/jwt"
+	"go.airlance.org/auth/internal/adapter/memory"
+	"go.airlance.org/auth/internal/application/deviceauth"
+	"go.airlance.org/auth/internal/application/passkey"
+	"go.airlance.org/auth/internal/application/port"
+	appsession "go.airlance.org/auth/internal/application/session"
+	"go.airlance.org/auth/internal/domain/identity"
+	dpasskey "go.airlance.org/auth/internal/domain/passkey"
+	"go.airlance.org/auth/internal/domain/session"
+	"go.airlance.org/auth/internal/testutil"
 )
 
 var (
@@ -37,6 +37,7 @@ func (f *faults) Do(ctx context.Context, fn func(ctx context.Context, s port.Sto
 		if f.wrap != nil {
 			s = f.wrap(s)
 		}
+
 		return fn(ctx, s)
 	})
 }
@@ -50,6 +51,7 @@ func (s *switchSigner) SignAccess(c port.AccessClaims) (port.AccessToken, error)
 	if s.fail {
 		return port.AccessToken{}, errBoom
 	}
+
 	return s.inner.SignAccess(c)
 }
 
@@ -81,6 +83,7 @@ func newEnv(t *testing.T, opts ...memory.Option) *env {
 	must(t, err)
 	inner, err := jwt.NewSigner(ring, e.clock, "https://auth.example.test", "example", 5*time.Minute)
 	must(t, err)
+
 	e.signer = &switchSigner{inner: inner}
 	e.verify, err = jwt.NewVerifier(ring.PublicKeys(), e.clock, "https://auth.example.test", "example", 30*time.Second)
 	must(t, err)
@@ -100,11 +103,13 @@ func newEnv(t *testing.T, opts ...memory.Option) *env {
 		SessionDeps: passkey.SessionDeps{Sessions: issuer, Signer: e.signer},
 	})
 	must(t, err)
+
 	return e
 }
 
 func must(t *testing.T, err error) {
 	t.Helper()
+
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,8 +138,10 @@ func (e *env) phone() phone {
 		if _, _, err := s.Users.Ensure(ctx, u); err != nil {
 			return err
 		}
+
 		return s.Sessions.Create(ctx, sess)
 	})
+
 	return phone{user: u, actor: appsession.Actor{UserID: u.ID(), SessionID: sess.ID()}}
 }
 
@@ -150,6 +157,7 @@ func (e *env) stepUp(p phone, op dpasskey.Operation) string {
 	})
 	must(e.t, err)
 	e.do(func(ctx context.Context, s port.Stores) error { return s.Tickets.Create(ctx, ticket) })
+
 	return secret
 }
 
@@ -164,9 +172,11 @@ func (e *env) newLaptop(name string) laptop {
 	e.t.Helper()
 	res, err := e.start.Execute(context.Background(), deviceauth.StartCommand{DeviceName: name, ClientIP: ip})
 	must(e.t, err)
+
 	if res.Outcome != deviceauth.OutcomeOK || res.NewBindingSecret == "" {
 		e.t.Fatalf("Start = %+v", res)
 	}
+
 	return laptop{res: res, binding: res.NewBindingSecret}
 }
 
@@ -175,9 +185,11 @@ func (e *env) again(l laptop, name string) laptop {
 	e.t.Helper()
 	res, err := e.start.Execute(context.Background(), deviceauth.StartCommand{DeviceName: name, BindingSecret: l.binding, ClientIP: ip})
 	must(e.t, err)
+
 	if res.Outcome != deviceauth.OutcomeOK || res.NewBindingSecret != "" {
 		e.t.Fatalf("Start = %+v", res)
 	}
+
 	return laptop{res: res, binding: l.binding}
 }
 
@@ -187,6 +199,7 @@ func (e *env) approve(p phone, l laptop, code, stepUp string) deviceauth.Result 
 	e.t.Helper()
 	res, err := e.approver.Approve(context.Background(), deviceauth.ApproveCommand{Actor: p.actor, RequestID: l.id(), PairingCode: code, StepUpSecret: stepUp})
 	must(e.t, err)
+
 	return res
 }
 
@@ -194,6 +207,7 @@ func (e *env) redeemFor(l laptop) deviceauth.RedeemResult {
 	e.t.Helper()
 	res, err := e.redeem.Execute(context.Background(), deviceauth.RedeemCommand{RequestID: l.id(), PollSecret: l.res.PollSecret, BindingSecret: l.binding, ClientIP: ip})
 	must(e.t, err)
+
 	return res
 }
 
@@ -201,18 +215,22 @@ func (e *env) stateOf(l laptop) deviceauth.State {
 	e.t.Helper()
 	res, err := e.status.Execute(context.Background(), deviceauth.StatusCommand{RequestID: l.id(), PollSecret: l.res.PollSecret, BindingSecret: l.binding})
 	must(e.t, err)
+
 	if res.Outcome != deviceauth.OutcomeOK {
 		e.t.Fatalf("Status = %+v", res)
 	}
+
 	return res.State
 }
 
 func (e *env) auditOf(t port.AuditType) []port.AuditEvent {
 	var out []port.AuditEvent
+
 	for _, ev := range e.store.AuditEvents() {
 		if ev.Type == t {
 			out = append(out, ev)
 		}
 	}
+
 	return out
 }

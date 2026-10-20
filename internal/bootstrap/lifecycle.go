@@ -45,15 +45,19 @@ func (l *lifecycle) run(ctx context.Context) error {
 			if err := c.run(gctx); err != nil {
 				return fmt.Errorf("run %s: %w", c.name, err)
 			}
+
 			return nil
 		})
 		g.Go(func() error {
 			<-gctx.Done()
+
 			stopCtx, cancel := context.WithTimeout(context.WithoutCancel(gctx), l.shutdownTimeout)
 			defer cancel()
+
 			if err := c.stop(stopCtx); err != nil {
 				return fmt.Errorf("stop %s: %w", c.name, err)
 			}
+
 			return nil
 		})
 	}
@@ -67,6 +71,7 @@ func (l *lifecycle) run(ctx context.Context) error {
 
 	timer := time.NewTimer(l.shutdownTimeout)
 	defer timer.Stop()
+
 	select {
 	case err := <-done:
 		return err

@@ -27,7 +27,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"airlance.org/auth/examples/bff"
+	"go.airlance.org/auth/examples/bff"
 )
 
 //go:embed schema.sql
@@ -45,12 +45,15 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
 		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, migrationLock); err != nil {
 			return err
 		}
+
 		_, err := tx.Exec(ctx, schema)
+
 		return err
 	})
 	if err != nil {
 		return fmt.Errorf("pgstore: migrate: %w", err)
 	}
+
 	return nil
 }
 
@@ -77,6 +80,7 @@ func New(pool *pgxpool.Pool, now func() time.Time) *Store {
 	if now == nil {
 		now = time.Now
 	}
+
 	return &Store{pool: pool, now: now}
 }
 
@@ -93,30 +97,37 @@ func (s *Store) PutLogin(ctx context.Context, tx bff.LoginTx) error {
 		ON CONFLICT (key) DO UPDATE SET state = excluded.state, nonce = excluded.nonce, verifier = excluded.verifier,
 		return_to = excluded.return_to, started_at = excluded.started_at, expires_at = excluded.expires_at`,
 		tx.Key, tx.State, tx.Nonce, tx.Verifier, tx.ReturnTo, utc(tx.StartedAt), utc(tx.ExpiresAt))
+
 	res := s.pool.SendBatch(ctx, batch)
 	defer func() { _ = res.Close() }()
+
 	for range 3 {
 		if _, err := res.Exec(); err != nil {
 			return fmt.Errorf("pgstore: put login: %w", err)
 		}
 	}
+
 	return nil
 }
 
 // TakeLogin implements bff.Store: one DELETE ... RETURNING, so two requests never both get the transaction.
 func (s *Store) TakeLogin(ctx context.Context, key string, now time.Time) (bff.LoginTx, bool, error) {
 	var tx bff.LoginTx
+
 	err := s.pool.QueryRow(ctx, `DELETE FROM bff_logins WHERE key = $1 RETURNING key, state, nonce, verifier, return_to, started_at, expires_at`, key).
 		Scan(&tx.Key, &tx.State, &tx.Nonce, &tx.Verifier, &tx.ReturnTo, &tx.StartedAt, &tx.ExpiresAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return bff.LoginTx{}, false, nil
 	}
+
 	if err != nil {
 		return bff.LoginTx{}, false, fmt.Errorf("pgstore: take login: %w", err)
 	}
+
 	if !now.Before(tx.ExpiresAt) {
 		return bff.LoginTx{}, false, nil
 	}
+
 	return tx, true, nil
 }
 
@@ -129,6 +140,7 @@ func (s *Store) UpsertUser(ctx context.Context, issuer, subject string) (string,
 	if err != nil {
 		return "", fmt.Errorf("pgstore: upsert user: %w", err)
 	}
+
 	return id, nil
 }
 
@@ -144,11 +156,14 @@ func (s *Store) CreateSession(ctx context.Context, sess bff.Session) error {
 	if err != nil {
 		return fmt.Errorf("pgstore: create session: %w", err)
 	}
+
 	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		if err := lockSignIn(ctx, tx, sess.Issuer, sess.ProviderSession); err != nil {
 			return fmt.Errorf("pgstore: create session: %w", err)
 		}
+
 		var at time.Time
+
 		err := tx.QueryRow(ctx, `SELECT at FROM bff_ended WHERE issuer = $1 AND sid = $2`, sess.Issuer, sess.ProviderSession).Scan(&at)
 		switch {
 		case err == nil:
@@ -159,6 +174,7 @@ func (s *Store) CreateSession(ctx context.Context, sess bff.Session) error {
 		case !errors.Is(err, pgx.ErrNoRows):
 			return fmt.Errorf("pgstore: create session: %w", err)
 		}
+
 		_, err = tx.Exec(ctx, `INSERT INTO bff_sessions (key, user_id, issuer, subject, provider_session, id_token_sealed, refresh_sealed, access,
 			created_at, sign_in_started, expires_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 			ON CONFLICT (key) DO UPDATE SET user_id = excluded.user_id, issuer = excluded.issuer, subject = excluded.subject,
@@ -169,6 +185,7 @@ func (s *Store) CreateSession(ctx context.Context, sess bff.Session) error {
 		if err != nil {
 			return fmt.Errorf("pgstore: create session: %w", err)
 		}
+
 		return nil
 	})
 }
@@ -176,22 +193,29 @@ func (s *Store) CreateSession(ctx context.Context, sess bff.Session) error {
 const sessionColumns = `key, user_id, issuer, subject, provider_session, id_token_sealed, refresh_sealed, access, created_at, sign_in_started, expires_at, refresh_started_at`
 
 func scanSession(row pgx.Row) (bff.Session, error) {
-	var sess bff.Session
-	var access []byte
-	var started *time.Time
+	var (
+		sess    bff.Session
+		access  []byte
+		started *time.Time
+	)
+
 	err := row.Scan(&sess.Key, &sess.UserID, &sess.Issuer, &sess.Subject, &sess.ProviderSession, &sess.IDTokenSealed, &sess.RefreshSealed,
 		&access, &sess.CreatedAt, &sess.SignInStarted, &sess.ExpiresAt, &started)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return bff.Session{}, bff.ErrNoSession
 	}
+
 	if err != nil {
 		return bff.Session{}, fmt.Errorf("pgstore: read session: %w", err)
 	}
+
 	sess.RefreshInterrupted = started != nil
+
 	sess.Access = map[string]bff.SealedAccess{}
 	if err := json.Unmarshal(access, &sess.Access); err != nil {
 		return bff.Session{}, fmt.Errorf("pgstore: read session: %w", err)
 	}
+
 	return sess, nil
 }
 
@@ -205,20 +229,24 @@ func (s *Store) DeleteSession(ctx context.Context, key string) error {
 	if _, err := s.pool.Exec(ctx, `DELETE FROM bff_sessions WHERE key = $1`, key); err != nil {
 		return fmt.Errorf("pgstore: delete session: %w", err)
 	}
+
 	return nil
 }
 
 // EndProviderSession implements bff.Store.
 func (s *Store) EndProviderSession(ctx context.Context, issuer, sid, jti string, exp time.Time) (bool, int, error) {
 	first, ended := false, 0
+
 	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		if err := lockSignIn(ctx, tx, issuer, sid); err != nil {
 			return err
 		}
+
 		now := utc(s.now())
 		if _, err := tx.Exec(ctx, `DELETE FROM bff_logout_seen WHERE until <= $1`, now); err != nil {
 			return err
 		}
+
 		if _, err := tx.Exec(ctx, `DELETE FROM bff_ended WHERE at <= $1`, now.Add(-endedMemory)); err != nil {
 			return err
 		}
@@ -227,28 +255,36 @@ func (s *Store) EndProviderSession(ctx context.Context, issuer, sid, jti string,
 		if l := utc(exp).Add(time.Hour); l.After(until) {
 			until = l
 		}
+
 		tag, err := tx.Exec(ctx, `INSERT INTO bff_logout_seen (issuer, jti, until) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`, issuer, jti, until)
 		if err != nil {
 			return err
 		}
+
 		if tag.RowsAffected() == 0 {
 			return nil
 		}
+
 		first = true
+
 		if _, err := tx.Exec(ctx, `INSERT INTO bff_ended (issuer, sid, at) VALUES ($1, $2, $3)
 			ON CONFLICT (issuer, sid) DO UPDATE SET at = GREATEST(bff_ended.at, excluded.at)`, issuer, sid, now); err != nil {
 			return err
 		}
+
 		tag, err = tx.Exec(ctx, `DELETE FROM bff_sessions WHERE issuer = $1 AND provider_session = $2`, issuer, sid)
 		if err != nil {
 			return err
 		}
+
 		ended = int(tag.RowsAffected())
+
 		return nil
 	})
 	if err != nil {
 		return false, 0, fmt.Errorf("pgstore: end provider session: %w", err)
 	}
+
 	return first, ended, nil
 }
 
@@ -270,6 +306,7 @@ func (s *Store) WithSessionLock(ctx context.Context, key string, fn func(sess *b
 		return fmt.Errorf("pgstore: session lock: %w", err)
 	}
 	defer conn.Release()
+
 	if _, err := conn.Exec(ctx, `SELECT pg_advisory_lock(hashtextextended($1, 1))`, lockKey(key)); err != nil {
 		return fmt.Errorf("pgstore: session lock: %w", err)
 	}
@@ -277,6 +314,7 @@ func (s *Store) WithSessionLock(ctx context.Context, key string, fn func(sess *b
 	defer func() {
 		done, cancel := context.WithTimeout(context.WithoutCancel(ctx), writeTimeout)
 		defer cancel()
+
 		if _, err := conn.Exec(done, `SELECT pg_advisory_unlock(hashtextextended($1, 1))`, lockKey(key)); err != nil {
 			_ = conn.Hijack().Close(done)
 		}
@@ -293,9 +331,11 @@ func (s *Store) WithSessionLock(ctx context.Context, key string, fn func(sess *b
 		if err != nil {
 			return fmt.Errorf("pgstore: mark refresh: %w", err)
 		}
+
 		if tag.RowsAffected() == 0 {
 			return bff.ErrNoSession
 		}
+
 		return nil
 	}
 	fnErr := fn(&sess)
@@ -303,14 +343,17 @@ func (s *Store) WithSessionLock(ctx context.Context, key string, fn func(sess *b
 
 	done, cancel := context.WithTimeout(context.WithoutCancel(ctx), writeTimeout)
 	defer cancel()
+
 	if fnErr != nil {
 		// An error means nothing was rotated (the function reports a refresh whose outcome is unknown as a result, not as an
 		// error), so only the mark goes.
 		if _, err := conn.Exec(done, `UPDATE bff_sessions SET refresh_started_at = NULL WHERE key = $1`, key); err != nil {
 			return fmt.Errorf("pgstore: clear refresh mark: %w", err)
 		}
+
 		return fnErr
 	}
+
 	access, err := json.Marshal(sess.Access)
 	if err != nil {
 		return fmt.Errorf("pgstore: store session: %w", err)
@@ -321,5 +364,6 @@ func (s *Store) WithSessionLock(ctx context.Context, key string, fn func(sess *b
 	if err != nil {
 		return fmt.Errorf("pgstore: store session: %w", err)
 	}
+
 	return nil
 }

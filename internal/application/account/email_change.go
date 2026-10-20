@@ -7,12 +7,12 @@ import (
 	"net/netip"
 	"time"
 
-	"airlance.org/auth/internal/application/passkey"
-	"airlance.org/auth/internal/application/port"
-	appsession "airlance.org/auth/internal/application/session"
-	"airlance.org/auth/internal/domain/authflow"
-	"airlance.org/auth/internal/domain/identity"
-	dpasskey "airlance.org/auth/internal/domain/passkey"
+	"go.airlance.org/auth/internal/application/passkey"
+	"go.airlance.org/auth/internal/application/port"
+	appsession "go.airlance.org/auth/internal/application/session"
+	"go.airlance.org/auth/internal/domain/authflow"
+	"go.airlance.org/auth/internal/domain/identity"
+	dpasskey "go.airlance.org/auth/internal/domain/passkey"
 )
 
 // Changing the address requires a step-up proof for change_email, a code sent to the new
@@ -38,9 +38,11 @@ func NewStartEmailChange(d StartEmailChangeDeps) (*StartEmailChange, error) {
 	if d.UnitOfWork == nil || d.Clock == nil || d.FlowIDs == nil || d.OTP == nil || d.Tickets == nil {
 		return nil, errors.New("new start email change: all dependencies are required")
 	}
+
 	if err := d.Policy.Validate(); err != nil {
 		return nil, fmt.Errorf("new start email change: %w", err)
 	}
+
 	return &StartEmailChange{d}, nil
 }
 
@@ -70,38 +72,47 @@ func (u *StartEmailChange) Execute(ctx context.Context, cmd StartEmailChangeComm
 	if err != nil {
 		return StartEmailChangeResult{}, fmt.Errorf("start email change: %w", err)
 	}
+
 	flowID, err := u.FlowIDs.NewFlowID()
 	if err != nil {
 		return StartEmailChangeResult{}, fmt.Errorf("start email change: %w", err)
 	}
+
 	gen, err := u.OTP.NewGeneration()
 	if err != nil {
 		return StartEmailChangeResult{}, fmt.Errorf("start email change: %w", err)
 	}
+
 	now := u.Clock.Now()
 
 	var result StartEmailChangeResult
+
 	err = u.UnitOfWork.Do(ctx, func(ctx context.Context, st port.Stores) error {
 		sess, ok, err := appsession.ActiveSession(ctx, st, cmd.Actor, now)
 		if err != nil {
 			return err
 		}
+
 		if !ok {
 			result = StartEmailChangeResult{Outcome: OutcomeDenied, Reason: ReasonNoSession}
 			return nil
 		}
+
 		ticket, ok, err := passkey.StepUpTicket(ctx, st, u.Tickets, cmd.StepUpSecret, cmd.Actor, dpasskey.OperationChangeEmail, now)
 		if err != nil {
 			return err
 		}
+
 		if !ok {
 			result = StartEmailChangeResult{Outcome: OutcomeStepUpRequired, Reason: ReasonStepUp}
 			return nil
 		}
+
 		user, err := st.Users.Get(ctx, cmd.Actor.UserID)
 		if err != nil {
 			return fmt.Errorf("load user: %w", err)
 		}
+
 		if user.Email() == email {
 			result = StartEmailChangeResult{Outcome: OutcomeInvalid, Reason: ReasonSameEmail}
 			return nil
@@ -116,6 +127,7 @@ func (u *StartEmailChange) Execute(ctx context.Context, cmd StartEmailChangeComm
 		if err != nil {
 			return fmt.Errorf("spend send quota: %w", err)
 		}
+
 		if !allowed {
 			result = StartEmailChangeResult{Outcome: OutcomeRateLimited, Reason: ReasonQuota}
 			return nil
@@ -128,23 +140,29 @@ func (u *StartEmailChange) Execute(ctx context.Context, cmd StartEmailChangeComm
 		if err != nil {
 			return fmt.Errorf("create flow state: %w", err)
 		}
+
 		if err := st.Flows.Create(ctx, flow); err != nil {
 			return fmt.Errorf("store flow: %w", err)
 		}
+
 		if err := st.Outbox.Enqueue(ctx, port.MailJob{
 			FlowID: flow.ID(), Generation: flow.Generation(), QuotaClass: flow.QuotaClass(), AvailableAt: now,
 		}); err != nil {
 			return fmt.Errorf("enqueue mail: %w", err)
 		}
+
 		if err := passkey.SpendStepUp(ctx, st, ticket, cmd.Actor, dpasskey.OperationChangeEmail, now); err != nil {
 			return err
 		}
+
 		result = StartEmailChangeResult{Outcome: OutcomeOK, FlowID: flow.ID(), ExpiresAt: flow.ExpiresAt()}
+
 		return nil
 	})
 	if err != nil {
 		return StartEmailChangeResult{}, fmt.Errorf("start email change: %w", err)
 	}
+
 	return result, nil
 }
 
@@ -165,9 +183,11 @@ func NewConfirmEmailChange(d ConfirmEmailChangeDeps) (*ConfirmEmailChange, error
 	if d.UnitOfWork == nil || d.Clock == nil || d.OTP == nil {
 		return nil, errors.New("new confirm email change: all dependencies are required")
 	}
+
 	if err := d.Policy.Validate(); err != nil {
 		return nil, fmt.Errorf("new confirm email change: %w", err)
 	}
+
 	return &ConfirmEmailChange{d}, nil
 }
 
@@ -199,6 +219,7 @@ func (u *ConfirmEmailChange) Execute(ctx context.Context, cmd ConfirmEmailChange
 	if err != nil {
 		return ConfirmEmailChangeResult{}, fmt.Errorf("confirm email change: reserve attempt: %w", err)
 	}
+
 	if res.refusal != nil {
 		return *res.refusal, nil
 	}
@@ -209,10 +230,12 @@ func (u *ConfirmEmailChange) Execute(ctx context.Context, cmd ConfirmEmailChange
 	if err != nil {
 		return ConfirmEmailChangeResult{}, fmt.Errorf("confirm email change: derive code: %w", err)
 	}
+
 	result, err := u.settle(ctx, id, cmd, res.attempt, matched)
 	if err != nil {
 		return ConfirmEmailChangeResult{}, fmt.Errorf("confirm email change: record result: %w", err)
 	}
+
 	return result, nil
 }
 
@@ -230,21 +253,25 @@ func denied(reason Reason) *ConfirmEmailChangeResult {
 // verify quota and one attempt, and commits before the code is compared.
 func (u *ConfirmEmailChange) reserve(ctx context.Context, id authflow.FlowID, cmd ConfirmEmailChangeCommand) (reservation, error) {
 	var out reservation
+
 	now := u.Clock.Now()
 	err := u.UnitOfWork.Do(ctx, func(ctx context.Context, st port.Stores) error {
 		sess, ok, err := appsession.ActiveSession(ctx, st, cmd.Actor, now)
 		if err != nil {
 			return err
 		}
+
 		if !ok {
 			out.refusal = denied(ReasonNoSession)
 			return nil
 		}
+
 		flow, err := st.Flows.GetForUpdate(ctx, id)
 		if errors.Is(err, port.ErrNotFound) {
 			out.refusal = denied(ReasonUnknownFlow)
 			return nil
 		}
+
 		if err != nil {
 			return fmt.Errorf("load flow: %w", err)
 		}
@@ -261,9 +288,12 @@ func (u *ConfirmEmailChange) reserve(ctx context.Context, id authflow.FlowID, cm
 					return fmt.Errorf("store expired flow: %w", err)
 				}
 			}
+
 			out.refusal = denied(reason)
+
 			return nil
 		}
+
 		if err != nil {
 			return fmt.Errorf("reserve attempt: %w", err)
 		}
@@ -275,17 +305,22 @@ func (u *ConfirmEmailChange) reserve(ctx context.Context, id authflow.FlowID, cm
 		if err != nil {
 			return fmt.Errorf("spend verify quota: %w", err)
 		}
+
 		if !allowed {
 			// The attempt exists only in memory; not saving it leaves the flow untouched.
 			out.refusal = &ConfirmEmailChangeResult{Outcome: OutcomeRateLimited, Reason: ReasonQuota}
 			return nil
 		}
+
 		if err := st.Flows.Save(ctx, flow); err != nil {
 			return fmt.Errorf("store flow: %w", err)
 		}
+
 		out.flow, out.attempt = flow, attempt
+
 		return nil
 	})
+
 	return out, err
 }
 
@@ -294,7 +329,9 @@ func (u *ConfirmEmailChange) reserve(ctx context.Context, id authflow.FlowID, cm
 // notice to the old address and the audit event commit together with the consumed flow.
 func (u *ConfirmEmailChange) settle(ctx context.Context, id authflow.FlowID, cmd ConfirmEmailChangeCommand, attempt authflow.Attempt, matched bool) (ConfirmEmailChangeResult, error) {
 	var result ConfirmEmailChangeResult
+
 	now := u.Clock.Now()
+
 	err := u.UnitOfWork.Do(ctx, func(ctx context.Context, st port.Stores) error {
 		if _, ok, err := appsession.ActiveSession(ctx, st, cmd.Actor, now); err != nil {
 			return err
@@ -302,11 +339,13 @@ func (u *ConfirmEmailChange) settle(ctx context.Context, id authflow.FlowID, cmd
 			result = *denied(ReasonNoSession)
 			return nil
 		}
+
 		flow, err := st.Flows.GetForUpdate(ctx, id)
 		if errors.Is(err, port.ErrNotFound) {
 			result = *denied(ReasonUnknownFlow)
 			return nil
 		}
+
 		if err != nil {
 			return fmt.Errorf("load flow: %w", err)
 		}
@@ -316,23 +355,30 @@ func (u *ConfirmEmailChange) settle(ctx context.Context, id authflow.FlowID, cmd
 		} else {
 			err = flow.Reject(attempt, now, u.Policy)
 		}
+
 		if reason, ok := denial(err); ok {
 			if changedFlow(err) {
 				if err := st.Flows.Save(ctx, flow); err != nil {
 					return fmt.Errorf("store expired flow: %w", err)
 				}
 			}
+
 			result = *denied(reason)
+
 			return nil
 		}
+
 		if err != nil {
 			return fmt.Errorf("record result: %w", err)
 		}
+
 		if !matched {
 			if err := st.Flows.Save(ctx, flow); err != nil {
 				return fmt.Errorf("store flow: %w", err)
 			}
+
 			result = *denied(ReasonWrongCode)
+
 			return nil
 		}
 
@@ -340,6 +386,7 @@ func (u *ConfirmEmailChange) settle(ctx context.Context, id authflow.FlowID, cmd
 		if err != nil {
 			return fmt.Errorf("load user: %w", err)
 		}
+
 		previous := user.Email()
 		if err := user.ChangeEmail(flow.Email(), now); errors.Is(err, identity.ErrSameEmail) {
 			// The account already has this address, through another flow.
@@ -348,6 +395,7 @@ func (u *ConfirmEmailChange) settle(ctx context.Context, id authflow.FlowID, cmd
 		} else if err != nil {
 			return fmt.Errorf("change email: %w", err)
 		}
+
 		if err := st.Users.ChangeEmail(ctx, user); errors.Is(err, port.ErrEmailTaken) {
 			result = ConfirmEmailChangeResult{Outcome: OutcomeConflict, Reason: ReasonEmailTaken}
 			return errRollback
@@ -363,26 +411,32 @@ func (u *ConfirmEmailChange) settle(ctx context.Context, id authflow.FlowID, cmd
 		if err := appsession.RevokeOthers(ctx, st, user.ID(), cmd.Actor.SessionID, now, "email_changed"); err != nil {
 			return err
 		}
+
 		if err := st.Outbox.Enqueue(ctx, port.MailJob{
 			Kind: port.JobEmailChanged, FlowID: flow.ID(), Generation: flow.Generation(), QuotaClass: flow.QuotaClass(),
 			AvailableAt: now, Recipient: previous,
 		}); err != nil {
 			return fmt.Errorf("enqueue notice: %w", err)
 		}
+
 		if err := st.Audit.Record(ctx, port.AuditEvent{
 			Type: port.AuditEmailChanged, Result: port.AuditSuccess, UserID: user.ID(), SessionID: cmd.Actor.SessionID, At: now,
 		}); err != nil {
 			return fmt.Errorf("record audit event: %w", err)
 		}
+
 		if err := st.Flows.Save(ctx, flow); err != nil {
 			return fmt.Errorf("store flow: %w", err)
 		}
+
 		result = ConfirmEmailChangeResult{Outcome: OutcomeOK, Email: user.Email()}
+
 		return nil
 	})
 	if errors.Is(err, errRollback) {
 		return result, nil
 	}
+
 	return result, err
 }
 

@@ -4,7 +4,7 @@ import (
 	"errors"
 	"time"
 
-	"airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/domain/identity"
 )
 
 // ErrInvalidOIDCToken reports an OpenID Connect token that must not be believed: bad signature, algorithm, key,

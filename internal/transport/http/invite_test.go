@@ -6,13 +6,14 @@ import (
 	"testing"
 	"time"
 
-	"airlance.org/auth/internal/application/port"
-	"airlance.org/auth/internal/domain/identity"
-	httpapi "airlance.org/auth/internal/transport/http"
+	"go.airlance.org/auth/internal/application/port"
+	"go.airlance.org/auth/internal/domain/identity"
+	httpapi "go.airlance.org/auth/internal/transport/http"
 )
 
 func newInviteEnv(t *testing.T, rec *recorder) *env {
 	t.Helper()
+
 	e, err := buildEnvMode(t, identity.RegistrationInviteOnly, func(d *httpapi.Deps) {
 		if rec != nil {
 			d.Requests = rec
@@ -21,16 +22,19 @@ func newInviteEnv(t *testing.T, rec *recorder) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	return e
 }
 
 func (e *env) invite(raw string) {
 	e.t.Helper()
 	email := mustEmail(e.t, raw)
+
 	inv, err := identity.NewInvitation(email, e.clock.Now(), 24*time.Hour)
 	if err != nil {
 		e.t.Fatal(err)
 	}
+
 	if err := e.store.Do(context.Background(), func(ctx context.Context, s port.Stores) error { return s.Invitations.Save(ctx, inv) }); err != nil {
 		e.t.Fatal(err)
 	}
@@ -47,6 +51,7 @@ func TestAnUninvitedStartIsAnOrdinaryStartToTheClientInBothProfiles(t *testing.T
 	if stranger.FlowID == "" || stranger.ClientBinding == "" || !stranger.ExpiresAt.Equal(invited.ExpiresAt) || !stranger.ResendAfter.Equal(invited.ResendAfter) {
 		t.Errorf("invited = %+v, stranger = %+v", invited, stranger)
 	}
+
 	if len(e.store.OutboxJobs()) != 1 {
 		t.Errorf("%d mails queued, want only the invited one", len(e.store.OutboxJobs()))
 	}
@@ -62,6 +67,7 @@ func TestAnUninvitedStartIsAnOrdinaryStartToTheClientInBothProfiles(t *testing.T
 			t.Fatalf("browser start of %s = %d %s", email, resp.Code, resp.Body)
 		}
 	}
+
 	if len(e.store.OutboxJobs()) != 2 {
 		t.Errorf("%d mails queued after the browser starts, want 2", len(e.store.OutboxJobs()))
 	}
@@ -75,9 +81,11 @@ func TestAnInvitedAddressRegistersThroughThePasskeyStepAndThenSignsInWithoutTheI
 	if first.AccessToken == "" {
 		t.Fatal("the invited address did not get a session")
 	}
+
 	if _, ok := e.store.User(mustEmail(t, "invited@example.test")); !ok {
 		t.Fatal("no account")
 	}
+
 	second, _ := e.signIn("invited@example.test")
 	if second.User.ID != first.User.ID {
 		t.Error("the second sign-in opened another account")
@@ -90,6 +98,7 @@ func TestAStrangerWhoGuessesNoCodeGetsNothingEvenWithTheRightAnswerToTheirOwnFlo
 	// No mail was sent, but the code of the flow is derivable on the server: a registration must still be refused.
 	rec := e.verify(started.FlowID, e.code(started.FlowID), started.ClientBinding)
 	wantProblem(t, rec, http.StatusBadRequest, "invalid_code")
+
 	if _, ok := e.store.User(mustEmail(t, "stranger@example.test")); ok {
 		t.Error("an account was created for an address that was never invited")
 	}

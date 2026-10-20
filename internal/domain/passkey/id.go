@@ -16,6 +16,7 @@ func ParseID(s string) (ID, error) {
 	if !isUUIDv7(s) {
 		return ID{}, ErrInvalidID
 	}
+
 	return ID{value: s}, nil
 }
 
@@ -30,6 +31,7 @@ func isUUIDv7(s string) bool {
 	if len(s) != 36 {
 		return false
 	}
+
 	for i := 0; i < len(s); i++ {
 		c := s[i]
 		switch i {
@@ -43,5 +45,6 @@ func isUUIDv7(s string) bool {
 			}
 		}
 	}
+
 	return s[14] == '7' && (s[19] == '8' || s[19] == '9' || s[19] == 'a' || s[19] == 'b')
 }

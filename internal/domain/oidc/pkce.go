@@ -22,8 +22,10 @@ func VerifyPKCE(challenge, verifier string) bool {
 	if !ValidChallenge(challenge) || !verifierShape.MatchString(verifier) {
 		return false
 	}
+
 	sum := sha256.Sum256([]byte(verifier))
 	want := base64.RawURLEncoding.EncodeToString(sum[:])
+
 	return subtle.ConstantTimeCompare([]byte(want), []byte(challenge)) == 1
 }
 

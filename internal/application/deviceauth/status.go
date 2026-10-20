@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"time"
 
-	"airlance.org/auth/internal/application/port"
-	ddevice "airlance.org/auth/internal/domain/deviceauth"
-	"airlance.org/auth/internal/domain/identity"
-	dpasskey "airlance.org/auth/internal/domain/passkey"
+	"go.airlance.org/auth/internal/application/port"
+	ddevice "go.airlance.org/auth/internal/domain/deviceauth"
+	"go.airlance.org/auth/internal/domain/identity"
+	dpasskey "go.airlance.org/auth/internal/domain/passkey"
 )
 
 // StatusDeps are the dependencies of Status.
@@ -28,6 +28,7 @@ func NewStatus(d StatusDeps) (*Status, error) {
 	if d.UnitOfWork == nil || d.Clock == nil || d.Tickets == nil || d.Bindings == nil {
 		return nil, errors.New("new device status: all dependencies are required")
 	}
+
 	return &Status{d}, nil
 }
 
@@ -63,16 +64,19 @@ func proof(tickets port.TicketSecrets, bindings port.BindingSecrets, requestID, 
 	if id, err = ddevice.ParseRequestID(requestID); err != nil {
 		return id, poll, binding, ReasonUnknownRequest, nil
 	}
+
 	if poll, err = tickets.HashTicketSecret(pollSecret); errors.Is(err, port.ErrInvalidTicketSecret) {
 		return id, poll, binding, ReasonBadSecret, nil
 	} else if err != nil {
 		return id, poll, binding, "", fmt.Errorf("poll secret: %w", err)
 	}
+
 	if binding, err = bindings.HashBinding(bindingSecret); errors.Is(err, port.ErrInvalidBindingSecret) {
 		return id, poll, binding, ReasonBadBinding, nil
 	} else if err != nil {
 		return id, poll, binding, "", fmt.Errorf("binding: %w", err)
 	}
+
 	return id, poll, binding, "", nil
 }
 
@@ -83,29 +87,37 @@ func (u *Status) Execute(ctx context.Context, cmd StatusCommand) (StatusResult, 
 	if err != nil {
 		return StatusResult{}, fmt.Errorf("device status: %w", err)
 	}
+
 	if reason != "" {
 		return StatusResult{Outcome: OutcomeDenied, Reason: reason}, nil
 	}
+
 	now := u.Clock.Now()
 	result := StatusResult{Outcome: OutcomeDenied, Reason: ReasonUnknownRequest}
+
 	err = u.UnitOfWork.Do(ctx, func(ctx context.Context, st port.Stores) error {
 		req, err := st.Devices.Get(ctx, id)
 		if errors.Is(err, port.ErrNotFound) {
 			return nil
 		}
+
 		if err != nil {
 			return fmt.Errorf("load device request: %w", err)
 		}
+
 		if !req.Matches(poll, binding) {
 			result.Reason = ReasonBadSecret
 			return nil
 		}
+
 		result = StatusResult{Outcome: OutcomeOK, State: stateOf(req, now)}
+
 		return nil
 	})
 	if err != nil {
 		return StatusResult{}, fmt.Errorf("device status: %w", err)
 	}
+
 	return result, nil
 }
 
@@ -116,11 +128,14 @@ func stateOf(req *ddevice.Request, now time.Time) State {
 	case ddevice.StateRedeemed:
 		return StateRedeemed
 	}
+
 	if !req.Live(now) {
 		return StateExpired
 	}
+
 	if req.State() == ddevice.StateApproved {
 		return StateApproved
 	}
+
 	return StatePending
 }

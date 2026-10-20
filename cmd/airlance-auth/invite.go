@@ -8,8 +8,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"airlance.org/auth/internal/bootstrap"
-	"airlance.org/auth/internal/config"
+	"go.airlance.org/auth/internal/bootstrap"
+	"go.airlance.org/auth/internal/config"
 )
 
 // newInviteCommand manages the invitations of the invite-only registration mode. It is run on the
@@ -24,8 +24,10 @@ func newInviteCommand() *cobra.Command {
 		if err != nil {
 			return err
 		}
+
 		ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
+
 		return bootstrap.Invite(ctx, cfg, req, cmd.OutOrStdout())
 	}
 
@@ -58,5 +60,6 @@ func newInviteCommand() *cobra.Command {
 			},
 		},
 	)
+
 	return invite
 }

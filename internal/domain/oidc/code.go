@@ -27,16 +27,21 @@ func (c *AuthorizationCode) Exchange(now time.Time, redirectURI, verifier string
 	if !c.ConsumedAt.IsZero() {
 		return ErrCodeReplayed
 	}
+
 	if !now.Before(c.ExpiresAt) {
 		return ErrCodeExpired
 	}
+
 	if redirectURI != c.RedirectURI {
 		return ErrRedirectMismatch
 	}
+
 	if !VerifyPKCE(c.CodeChallenge, verifier) {
 		return ErrPKCE
 	}
+
 	c.ConsumedAt = now.UTC()
+
 	return nil
 }
 
@@ -70,7 +75,9 @@ func (t *RefreshToken) Exchange(now time.Time) error {
 	case !now.Before(t.ExpiresAt):
 		return ErrRefreshExpired
 	}
+
 	t.UsedAt = now.UTC()
+
 	return nil
 }
 
@@ -80,5 +87,6 @@ func RefreshExpiry(now time.Time, p Policy, g *Grant) time.Time {
 	if g.ExpiresAt.Before(end) {
 		end = g.ExpiresAt
 	}
+
 	return end
 }

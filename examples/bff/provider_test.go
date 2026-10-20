@@ -35,9 +35,11 @@ func testKey(i int) *rsa.PrivateKey {
 			if err != nil {
 				panic(err)
 			}
+
 			keys = append(keys, k)
 		}
 	})
+
 	return keys[i]
 }
 
@@ -107,6 +109,7 @@ func newProvider(t *testing.T, now func() time.Time) *provider {
 	mux.HandleFunc("POST /oauth2/revoke", p.revoke)
 	p.srv = httptest.NewServer(mux)
 	t.Cleanup(p.srv.Close)
+
 	return p
 }
 
@@ -115,10 +118,12 @@ func (p *provider) issuer() string { return p.srv.URL }
 func (p *provider) discovery(w http.ResponseWriter, _ *http.Request) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+
 	jwks := p.srv.URL + "/oauth2/jwks"
 	if p.jwksHost != "" {
 		jwks = p.jwksHost + "/oauth2/jwks"
 	}
+
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"issuer": p.srv.URL, "authorization_endpoint": p.srv.URL + "/oauth2/authorize", "token_endpoint": p.srv.URL + "/oauth2/token",
 		"jwks_uri": jwks, "end_session_endpoint": p.srv.URL + "/oauth2/logout", "revocation_endpoint": p.srv.URL + "/oauth2/revoke",
@@ -130,31 +135,37 @@ func (p *provider) discovery(w http.ResponseWriter, _ *http.Request) {
 func (p *provider) jwks(w http.ResponseWriter, _ *http.Request) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+
 	p.jwksHits++
 	if p.jwksDown {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
+
 	if p.jwksBig {
 		_, _ = w.Write([]byte(`{"keys":[],"pad":"` + strings.Repeat("a", 200<<10) + `"}`))
 		return
 	}
+
 	var set jose.JSONWebKeySet
 	for kid, i := range p.kids {
 		set.Keys = append(set.Keys, jose.JSONWebKey{Key: &testKey(i).PublicKey, KeyID: kid, Algorithm: "RS256", Use: "sig"})
 	}
+
 	_ = json.NewEncoder(w).Encode(set)
 }
 
 func (p *provider) setKeys(kids map[string]int, signKID string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+
 	p.kids, p.signKID = kids, signKID
 }
 
 func (p *provider) hits() int {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+
 	return p.jwksHits
 }
 
@@ -162,6 +173,7 @@ func (p *provider) random(prefix string) string {
 	p.n++
 	raw := make([]byte, 16)
 	_, _ = rand.Read(raw)
+
 	return prefix + strconv.Itoa(p.n) + "-" + base64.RawURLEncoding.EncodeToString(raw)
 }
 
@@ -171,11 +183,15 @@ func (p *provider) issue(authorizeURL string) (code string) {
 	if err != nil {
 		p.t.Fatal(err)
 	}
+
 	q := u.Query()
+
 	p.mu.Lock()
 	defer p.mu.Unlock()
+
 	code = p.random("code-")
 	p.codes[code] = &codeInfo{challenge: q.Get("code_challenge"), redirect: q.Get("redirect_uri"), nonce: q.Get("nonce")}
+
 	return code
 }
 
@@ -184,33 +200,41 @@ func (p *provider) sign(typ, kid string, claims map[string]any, key *rsa.Private
 	if kid == "" {
 		kid = p.signKID
 	}
+
 	if key == nil {
 		key = testKey(p.kids[kid])
 	}
+
 	s, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.RS256, Key: jose.JSONWebKey{Key: key, KeyID: kid}}, (&jose.SignerOptions{}).WithType(jose.ContentType(typ)))
 	if err != nil {
 		p.t.Fatal(err)
 	}
+
 	out, err := jwt.Signed(s).Claims(claims).Serialize()
 	if err != nil {
 		p.t.Fatal(err)
 	}
+
 	return out
 }
 
 func (p *provider) idToken(nonce, sid string) string {
 	now := p.now()
+
 	exp := now.Add(5 * time.Minute)
 	if p.expired {
 		exp = now.Add(-time.Hour)
 	}
+
 	aud := clientID
 	if p.audience != "" {
 		aud = p.audience
 	}
+
 	if p.nonceFor != "" {
 		nonce = p.nonceFor
 	}
+
 	return p.sign("JWT", "", map[string]any{
 		"iss": p.srv.URL, "sub": p.subject, "aud": aud, "exp": exp.Unix(), "iat": now.Unix(), "nonce": nonce, "sid": sid, "auth_time": now.Unix(),
 	}, nil)
@@ -223,10 +247,12 @@ func (p *provider) logoutToken(mutate func(c map[string]any, header *string)) st
 		"iss": p.srv.URL, "sub": p.subject, "aud": clientID, "iat": now.Unix(), "exp": now.Add(2 * time.Minute).Unix(), "jti": p.random("jti-"),
 		"sid": "sid-1", "events": map[string]any{"http://schemas.openid.net/event/backchannel-logout": map[string]any{}},
 	}
+
 	typ := "logout+jwt"
 	if mutate != nil {
 		mutate(c, &typ)
 	}
+
 	return p.sign(typ, "", c, nil)
 }
 
@@ -235,8 +261,10 @@ func (p *provider) basicOK(r *http.Request) bool {
 	if !ok {
 		return false
 	}
+
 	id, _ = url.QueryUnescape(id)
 	secret, _ = url.QueryUnescape(secret)
+
 	return id == clientID && secret == clientSecret
 }
 
@@ -251,22 +279,28 @@ func (p *provider) token(w http.ResponseWriter, r *http.Request) {
 		oauthErr(w, http.StatusUnauthorized, "invalid_client")
 		return
 	}
+
 	_ = r.ParseForm()
+
 	p.mu.Lock()
 	defer p.mu.Unlock()
+
 	switch r.PostForm.Get("grant_type") {
 	case "authorization_code":
 		info := p.codes[r.PostForm.Get("code")]
+
 		sum := sha256.Sum256([]byte(r.PostForm.Get("code_verifier")))
 		if info == nil || info.used || info.redirect != r.PostForm.Get("redirect_uri") || base64.RawURLEncoding.EncodeToString(sum[:]) != info.challenge {
 			oauthErr(w, http.StatusBadRequest, "invalid_grant")
 			return
 		}
+
 		info.used = true
 		g := &grant{sub: p.subject, sid: p.newSID(), token: p.random("refresh-"), used: map[string]bool{}}
 		p.grants[g.token] = g
 		access := p.random("access-")
 		p.access[access] = ""
+
 		hook := p.onExchange
 		defer func() {
 			if hook != nil {
@@ -276,6 +310,7 @@ func (p *provider) token(w http.ResponseWriter, r *http.Request) {
 				p.mu.Lock()
 			}
 		}()
+
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"access_token": access, "token_type": "Bearer", "expires_in": 300, "refresh_token": g.token, "id_token": p.idToken(info.nonce, g.sid),
@@ -289,52 +324,67 @@ func (p *provider) token(w http.ResponseWriter, r *http.Request) {
 				g.token = p.random("refresh-")
 				p.grants[g.token] = g
 			}
+
 			hj, ok := w.(http.Hijacker)
 			if !ok {
 				return
 			}
+
 			conn, _, err := hj.Hijack()
 			if err == nil {
 				_ = conn.Close()
 			}
+
 			return
 		}
+
 		if p.refreshLost != 0 {
 			if g := p.grants[r.PostForm.Get("refresh_token")]; g != nil && !g.used[g.token] && g.token == r.PostForm.Get("refresh_token") {
 				g.used[g.token] = true
 				g.token = p.random("refresh-")
 				p.grants[g.token] = g
 			}
+
 			w.WriteHeader(p.refreshLost)
+
 			return
 		}
+
 		if p.refreshStatus != 0 {
 			w.WriteHeader(p.refreshStatus)
 			return
 		}
+
 		presented := r.PostForm.Get("refresh_token")
+
 		g := p.grants[presented]
 		if g == nil || g.dead {
 			oauthErr(w, http.StatusBadRequest, "invalid_grant")
 			return
 		}
+
 		if g.used[presented] || g.token != presented {
 			p.replays++
 			g.dead = true
+
 			oauthErr(w, http.StatusBadRequest, "invalid_grant")
+
 			return
 		}
+
 		resource := r.PostForm.Get("resource")
 		if resource != platformURI && resource != videoURI {
 			oauthErr(w, http.StatusBadRequest, "invalid_target")
 			return
 		}
+
 		g.used[presented] = true
 		g.token = p.random("refresh-")
 		p.grants[g.token] = g
 		access := p.random("access-")
 		p.access[access] = resource
 		p.refreshes = append(p.refreshes, resource)
+
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"access_token": access, "token_type": "Bearer", "expires_in": 300, "refresh_token": g.token})
 	default:
@@ -347,9 +397,12 @@ func (p *provider) revoke(w http.ResponseWriter, r *http.Request) {
 		oauthErr(w, http.StatusUnauthorized, "invalid_client")
 		return
 	}
+
 	_ = r.ParseForm()
+
 	p.mu.Lock()
 	defer p.mu.Unlock()
+
 	p.revoked = append(p.revoked, r.PostForm.Get("token"))
 	if g := p.grants[r.PostForm.Get("token")]; g != nil {
 		g.dead = true
@@ -360,6 +413,7 @@ func (p *provider) revoke(w http.ResponseWriter, r *http.Request) {
 func (p *provider) endGrants() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+
 	for _, g := range p.grants {
 		g.dead = true
 	}
@@ -368,12 +422,14 @@ func (p *provider) endGrants() {
 func (p *provider) refreshCount() int {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+
 	return p.refreshHits
 }
 
 func (p *provider) replayCount() int {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+
 	return p.replays
 }
 
@@ -381,7 +437,9 @@ func (p *provider) replayCount() int {
 func (p *provider) resourceOf(token string) (string, bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+
 	r, ok := p.access[token]
+
 	return r, ok
 }
 
@@ -389,5 +447,6 @@ func (p *provider) newSID() string {
 	if p.fixedSID != "" {
 		return p.fixedSID
 	}
+
 	return p.random("sid-")
 }

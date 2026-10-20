@@ -5,11 +5,12 @@ import (
 	"strings"
 	"testing"
 
-	"airlance.org/auth/internal/domain/oidc"
+	"go.airlance.org/auth/internal/domain/oidc"
 )
 
 func platform(t *testing.T) *oidc.Resource {
 	t.Helper()
+
 	r, err := oidc.NewResource(oidc.NewResourceParams{
 		ID: "platform-api", Name: "Platform", URI: "https://api.example.com/platform", Audience: "platform-api",
 		Scopes: []string{"messages:read", "messages:send", "video:read", "video:upload"},
@@ -17,6 +18,7 @@ func platform(t *testing.T) *oidc.Resource {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	return r
 }
 
@@ -25,6 +27,7 @@ func TestResourceRegistration(t *testing.T) {
 	if r.PolicyVersion != 1 || !r.Active() || !r.Defines("video:upload") || r.Defines("video") {
 		t.Fatalf("resource = %+v", r)
 	}
+
 	ok := oidc.NewResourceParams{ID: "messenger-api", Name: "Messenger", URI: "https://api.example.com/messenger", Audience: "messenger-api", Scopes: []string{"messages:send"}}
 	bad := map[string]func(p *oidc.NewResourceParams){
 		"short id":         func(p *oidc.NewResourceParams) { p.ID = "ab" },
@@ -53,17 +56,22 @@ func TestResourceRegistration(t *testing.T) {
 			}
 		},
 	}
+
 	if _, err := oidc.NewResource(ok, now); err != nil {
 		t.Fatalf("a valid registration was refused: %v", err)
 	}
+
 	for name, mutate := range bad {
 		p := ok
 		mutate(&p)
+
 		if _, err := oidc.NewResource(p, now); err == nil {
 			t.Errorf("%s accepted", name)
 		}
 	}
+
 	local := ok
+
 	local.URI = "http://localhost:8081/messenger"
 	if _, err := oidc.NewResource(local, now); err != nil {
 		t.Errorf("a localhost resource was refused: %v", err)
@@ -72,10 +80,12 @@ func TestResourceRegistration(t *testing.T) {
 
 func TestSetScopesReportsWhatWasTakenAway(t *testing.T) {
 	r := platform(t)
+
 	removed, err := r.SetScopes([]string{"messages:read", "video:read", "calendar:read"}, now)
 	if err != nil || strings.Join(removed, " ") != "messages:send video:upload" || r.Defines("messages:send") || !r.Defines("calendar:read") {
 		t.Fatalf("removed = %v, %v, scopes = %v", removed, err, r.Scopes)
 	}
+
 	if _, err := r.SetScopes(nil, now); err == nil {
 		t.Error("an empty catalog was accepted")
 	}
@@ -86,6 +96,7 @@ func TestScopeRequest(t *testing.T) {
 	if err != nil || strings.Join(got.Protocol, " ") != "openid email" || strings.Join(got.API, " ") != "messages:send video:read" {
 		t.Fatalf("got %+v, %v", got, err)
 	}
+
 	for _, bad := range []string{
 		"", " ", "messages:send", "openid ", " openid", "openid  email", "openid openid", "openid messages:send messages:send",
 		"openid,messages:send", "openid messages:send,messages:read", "openid MESSAGES:SEND", "openid profile", "openid offline_access",
@@ -99,6 +110,7 @@ func TestScopeRequest(t *testing.T) {
 	if scopes, err := oidc.ParseAPIScopes("messages:send:any"); err != nil || oidc.Intersect(scopes, []string{"messages:send"}) != nil {
 		t.Errorf("messages:send:any counted as messages:send: %v, %v", scopes, err)
 	}
+
 	if _, err := oidc.ParseAPIScopes("openid"); err == nil {
 		t.Error("a protocol scope was accepted for a resource token")
 	}
@@ -108,6 +120,7 @@ func TestResourceURIs(t *testing.T) {
 	if got, err := oidc.ParseResourceURIs([]string{"https://a.example.com/x", "https://b.example.com/y"}); err != nil || len(got) != 2 {
 		t.Fatalf("%v, %v", got, err)
 	}
+
 	for name, raw := range map[string][]string{
 		"repeated":  {"https://a.example.com/x", "https://a.example.com/x"},
 		"not a uri": {"api"},
@@ -122,10 +135,12 @@ func TestResourceURIs(t *testing.T) {
 
 func TestAgreeScopes(t *testing.T) {
 	platformAPI := platform(t)
+
 	video, err := oidc.NewResource(oidc.NewResourceParams{ID: "video-api", Name: "Video", URI: "https://video.example.com/", Audience: "video-api", Scopes: []string{"video:read", "video:upload"}}, now)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	perms := map[string][]string{"platform-api": {"messages:read", "messages:send"}, "video-api": {"video:read"}}
 
 	got, err := oidc.AgreeScopes([]*oidc.Resource{platformAPI, video}, perms, []string{"messages:send", "video:read"})
@@ -157,6 +172,7 @@ func TestAgreeScopes(t *testing.T) {
 	if _, err := platformAPI.SetScopes([]string{"messages:read", "video:read"}, now); err != nil {
 		t.Fatal(err)
 	}
+
 	if _, err := oidc.AgreeScopes([]*oidc.Resource{platformAPI}, perms, []string{"messages:send"}); !errors.Is(err, oidc.ErrInvalidScope) {
 		t.Errorf("a removed scope was agreed: %v", err)
 	}
@@ -164,10 +180,12 @@ func TestAgreeScopes(t *testing.T) {
 
 func mustResource(t *testing.T, id, audience string, scopes ...string) *oidc.Resource {
 	t.Helper()
+
 	r, err := oidc.NewResource(oidc.NewResourceParams{ID: id, Name: id, URI: "https://" + id + ".example.com/", Audience: audience, Scopes: scopes}, now)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	return r
 }
 

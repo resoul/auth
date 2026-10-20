@@ -8,26 +8,30 @@ import (
 	"testing"
 	"time"
 
-	"airlance.org/auth/internal/adapter/memory"
-	"airlance.org/auth/internal/domain/quota"
-	httpapi "airlance.org/auth/internal/transport/http"
+	"go.airlance.org/auth/internal/adapter/memory"
+	"go.airlance.org/auth/internal/domain/quota"
+	httpapi "go.airlance.org/auth/internal/transport/http"
 )
 
 func prefixes(t *testing.T, cidrs ...string) []netip.Prefix {
 	t.Helper()
+
 	var out []netip.Prefix
 	for _, c := range cidrs {
 		out = append(out, netip.MustParsePrefix(c))
 	}
+
 	return out
 }
 
 func requestFrom(remote string, xff ...string) *http.Request {
 	r := httptest.NewRequest(http.MethodPost, startPath, nil)
+
 	r.RemoteAddr = remote
 	for _, v := range xff {
 		r.Header.Add("X-Forwarded-For", v)
 	}
+
 	return r
 }
 
@@ -61,8 +65,10 @@ func TestClientIP(t *testing.T) {
 				if got.IsValid() {
 					t.Errorf("ClientIP = %v, want unknown", got)
 				}
+
 				return
 			}
+
 			if got.String() != tc.want {
 				t.Errorf("ClientIP = %v, want %s", got, tc.want)
 			}
@@ -72,20 +78,24 @@ func TestClientIP(t *testing.T) {
 
 func ipBudget(t *testing.T) memory.Option {
 	t.Helper()
+
 	p, err := quota.NewProfile(map[quota.Scope][]quota.Window{quota.UnknownSendIP: {{Limit: 1, Per: time.Hour}}})
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	return memory.WithQuota(p)
 }
 
 func (e *env) startRequest(email, remote, xff string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(http.MethodPost, startPath, strings.NewReader(`{"email": "`+email+`"}`))
 	req.Header.Set("Content-Type", "application/json")
+
 	req.RemoteAddr = remote
 	if xff != "" {
 		req.Header.Set("X-Forwarded-For", xff)
 	}
+
 	return e.do(req)
 }
 

@@ -4,8 +4,8 @@ import (
 	"errors"
 	"time"
 
-	"airlance.org/auth/internal/domain/identity"
-	"airlance.org/auth/internal/domain/session"
+	"go.airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/domain/session"
 )
 
 // ErrInvalidAccessToken reports a token that must not authenticate anyone: bad

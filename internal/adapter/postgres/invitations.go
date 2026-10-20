@@ -8,9 +8,9 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"airlance.org/auth/internal/adapter/postgres/sqlc"
-	"airlance.org/auth/internal/application/port"
-	"airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/adapter/postgres/sqlc"
+	"go.airlance.org/auth/internal/application/port"
+	"go.airlance.org/auth/internal/domain/identity"
 )
 
 type invitations struct{ q *sqlc.Queries }
@@ -22,6 +22,7 @@ func (r *invitations) Save(ctx context.Context, inv *identity.Invitation) error 
 	}); err != nil {
 		return fmt.Errorf("save invitation: %w", err)
 	}
+
 	return nil
 }
 
@@ -30,9 +31,11 @@ func (r *invitations) FindActive(ctx context.Context, email identity.Email, now 
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, port.ErrNotFound
 	}
+
 	if err != nil {
 		return nil, fmt.Errorf("find invitation: %w", err)
 	}
+
 	return invitationFromRow(row)
 }
 
@@ -41,6 +44,7 @@ func (r *invitations) Consume(ctx context.Context, email identity.Email, now tim
 	if err != nil {
 		return false, fmt.Errorf("consume invitation: %w", err)
 	}
+
 	return n == 1, nil
 }
 
@@ -49,6 +53,7 @@ func (r *invitations) Delete(ctx context.Context, email identity.Email) (bool, e
 	if err != nil {
 		return false, fmt.Errorf("delete invitation: %w", err)
 	}
+
 	return n == 1, nil
 }
 
@@ -57,14 +62,17 @@ func (r *invitations) List(ctx context.Context) ([]*identity.Invitation, error) 
 	if err != nil {
 		return nil, fmt.Errorf("list invitations: %w", err)
 	}
+
 	out := make([]*identity.Invitation, 0, len(rows))
 	for _, row := range rows {
 		inv, err := invitationFromRow(row)
 		if err != nil {
 			return nil, err
 		}
+
 		out = append(out, inv)
 	}
+
 	return out, nil
 }
 
@@ -73,5 +81,6 @@ func invitationFromRow(row sqlc.Invitation) (*identity.Invitation, error) {
 	if err != nil {
 		return nil, fmt.Errorf("stored invitation email: %w", err)
 	}
+
 	return identity.RestoreInvitation(identity.InvitationRecord{Email: email, CreatedAt: goTime(row.CreatedAt), ExpiresAt: goTime(row.ExpiresAt)})
 }

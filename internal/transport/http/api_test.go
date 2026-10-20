@@ -11,9 +11,9 @@ import (
 	"strings"
 	"testing"
 
-	"airlance.org/auth/internal/adapter/jwt"
-	"airlance.org/auth/internal/testutil"
-	httpapi "airlance.org/auth/internal/transport/http"
+	"go.airlance.org/auth/internal/adapter/jwt"
+	"go.airlance.org/auth/internal/testutil"
+	httpapi "go.airlance.org/auth/internal/transport/http"
 )
 
 func TestJWKSPublishesThePublicKeysThatVerifyAccessTokens(t *testing.T) {
@@ -24,12 +24,15 @@ func TestJWKSPublishesThePublicKeysThatVerifyAccessTokens(t *testing.T) {
 	if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "application/json" {
 		t.Fatalf("status = %d, Content-Type = %q", rec.Code, rec.Header().Get("Content-Type"))
 	}
+
 	if got := rec.Header().Get("Cache-Control"); got != "public, max-age=300" {
 		t.Errorf("Cache-Control = %q", got)
 	}
+
 	if strings.Contains(rec.Body.String(), `"d"`) {
 		t.Fatalf("the key set contains private material: %s", rec.Body)
 	}
+
 	keys, err := jwt.ParseJWKS(rec.Body.Bytes())
 	if err != nil || len(keys) != 1 || keys["sign-a"] == nil {
 		t.Fatalf("keys = %v, %v", keys, err)
@@ -39,6 +42,7 @@ func TestJWKSPublishesThePublicKeysThatVerifyAccessTokens(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if _, err := verifier.VerifyAccess(signedIn.AccessToken); err != nil {
 		t.Errorf("the published keys do not verify the access token: %v", err)
 	}
@@ -51,19 +55,23 @@ func TestHealthRoutes(t *testing.T) {
 		if body := decode[map[string]string](t, rec, http.StatusOK); body["status"] != "ok" {
 			t.Errorf("%s = %v", path, body)
 		}
+
 		if rec.Header().Get("Cache-Control") != "no-store" {
 			t.Errorf("%s may be cached", path)
 		}
 	}
 
 	e.ready = errors.New("dial tcp 10.0.0.7:5432: connection refused")
+
 	rec := e.get("/health/ready")
 	if body := decode[map[string]string](t, rec, http.StatusServiceUnavailable); body["status"] != "unavailable" || len(body) != 1 {
 		t.Errorf("ready = %v", body)
 	}
+
 	if strings.Contains(rec.Body.String(), "10.0.0.7") {
 		t.Error("readiness names the failing dependency")
 	}
+
 	if e.get("/health/alive").Code != http.StatusOK {
 		t.Error("a dependency failure made the process look dead")
 	}
@@ -71,6 +79,7 @@ func TestHealthRoutes(t *testing.T) {
 
 func TestMetricsRouteServesTheRegistry(t *testing.T) {
 	e := newEnv(t)
+
 	rec := e.get("/metrics")
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "airlance_auth_refresh_reuse_total 0") {
 		t.Errorf("status = %d, body:\n%s", rec.Code, rec.Body)
@@ -82,12 +91,15 @@ func TestRoutesKeepTheirMethods(t *testing.T) {
 	if rec := e.get(startPath); rec.Code != http.StatusMethodNotAllowed {
 		t.Errorf("GET start = %d, want 405", rec.Code)
 	}
+
 	if rec := e.postRaw("/metrics", ""); rec.Code != http.StatusMethodNotAllowed {
 		t.Errorf("POST /metrics = %d, want 405", rec.Code)
 	}
+
 	if rec := e.get("/v1/auth/email/start"); rec.Code != http.StatusMethodNotAllowed {
 		t.Errorf("GET browser start = %d, want 405", rec.Code)
 	}
+
 	if rec := e.postRaw("/v1/unknown", "{}"); rec.Code != http.StatusNotFound {
 		t.Errorf("an unknown /v1 route = %d, want 404", rec.Code)
 	}
@@ -98,6 +110,7 @@ func TestEveryResponseGetsAFreshRequestID(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/health/alive", nil)
 	req.Header.Set(httpapi.RequestIDHeader, "forged\nline")
 	first := e.do(req).Header().Get(httpapi.RequestIDHeader)
+
 	second := e.get("/health/alive").Header().Get(httpapi.RequestIDHeader)
 	if first == "" || first == "forged\nline" || first == second {
 		t.Errorf("request ids %q and %q", first, second)
@@ -127,6 +140,7 @@ func TestLogsCarryNoSecrets(t *testing.T) {
 	e.refresh(registered.RefreshToken)
 
 	logs := e.logs.String()
+
 	secrets := map[string]string{
 		"code": code, "binding": started.ClientBinding, "email": "alice@example.test", "flow id": started.FlowID,
 		"ticket": step.Ticket, "challenge id": begun.ChallengeID, "credential": string(auth.CredentialID),
@@ -135,11 +149,13 @@ func TestLogsCarryNoSecrets(t *testing.T) {
 	for i, code := range registered.RecoveryCodes {
 		secrets[fmt.Sprintf("recovery code %d", i)] = code
 	}
+
 	for name, secret := range secrets {
 		if strings.Contains(logs, secret) {
 			t.Errorf("the logs contain the %s", name)
 		}
 	}
+
 	if !strings.Contains(logs, `"reason":"wrong_code"`) || !strings.Contains(logs, `"route":"POST /v1/native/auth/email/verify"`) ||
 		!strings.Contains(logs, `"reason":"bad_ticket"`) {
 		t.Errorf("the logs lack the safe fields:\n%s", logs)

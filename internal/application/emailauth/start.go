@@ -7,9 +7,9 @@ import (
 	"net/netip"
 	"time"
 
-	"airlance.org/auth/internal/application/port"
-	"airlance.org/auth/internal/domain/authflow"
-	"airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/application/port"
+	"go.airlance.org/auth/internal/domain/authflow"
+	"go.airlance.org/auth/internal/domain/identity"
 )
 
 // StartDeps are the dependencies of Start.
@@ -34,9 +34,11 @@ func NewStart(d StartDeps) (*Start, error) {
 	if d.UnitOfWork == nil || d.Clock == nil || d.FlowIDs == nil || d.OTP == nil || d.Bindings == nil {
 		return nil, errors.New("new start: all dependencies are required")
 	}
+
 	if err := d.Policy.Validate(); err != nil {
 		return nil, fmt.Errorf("new start: %w", err)
 	}
+
 	return &Start{d}, nil
 }
 
@@ -68,34 +70,43 @@ func (s *Start) Execute(ctx context.Context, cmd StartCommand) (StartResult, err
 		return StartResult{}, fmt.Errorf("start: %w", err)
 	}
 
-	var secret string
-	var binding identity.BindingHash
+	var (
+		secret  string
+		binding identity.BindingHash
+	)
 	if cmd.BindingSecret == "" {
 		secret, binding, err = s.Bindings.NewBinding()
 	} else {
 		binding, err = s.Bindings.HashBinding(cmd.BindingSecret)
 	}
+
 	if err != nil {
 		return StartResult{}, fmt.Errorf("start: binding: %w", err)
 	}
+
 	issued := secret
 
 	flowID, err := s.FlowIDs.NewFlowID()
 	if err != nil {
 		return StartResult{}, fmt.Errorf("start: %w", err)
 	}
+
 	gen, err := s.OTP.NewGeneration()
 	if err != nil {
 		return StartResult{}, fmt.Errorf("start: %w", err)
 	}
+
 	now := s.Clock.Now()
 
 	var result StartResult
+
 	err = s.UnitOfWork.Do(ctx, func(ctx context.Context, st port.Stores) error {
 		// The server picks the quota class and keeps it for the whole flow. Only a client
 		// that presented its binding can be recognized; a binding issued just now cannot.
 		class := authflow.QuotaUnknown
+
 		var recognizedID identity.RecognizedClientID
+
 		if cmd.BindingSecret != "" {
 			rc, err := st.Recognized.FindActive(ctx, email, binding, now)
 			switch {
@@ -113,6 +124,7 @@ func (s *Start) Execute(ctx context.Context, cmd StartCommand) (StartResult, err
 		if err != nil {
 			return fmt.Errorf("spend send quota: %w", err)
 		}
+
 		if !allowed {
 			result = StartResult{Outcome: OutcomeRateLimited, Reason: ReasonQuota}
 			return nil
@@ -125,9 +137,11 @@ func (s *Start) Execute(ctx context.Context, cmd StartCommand) (StartResult, err
 		if err != nil {
 			return fmt.Errorf("create flow state: %w", err)
 		}
+
 		if err := st.Flows.Create(ctx, flow); err != nil {
 			return fmt.Errorf("store flow: %w", err)
 		}
+
 		result = StartResult{
 			Outcome: OutcomeOK, FlowID: flow.ID(), ExpiresAt: flow.ExpiresAt(),
 			ResendAfter: flow.ResendAfter(), NewBindingSecret: issued,
@@ -137,19 +151,23 @@ func (s *Start) Execute(ctx context.Context, cmd StartCommand) (StartResult, err
 		if err != nil {
 			return err
 		}
+
 		if refusal != "" {
 			result.Reason = refusal
 			return nil
 		}
+
 		if err := st.Outbox.Enqueue(ctx, port.MailJob{
 			FlowID: flow.ID(), Generation: flow.Generation(), QuotaClass: class, AvailableAt: now,
 		}); err != nil {
 			return fmt.Errorf("enqueue mail: %w", err)
 		}
+
 		return nil
 	})
 	if err != nil {
 		return StartResult{}, fmt.Errorf("start: %w", err)
 	}
+
 	return result, nil
 }

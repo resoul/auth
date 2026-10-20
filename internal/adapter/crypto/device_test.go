@@ -4,20 +4,23 @@ import (
 	"bytes"
 	"testing"
 
-	"airlance.org/auth/internal/adapter/crypto"
-	"airlance.org/auth/internal/domain/deviceauth"
+	"go.airlance.org/auth/internal/adapter/crypto"
+	"go.airlance.org/auth/internal/domain/deviceauth"
 )
 
 func TestDeviceRequestIDsAreValidAndDistinct(t *testing.T) {
 	seen := map[string]bool{}
+
 	for i := 0; i < 200; i++ {
 		id, err := crypto.Device{}.NewRequestID()
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		if _, err := deviceauth.ParseRequestID(id.String()); err != nil || seen[id.String()] {
 			t.Fatalf("id %q: %v (seen %v)", id, err, seen[id.String()])
 		}
+
 		seen[id.String()] = true
 	}
 }
@@ -28,6 +31,7 @@ func TestPairingCodesHaveSixDigitsIncludingLeadingZeros(t *testing.T) {
 	if err != nil || code != "000000" {
 		t.Fatalf("code = %q, %v", code, err)
 	}
+
 	for i := 0; i < 500; i++ {
 		code, err := crypto.Device{}.NewPairingCode()
 		if err != nil || !deviceauth.ValidPairingCode(code) {
@@ -41,6 +45,7 @@ func TestADeadRandomSourceIsAnErrorNotAWeakCode(t *testing.T) {
 	if _, err := empty.NewRequestID(); err == nil {
 		t.Error("NewRequestID hid the failure of its source")
 	}
+
 	if code, err := empty.NewPairingCode(); err == nil || code != "" {
 		t.Errorf("NewPairingCode = %q, %v; want an error and no code", code, err)
 	}

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"airlance.org/auth/internal/testutil"
+	"go.airlance.org/auth/internal/testutil"
 )
 
 // neverIssuedChallenge is a well-formed challenge id that no ceremony of the tests ever created.
@@ -64,12 +64,14 @@ func TestFinishingAPasskeyAdditionRefusesEachMissingPart(t *testing.T) {
 		if name != "" {
 			data["name"] = name
 		}
+
 		return data
 	}
 
 	wantProblem(t, m.json(http.MethodPost, "/passkeys", "", body(begun.ChallengeID, "")), http.StatusForbidden, "step_up_required")
 	wantProblem(t, m.json(http.MethodPost, "/passkeys", addTicket, body(begun.ChallengeID, strings.Repeat("x", 65))), http.StatusBadRequest, "invalid_request")
 	wantProblem(t, m.json(http.MethodPost, "/passkeys", addTicket, body(neverIssuedChallenge, "")), http.StatusBadRequest, "invalid_proof")
+
 	if n := len(m.keys()); n != 1 {
 		t.Fatalf("%d keys after refusals, want 1", n)
 	}
@@ -79,7 +81,9 @@ func TestFinishingAPasskeyAdditionRefusesEachMissingPart(t *testing.T) {
 	if added.Name != "Phone" {
 		t.Errorf("added = %+v", added)
 	}
+
 	wantProblem(t, m.json(http.MethodPost, "/passkeys", addTicket, body(begun.ChallengeID, "Again")), http.StatusForbidden, "step_up_required")
+
 	if n := len(m.keys()); n != 2 {
 		t.Errorf("%d keys, want 2", n)
 	}
@@ -88,6 +92,7 @@ func TestFinishingAPasskeyAdditionRefusesEachMissingPart(t *testing.T) {
 // The browser profile is the native one behind the page's headers, so each refusal must answer the same in both.
 func TestPasskeyRefusalsAreTheSameInBothProfiles(t *testing.T) {
 	const missing = "0198a2b4-7c3d-7e5f-8a1b-2c3d4e5f6a7c"
+
 	for name, build := range map[string]func(*testing.T, *env, string) manage{"native": nativeManage, "browser": browserManage} {
 		t.Run(name, func(t *testing.T) {
 			e := newEnv(t)

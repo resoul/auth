@@ -4,8 +4,8 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"airlance.org/auth/internal/domain/authflow"
-	"airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/domain/authflow"
+	"go.airlance.org/auth/internal/domain/identity"
 )
 
 // FlowSpec overrides the fields a scenario cares about. The zero value builds a
@@ -34,38 +34,47 @@ const DefaultKeyID = "otp-test"
 // Flow starts a flow at the factory clock time.
 func (f *Factory) Flow(spec FlowSpec) *authflow.Flow {
 	f.t.Helper()
+
 	id, err := f.IDs.NewFlowID()
 	if err != nil {
 		f.t.Fatalf("build flow id: %v", err)
 	}
+
 	raw := spec.Email
 	if raw == "" {
 		raw = fmt.Sprintf("flow-%s@example.test", id.String())
 	}
+
 	email, err := identity.ParseEmail(raw)
 	if err != nil {
 		f.t.Fatalf("build flow email %q: %v", raw, err)
 	}
+
 	purpose := spec.Purpose
 	if purpose == "" {
 		purpose = authflow.PurposeLogin
 	}
+
 	secret := spec.BindingSecret
 	if secret == "" {
 		secret = DefaultBindingSecret
 	}
+
 	class := spec.QuotaClass
 	if class == "" {
 		class = authflow.QuotaUnknown
 	}
+
 	salt := spec.Salt
 	if salt == nil {
 		salt = f.Salt()
 	}
+
 	keyID := spec.KeyID
 	if keyID == "" {
 		keyID = DefaultKeyID
 	}
+
 	policy := authflow.DefaultPolicy()
 	if spec.Policy != nil {
 		policy = *spec.Policy
@@ -78,6 +87,7 @@ func (f *Factory) Flow(spec FlowSpec) *authflow.Flow {
 	if err != nil {
 		f.t.Fatalf("build flow: %v", err)
 	}
+
 	return flow
 }
 
@@ -85,5 +95,6 @@ func (f *Factory) Flow(spec FlowSpec) *authflow.Flow {
 func (f *Factory) Salt() []byte {
 	salt := make([]byte, authflow.SaltLength)
 	binary.BigEndian.PutUint64(salt, f.IDs.n.Add(1))
+
 	return salt
 }

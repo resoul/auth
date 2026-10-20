@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"time"
 
-	"airlance.org/auth/internal/application/port"
-	"airlance.org/auth/internal/domain/operator"
-	dpasskey "airlance.org/auth/internal/domain/passkey"
+	"go.airlance.org/auth/internal/application/port"
+	"go.airlance.org/auth/internal/domain/operator"
+	dpasskey "go.airlance.org/auth/internal/domain/passkey"
 )
 
 // AuthenticateResult is the output of Authenticate.
@@ -27,66 +27,83 @@ func (a *Auth) Authenticate(ctx context.Context, secret string) (AuthenticateRes
 	if errors.Is(err, port.ErrInvalidTicketSecret) {
 		return AuthenticateResult{Outcome: OutcomeUnauthenticated}, nil
 	}
+
 	if err != nil {
 		return AuthenticateResult{}, fmt.Errorf("authenticate: %w", err)
 	}
+
 	now := a.Clock.Now()
 	result := AuthenticateResult{Outcome: OutcomeUnauthenticated}
+
 	err = a.UnitOfWork.Do(ctx, func(ctx context.Context, st port.Stores) error {
 		sess, err := st.OperatorSessions.GetByHashForUpdate(ctx, hash)
 		if errors.Is(err, port.ErrNotFound) {
 			return nil
 		}
+
 		if err != nil {
 			return fmt.Errorf("load operator session: %w", err)
 		}
+
 		if !sess.Active(now) {
 			return nil
 		}
+
 		op, err := st.Operators.Get(ctx, sess.OperatorID())
 		if err != nil {
 			return fmt.Errorf("load operator: %w", err)
 		}
+
 		if op.Disabled() {
 			return nil
 		}
+
 		if sess.Touch(now) {
 			if err := st.OperatorSessions.Save(ctx, sess); err != nil {
 				return fmt.Errorf("store operator session: %w", err)
 			}
 		}
+
 		result = AuthenticateResult{
 			Outcome: OutcomeOK, Actor: Actor{OperatorID: op.ID(), SessionID: sess.ID()}, Operator: op,
 			CSRFToken: operator.CSRFToken(secret), ExpiresAt: sessionEnd(sess),
 		}
+
 		return nil
 	})
 	if err != nil {
 		return AuthenticateResult{}, fmt.Errorf("authenticate: %w", err)
 	}
+
 	return result, nil
 }
 
 // Logout ends the session of the actor. A session that already ended is not an error.
 func (a *Auth) Logout(ctx context.Context, actor Actor) error {
 	now := a.Clock.Now()
+
 	err := a.UnitOfWork.Do(ctx, func(ctx context.Context, st port.Stores) error {
 		sess, err := st.OperatorSessions.GetForUpdate(ctx, actor.SessionID)
 		if errors.Is(err, port.ErrNotFound) {
 			return nil
 		}
+
 		if err != nil {
 			return fmt.Errorf("load operator session: %w", err)
 		}
+
 		if sess.OperatorID() != actor.OperatorID {
 			return nil
 		}
+
 		sess.Revoke(now)
+
 		return st.OperatorSessions.Save(ctx, sess)
 	})
 	if err != nil {
 		return fmt.Errorf("logout: %w", err)
 	}
+
 	return nil
 }
 

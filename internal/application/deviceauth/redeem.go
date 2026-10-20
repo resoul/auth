@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"net/netip"
 
-	"airlance.org/auth/internal/application/passkey"
-	"airlance.org/auth/internal/application/port"
+	"go.airlance.org/auth/internal/application/passkey"
+	"go.airlance.org/auth/internal/application/port"
 )
 
 // RedeemDeps are the dependencies of Redeem.
@@ -27,9 +27,11 @@ func NewRedeem(d RedeemDeps) (*Redeem, error) {
 	if d.UnitOfWork == nil || d.Clock == nil || d.Tickets == nil || d.Bindings == nil {
 		return nil, errors.New("new device redeem: all dependencies are required")
 	}
+
 	if err := d.Validate("device redeem"); err != nil {
 		return nil, err
 	}
+
 	return &Redeem{d}, nil
 }
 
@@ -58,30 +60,39 @@ func (u *Redeem) Execute(ctx context.Context, cmd RedeemCommand) (RedeemResult, 
 	denied := func(reason Reason) (RedeemResult, error) {
 		return RedeemResult{Outcome: OutcomeDenied, Reason: reason}, nil
 	}
+
 	id, poll, binding, reason, err := proof(u.Tickets, u.Bindings, cmd.RequestID, cmd.PollSecret, cmd.BindingSecret)
 	if err != nil {
 		return RedeemResult{}, fmt.Errorf("redeem device request: %w", err)
 	}
+
 	if reason != "" {
 		return denied(reason)
 	}
+
 	now := u.Clock.Now()
+
 	var result RedeemResult
+
 	err = u.UnitOfWork.Do(ctx, func(ctx context.Context, st port.Stores) error {
 		req, err := st.Devices.GetForUpdate(ctx, id)
 		if errors.Is(err, port.ErrNotFound) {
 			result, _ = denied(ReasonUnknownRequest)
 			return nil
 		}
+
 		if err != nil {
 			return fmt.Errorf("load device request: %w", err)
 		}
+
 		if err := req.Redeem(now, poll, binding); err != nil {
 			reason, ok := denial(err)
 			if !ok {
 				return fmt.Errorf("redeem device request: %w", err)
 			}
+
 			result, _ = denied(reason)
+
 			return nil
 		}
 		// The user is share-locked before the approving session is read. A revocation of the user's sessions queues on
@@ -92,6 +103,7 @@ func (u *Redeem) Execute(ctx context.Context, cmd RedeemCommand) (RedeemResult, 
 			result, _ = denied(ReasonApproverGone)
 			return nil
 		}
+
 		if err != nil {
 			return fmt.Errorf("load user: %w", err)
 		}
@@ -100,26 +112,33 @@ func (u *Redeem) Execute(ctx context.Context, cmd RedeemCommand) (RedeemResult, 
 		if err != nil && !errors.Is(err, port.ErrNotFound) {
 			return fmt.Errorf("load approving session: %w", err)
 		}
+
 		if err != nil || !approver.Active(now) {
 			result, _ = denied(ReasonApproverGone)
 			return nil
 		}
+
 		if user.Blocked() {
 			result, _ = denied(ReasonBlocked)
 			return nil
 		}
+
 		if err := st.Devices.Save(ctx, req); err != nil {
 			return fmt.Errorf("store device request: %w", err)
 		}
+
 		signed, err := u.SignIn(ctx, st, now, user, req.Binding(), amrDevice, req.DeviceName(), "qr", cmd.ClientIP)
 		if err != nil {
 			return err
 		}
+
 		result = RedeemResult{Outcome: OutcomeOK, SignedIn: signed}
+
 		return nil
 	})
 	if err != nil {
 		return RedeemResult{}, fmt.Errorf("redeem device request: %w", err)
 	}
+
 	return result, nil
 }

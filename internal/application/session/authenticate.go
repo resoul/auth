@@ -5,9 +5,9 @@ import (
 	"errors"
 	"fmt"
 
-	"airlance.org/auth/internal/application/port"
-	"airlance.org/auth/internal/domain/identity"
-	dsession "airlance.org/auth/internal/domain/session"
+	"go.airlance.org/auth/internal/application/port"
+	"go.airlance.org/auth/internal/domain/identity"
+	dsession "go.airlance.org/auth/internal/domain/session"
 )
 
 // Actor is who a protected request acts as: the user and the device session of the access
@@ -36,6 +36,7 @@ func NewAuthenticator(d AuthenticateDeps) (*Authenticator, error) {
 	if d.UnitOfWork == nil || d.Clock == nil || d.Verifier == nil {
 		return nil, errors.New("new authenticator: all dependencies are required")
 	}
+
 	return &Authenticator{d}, nil
 }
 
@@ -53,20 +54,25 @@ func (a *Authenticator) Execute(ctx context.Context, accessToken string) (AuthRe
 	if errors.Is(err, port.ErrInvalidAccessToken) {
 		return AuthResult{Outcome: OutcomeDenied, Reason: ReasonInvalidToken}, nil
 	}
+
 	if err != nil {
 		return AuthResult{}, fmt.Errorf("authenticate: %w", err)
 	}
+
 	now := a.Clock.Now()
 
 	result := AuthResult{Outcome: OutcomeDenied, Reason: ReasonUnknownSession}
+
 	err = a.UnitOfWork.Do(ctx, func(ctx context.Context, st port.Stores) error {
 		sess, err := st.Sessions.Get(ctx, claims.SessionID)
 		if errors.Is(err, port.ErrNotFound) {
 			return nil
 		}
+
 		if err != nil {
 			return fmt.Errorf("load session: %w", err)
 		}
+
 		switch {
 		case sess.UserID() != claims.UserID:
 			// A token that names a session of another user is forged or confused.
@@ -75,10 +81,12 @@ func (a *Authenticator) Execute(ctx context.Context, accessToken string) (AuthRe
 		default:
 			result = AuthResult{Outcome: OutcomeOK, Actor: Actor{UserID: sess.UserID(), SessionID: sess.ID()}}
 		}
+
 		return nil
 	})
 	if err != nil {
 		return AuthResult{}, fmt.Errorf("authenticate: %w", err)
 	}
+
 	return result, nil
 }

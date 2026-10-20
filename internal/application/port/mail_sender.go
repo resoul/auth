@@ -6,7 +6,7 @@ import (
 	"net/netip"
 	"time"
 
-	"airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/domain/identity"
 )
 
 // Errors a MailSender returns; anything else is treated as temporary.

@@ -13,24 +13,24 @@ import (
 	"testing"
 	"time"
 
-	"airlance.org/auth/internal/adapter/crypto"
-	"airlance.org/auth/internal/adapter/id"
-	"airlance.org/auth/internal/adapter/jwt"
-	"airlance.org/auth/internal/adapter/memory"
-	"airlance.org/auth/internal/adapter/metrics"
-	apasskey "airlance.org/auth/internal/adapter/passkey"
-	"airlance.org/auth/internal/application/account"
-	"airlance.org/auth/internal/application/deviceauth"
-	"airlance.org/auth/internal/application/emailauth"
-	appoidc "airlance.org/auth/internal/application/oidc"
-	"airlance.org/auth/internal/application/passkey"
-	"airlance.org/auth/internal/application/port"
-	appsession "airlance.org/auth/internal/application/session"
-	"airlance.org/auth/internal/domain/authflow"
-	"airlance.org/auth/internal/domain/identity"
-	"airlance.org/auth/internal/domain/session"
-	"airlance.org/auth/internal/testutil"
-	httpapi "airlance.org/auth/internal/transport/http"
+	"go.airlance.org/auth/internal/adapter/crypto"
+	"go.airlance.org/auth/internal/adapter/id"
+	"go.airlance.org/auth/internal/adapter/jwt"
+	"go.airlance.org/auth/internal/adapter/memory"
+	"go.airlance.org/auth/internal/adapter/metrics"
+	apasskey "go.airlance.org/auth/internal/adapter/passkey"
+	"go.airlance.org/auth/internal/application/account"
+	"go.airlance.org/auth/internal/application/deviceauth"
+	"go.airlance.org/auth/internal/application/emailauth"
+	appoidc "go.airlance.org/auth/internal/application/oidc"
+	"go.airlance.org/auth/internal/application/passkey"
+	"go.airlance.org/auth/internal/application/port"
+	appsession "go.airlance.org/auth/internal/application/session"
+	"go.airlance.org/auth/internal/domain/authflow"
+	"go.airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/domain/session"
+	"go.airlance.org/auth/internal/testutil"
+	httpapi "go.airlance.org/auth/internal/transport/http"
 )
 
 const (
@@ -57,6 +57,7 @@ func (f *faults) Do(ctx context.Context, fn func(ctx context.Context, s port.Sto
 		if f.wrap != nil {
 			s = f.wrap(s)
 		}
+
 		return fn(ctx, s)
 	})
 }
@@ -97,10 +98,12 @@ func newEnvBehind(t *testing.T, proxies []netip.Prefix, opts ...memory.Option) *
 // newEnvWith lets a test change the API's dependencies before the handler is built.
 func newEnvWith(t *testing.T, configure func(*httpapi.Deps), opts ...memory.Option) *env {
 	t.Helper()
+
 	e, err := buildEnv(t, configure, opts...)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	return e
 }
 
@@ -120,38 +123,46 @@ func buildEnvMode(t *testing.T, mode identity.RegistrationMode, configure func(*
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if e.otp, err = crypto.NewOTP(otpRing, nil); err != nil {
 		t.Fatal(err)
 	}
+
 	keys := testutil.NewSigningKeyPEM(t)
 	if e.ring, err = jwt.LoadRing("sign-a", map[string]string{"sign-a": testutil.WriteFile(t, "a.pem", keys.Private)}); err != nil {
 		t.Fatal(err)
 	}
+
 	signer, err := jwt.NewSigner(e.ring, e.clock, issuer, audience, 5*time.Minute)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if e.verifier, err = jwt.NewVerifier(e.ring.PublicKeys(), e.clock, issuer, audience, 30*time.Second); err != nil {
 		t.Fatal(err)
 	}
 
 	flowPolicy, sessionPolicy := authflow.DefaultPolicy(), session.DefaultPolicy()
+
 	start, err := emailauth.NewStart(emailauth.StartDeps{
 		UnitOfWork: e.faults, Clock: e.clock, FlowIDs: crypto.Random{}, OTP: e.otp, Bindings: crypto.Binding{}, Policy: flowPolicy, Registration: mode,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	resend, err := emailauth.NewResend(emailauth.ResendDeps{
 		UnitOfWork: e.faults, Clock: e.clock, OTP: e.otp, Bindings: crypto.Binding{}, Policy: flowPolicy, Registration: mode,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	issuerUC, err := appsession.NewIssuer(appsession.IssuerDeps{SessionIDs: id.Generator{}, TokenIDs: id.Generator{}, Secrets: crypto.Refresh{}, Policy: sessionPolicy})
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	verify, err := emailauth.NewVerifyCode(emailauth.VerifyCodeDeps{
 		UnitOfWork: e.faults, Clock: e.clock, OTP: e.otp, Bindings: crypto.Binding{}, UserIDs: id.Generator{},
 		RecognizedIDs: id.Generator{}, PasskeyIDs: id.Generator{}, Tickets: crypto.Ticket{}, Policy: flowPolicy, Registration: mode,
@@ -159,17 +170,21 @@ func buildEnvMode(t *testing.T, mode identity.RegistrationMode, configure func(*
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	web, err := apasskey.New(apasskey.Config{RPID: rpID, RPName: "Example", Origins: []string{rpOrigin}})
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	signedIn := passkey.SessionDeps{Sessions: issuerUC, Signer: signer}
+
 	beginEnroll, err := passkey.NewBeginEnroll(passkey.BeginEnrollDeps{
 		UnitOfWork: e.faults, Clock: e.clock, WebAuthn: web, Bindings: crypto.Binding{}, Tickets: crypto.Ticket{}, PasskeyIDs: id.Generator{},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	finishEnroll, err := passkey.NewFinishEnroll(passkey.FinishEnrollDeps{
 		UnitOfWork: e.faults, Clock: e.clock, WebAuthn: web, Bindings: crypto.Binding{}, Tickets: crypto.Ticket{},
 		PasskeyIDs: id.Generator{}, Recovery: crypto.Recovery{}, SessionDeps: signedIn,
@@ -177,22 +192,26 @@ func buildEnvMode(t *testing.T, mode identity.RegistrationMode, configure func(*
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	beginLogin, err := passkey.NewBeginLogin(passkey.BeginLoginDeps{UnitOfWork: e.faults, Clock: e.clock, WebAuthn: web, PasskeyIDs: id.Generator{}})
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	finishLogin, err := passkey.NewFinishLogin(passkey.FinishLoginDeps{
 		UnitOfWork: e.faults, Clock: e.clock, WebAuthn: web, Bindings: crypto.Binding{}, Tickets: crypto.Ticket{}, SessionDeps: signedIn,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	recovery, err := passkey.NewRedeemRecovery(passkey.RedeemRecoveryDeps{
 		UnitOfWork: e.faults, Clock: e.clock, Bindings: crypto.Binding{}, Tickets: crypto.Ticket{}, Recovery: crypto.Recovery{}, PasskeyIDs: id.Generator{},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	refresh, err := appsession.NewRefresh(appsession.RefreshDeps{
 		UnitOfWork: e.faults, Clock: e.clock, TokenIDs: id.Generator{}, Secrets: crypto.Refresh{},
 		Metrics: e.metrics, Signer: signer, Policy: sessionPolicy,
@@ -200,57 +219,73 @@ func buildEnvMode(t *testing.T, mode identity.RegistrationMode, configure func(*
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	auth, err := appsession.NewAuthenticator(appsession.AuthenticateDeps{UnitOfWork: e.faults, Clock: e.clock, Verifier: e.verifier})
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	reads := appsession.ReadDeps{UnitOfWork: e.faults, Clock: e.clock}
+
 	me, err := appsession.NewMe(reads)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	list, err := appsession.NewListSessions(reads)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	revokes := appsession.RevokeDeps{UnitOfWork: e.faults, Clock: e.clock}
+
 	signOut, err := appsession.NewSignOut(revokes)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	revokeOne, err := appsession.NewRevokeSession(revokes)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	manage := passkey.ManageDeps{UnitOfWork: e.faults, Clock: e.clock}
+
 	listKeys, err := passkey.NewListCredentials(manage)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	renameKey, err := passkey.NewRenameCredential(manage)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	beginStepUp, err := passkey.NewBeginStepUp(passkey.BeginStepUpDeps{UnitOfWork: e.faults, Clock: e.clock, WebAuthn: web, PasskeyIDs: id.Generator{}})
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	finishStepUp, err := passkey.NewFinishStepUp(passkey.FinishStepUpDeps{UnitOfWork: e.faults, Clock: e.clock, WebAuthn: web, Tickets: crypto.Ticket{}, PasskeyIDs: id.Generator{}})
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	beginAddKey, err := passkey.NewBeginAddPasskey(passkey.BeginAddPasskeyDeps{UnitOfWork: e.faults, Clock: e.clock, WebAuthn: web, Tickets: crypto.Ticket{}, PasskeyIDs: id.Generator{}})
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	finishAddKey, err := passkey.NewFinishAddPasskey(passkey.FinishAddPasskeyDeps{UnitOfWork: e.faults, Clock: e.clock, WebAuthn: web, Tickets: crypto.Ticket{}, PasskeyIDs: id.Generator{}})
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	deleteKey, err := passkey.NewDeleteCredential(passkey.DeleteCredentialDeps{UnitOfWork: e.faults, Clock: e.clock, Tickets: crypto.Ticket{}})
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	newCodes, err := passkey.NewRegenerateRecoveryCodes(passkey.RegenerateRecoveryCodesDeps{
 		UnitOfWork: e.faults, Clock: e.clock, Tickets: crypto.Ticket{}, Recovery: crypto.Recovery{}, PasskeyIDs: id.Generator{},
 	})
@@ -264,6 +299,7 @@ func buildEnvMode(t *testing.T, mode identity.RegistrationMode, configure func(*
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	confirmChange, err := account.NewConfirmEmailChange(account.ConfirmEmailChangeDeps{
 		UnitOfWork: e.faults, Clock: e.clock, OTP: e.otp, Policy: flowPolicy,
 	})
@@ -282,14 +318,17 @@ func buildEnvMode(t *testing.T, mode identity.RegistrationMode, configure func(*
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	statusDevice, err := deviceauth.NewStatus(deviceauth.StatusDeps{UnitOfWork: e.faults, Clock: e.clock, Tickets: crypto.Ticket{}, Bindings: crypto.Binding{}})
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	deviceApprover, err := deviceauth.NewApprover(deviceauth.ApproveDeps{UnitOfWork: e.faults, Clock: e.clock, Tickets: crypto.Ticket{}})
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	redeemDevice, err := deviceauth.NewRedeem(deviceauth.RedeemDeps{
 		UnitOfWork: e.faults, Clock: e.clock, Tickets: crypto.Ticket{}, Bindings: crypto.Binding{}, SessionDeps: signedIn,
 	})
@@ -301,6 +340,7 @@ func buildEnvMode(t *testing.T, mode identity.RegistrationMode, configure func(*
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	deps := httpapi.Deps{
 		Start: start, Resend: resend, Verify: verify, Refresh: refresh, JWKS: e.ring,
 		BeginEnroll: beginEnroll, FinishEnroll: finishEnroll, BeginLogin: beginLogin, FinishLogin: finishLogin, Recovery: recovery,
@@ -316,14 +356,18 @@ func buildEnvMode(t *testing.T, mode identity.RegistrationMode, configure func(*
 	if configure != nil {
 		configure(&deps)
 	}
+
 	e.handler, err = httpapi.New(deps)
+
 	return e, err
 }
 
 func (e *env) do(req *http.Request) *httptest.ResponseRecorder {
 	e.t.Helper()
+
 	rec := httptest.NewRecorder()
 	e.handler.ServeHTTP(rec, req)
+
 	return rec
 }
 
@@ -335,15 +379,18 @@ func (e *env) get(path string) *httptest.ResponseRecorder {
 func (e *env) postRaw(path, body string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+
 	return e.do(req)
 }
 
 func (e *env) post(path string, body any) *httptest.ResponseRecorder {
 	e.t.Helper()
+
 	data, err := json.Marshal(body)
 	if err != nil {
 		e.t.Fatal(err)
 	}
+
 	return e.postRaw(path, string(data))
 }
 
@@ -377,23 +424,28 @@ const (
 
 func decode[T any](t *testing.T, rec *httptest.ResponseRecorder, status int) T {
 	t.Helper()
+
 	if rec.Code != status {
 		t.Fatalf("status = %d, want %d; body %s", rec.Code, status, rec.Body)
 	}
+
 	var out T
 	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
 		t.Fatalf("decode %s: %v", rec.Body, err)
 	}
+
 	return out
 }
 
 // wantProblem checks an error response: status, code and the request ID of the header.
 func wantProblem(t *testing.T, rec *httptest.ResponseRecorder, status int, code string) {
 	t.Helper()
+
 	p := decode[problem](t, rec, status)
 	if p.Code != code || p.RequestID == "" || p.RequestID != rec.Header().Get(httpapi.RequestIDHeader) {
 		t.Errorf("problem = %+v with header %q, want %s and the request id", p, rec.Header().Get(httpapi.RequestIDHeader), code)
 	}
+
 	if got := rec.Header().Get("Content-Type"); got != "application/json" {
 		t.Errorf("Content-Type = %q", got)
 	}
@@ -401,28 +453,34 @@ func wantProblem(t *testing.T, rec *httptest.ResponseRecorder, status int, code 
 
 func (e *env) start(email, binding string) startResponse {
 	e.t.Helper()
+
 	body := map[string]string{"email": email}
 	if binding != "" {
 		body["client_binding"] = binding
 	}
+
 	return decode[startResponse](e.t, e.post(startPath, body), http.StatusAccepted)
 }
 
 // code derives the code the email of the flow carries.
 func (e *env) code(flowID string) string {
 	e.t.Helper()
+
 	id, err := authflow.ParseFlowID(flowID)
 	if err != nil {
 		e.t.Fatal(err)
 	}
+
 	flow, ok := e.store.Flow(id)
 	if !ok {
 		e.t.Fatalf("flow %s is not stored", flowID)
 	}
+
 	code, err := e.otp.Code(flow)
 	if err != nil {
 		e.t.Fatal(err)
 	}
+
 	return code
 }
 
@@ -474,6 +532,7 @@ func (e *env) register(auth *testutil.SoftAuthenticator, ticket, binding string)
 func (e *env) registerWith(auth *testutil.SoftAuthenticator, ticket, binding string, extra map[string]any) *httptest.ResponseRecorder {
 	e.t.Helper()
 	begun := decode[ceremonyResponse](e.t, e.post(nativeRegisterOptions, map[string]string{"ticket": ticket, "client_binding": binding}), http.StatusOK)
+
 	body := map[string]any{
 		"ticket": ticket, "client_binding": binding, "challenge_id": begun.ChallengeID,
 		"credential": json.RawMessage(auth.Register(begun.Options)),
@@ -481,6 +540,7 @@ func (e *env) registerWith(auth *testutil.SoftAuthenticator, ticket, binding str
 	for k, v := range extra {
 		body[k] = v
 	}
+
 	return e.post(nativeRegisterVerify, body)
 }
 
@@ -488,13 +548,16 @@ func (e *env) registerWith(auth *testutil.SoftAuthenticator, ticket, binding str
 func (e *env) assert(auth *testutil.SoftAuthenticator, ticket, binding string) *httptest.ResponseRecorder {
 	e.t.Helper()
 	begun := decode[ceremonyResponse](e.t, e.post(nativeLoginOptions, nil), http.StatusOK)
+
 	body := map[string]any{"challenge_id": begun.ChallengeID, "credential": json.RawMessage(auth.Assert(begun.Options))}
 	if ticket != "" {
 		body["ticket"] = ticket
 	}
+
 	if binding != "" {
 		body["client_binding"] = binding
 	}
+
 	return e.post(nativeLoginVerify, body)
 }
 
@@ -503,17 +566,22 @@ func (e *env) assert(auth *testutil.SoftAuthenticator, ticket, binding string) *
 func (e *env) signIn(email string) (tokenResponse, string) {
 	e.t.Helper()
 	started := e.start(email, "")
+
 	step := e.verifyStep(started.FlowID, started.ClientBinding)
 	if auth, ok := e.auths[email]; ok {
 		if step.Next != "second_factor" {
 			e.t.Fatalf("a user with a passkey was told %q", step.Next)
 		}
+
 		return decode[tokenResponse](e.t, e.assert(auth, step.Ticket, started.ClientBinding), http.StatusOK), started.ClientBinding
 	}
+
 	if step.Next != "enroll_passkey" {
 		e.t.Fatalf("a new user was told %q", step.Next)
 	}
+
 	auth := testutil.NewSoftAuthenticator(e.t, rpID, rpOrigin)
 	e.auths[email] = auth
+
 	return decode[registerResponse](e.t, e.register(auth, step.Ticket, started.ClientBinding), http.StatusOK).tokenResponse, started.ClientBinding
 }

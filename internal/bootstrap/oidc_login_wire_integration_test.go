@@ -21,15 +21,19 @@ func TestCompletingASignInOnTheWireAcceptsOnlyTheRightProof(t *testing.T) {
 	good := `{"request_id": "` + id + `"}`
 	complete := func(contentType, body, bearer string) (*http.Response, string) {
 		t.Helper()
+
 		req, err := http.NewRequest(http.MethodPost, o.base+"/oauth2/login/complete", strings.NewReader(body))
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		req.Header.Set("Content-Type", contentType)
 		req.Header.Set("Sec-Fetch-Site", "same-origin")
+
 		if bearer != "" {
 			req.Header.Set("Authorization", "Bearer "+bearer)
 		}
+
 		return b.do(req)
 	}
 
@@ -42,9 +46,11 @@ func TestCompletingASignInOnTheWireAcceptsOnlyTheRightProof(t *testing.T) {
 	if resp, out = complete("text/plain", good, proof); resp.StatusCode != http.StatusBadRequest || !strings.Contains(out, "invalid_request") {
 		t.Errorf("a text body = %d %s", resp.StatusCode, out)
 	}
+
 	if resp, out = complete("application/json", `{"request_id": "`+id+`", "remember": true}`, proof); resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("an unknown field = %d %s", resp.StatusCode, out)
 	}
+
 	if resp, out = complete("application/json", `{"request_id": `, proof); resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("a truncated body = %d %s", resp.StatusCode, out)
 	}
@@ -58,6 +64,7 @@ func TestCompletingASignInOnTheWireAcceptsOnlyTheRightProof(t *testing.T) {
 	if resp.StatusCode != http.StatusOK || !strings.Contains(out, "code=") {
 		t.Fatalf("the genuine completion = %d %s", resp.StatusCode, out)
 	}
+
 	if resp, out = complete("application/json", good, proof); resp.StatusCode != http.StatusBadRequest || !strings.Contains(out, "invalid_request") {
 		t.Errorf("a second completion = %d %s", resp.StatusCode, out)
 	}

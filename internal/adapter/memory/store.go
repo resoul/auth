@@ -8,15 +8,15 @@ import (
 	"sync"
 	"time"
 
-	"airlance.org/auth/internal/application/port"
-	"airlance.org/auth/internal/domain/authflow"
-	"airlance.org/auth/internal/domain/deviceauth"
-	"airlance.org/auth/internal/domain/identity"
-	"airlance.org/auth/internal/domain/operator"
-	"airlance.org/auth/internal/domain/passkey"
-	"airlance.org/auth/internal/domain/quota"
-	"airlance.org/auth/internal/domain/session"
-	"airlance.org/auth/internal/domain/token"
+	"go.airlance.org/auth/internal/application/port"
+	"go.airlance.org/auth/internal/domain/authflow"
+	"go.airlance.org/auth/internal/domain/deviceauth"
+	"go.airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/domain/operator"
+	"go.airlance.org/auth/internal/domain/passkey"
+	"go.airlance.org/auth/internal/domain/quota"
+	"go.airlance.org/auth/internal/domain/session"
+	"go.airlance.org/auth/internal/domain/token"
 )
 
 var _ port.UnitOfWork = (*Store)(nil)
@@ -109,16 +109,19 @@ func WithLimits(send, verify int) Option {
 		if limit == Unlimited {
 			return
 		}
+
 		for _, scope := range scopes {
 			windows[scope] = []quota.Window{{Limit: limit, Per: 24 * time.Hour}}
 		}
 	}
 	capKind(send, quota.UnknownSendEmail, quota.RecognizedSendClient)
 	capKind(verify, quota.UnknownVerifyEmail, quota.RecognizedVerifyClient)
+
 	p, err := quota.NewProfile(windows)
 	if err != nil {
 		panic(err)
 	}
+
 	return WithQuota(p)
 }
 
@@ -151,6 +154,7 @@ func NewStore(opts ...Option) *Store {
 	for _, opt := range opts {
 		opt(s)
 	}
+
 	return s
 }
 
@@ -160,10 +164,12 @@ func (s *Store) Do(ctx context.Context, fn func(ctx context.Context, st port.Sto
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	tx := s.committed.clone()
+
 	err := fn(ctx, port.Stores{
 		AccountStores: port.AccountStores{
 			Flows:       &flows{tx: tx},
@@ -194,7 +200,9 @@ func (s *Store) Do(ctx context.Context, fn func(ctx context.Context, st port.Sto
 	if err != nil {
 		return err
 	}
+
 	s.committed = tx
+
 	return nil
 }
 
@@ -202,14 +210,17 @@ func (s *Store) Do(ctx context.Context, fn func(ctx context.Context, st port.Sto
 func (s *Store) Flow(id authflow.FlowID) (*authflow.Flow, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	rec, ok := s.committed.flows[id.String()]
 	if !ok {
 		return nil, false
 	}
+
 	f, err := authflow.Restore(rec)
 	if err != nil {
 		panic(fmt.Sprintf("memory store holds an invalid flow: %v", err))
 	}
+
 	return f, true
 }
 
@@ -217,6 +228,7 @@ func (s *Store) Flow(id authflow.FlowID) (*authflow.Flow, bool) {
 func (s *Store) FlowCount() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	return len(s.committed.flows)
 }
 
@@ -224,14 +236,17 @@ func (s *Store) FlowCount() int {
 func (s *Store) User(email identity.Email) (*identity.User, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	rec, ok := s.committed.users[email.String()]
 	if !ok {
 		return nil, false
 	}
+
 	u, err := identity.RestoreUser(rec)
 	if err != nil {
 		panic(fmt.Sprintf("memory store holds an invalid user: %v", err))
 	}
+
 	return u, true
 }
 
@@ -239,6 +254,7 @@ func (s *Store) User(email identity.Email) (*identity.User, bool) {
 func (s *Store) UserCount() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	return len(s.committed.users)
 }
 
@@ -246,10 +262,12 @@ func (s *Store) UserCount() int {
 func (s *Store) OutboxJobs() []port.MailJob {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	jobs := make([]port.MailJob, 0, len(s.committed.outbox))
 	for _, r := range s.committed.outbox {
 		jobs = append(jobs, r.job)
 	}
+
 	return jobs
 }
 
@@ -266,10 +284,12 @@ type MailStatus struct {
 func (s *Store) OutboxStatuses() []MailStatus {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	out := make([]MailStatus, 0, len(s.committed.outbox))
 	for _, r := range s.committed.outbox {
 		out = append(out, MailStatus{Job: r.job, Status: r.status, Attempts: r.attempts, LastError: string(r.lastError), Leased: !r.leaseUntil.IsZero()})
 	}
+
 	return out
 }
 
@@ -277,6 +297,7 @@ func (s *Store) OutboxStatuses() []MailStatus {
 func (s *Store) Spent(kind port.SpendKind, email identity.Email) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	return s.committed.spent[spendKey{kind, email.String()}]
 }
 
@@ -284,14 +305,17 @@ func (s *Store) Spent(kind port.SpendKind, email identity.Email) int {
 func (s *Store) Session(id session.ID) (*session.Session, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	rec, ok := s.committed.sessions[id.String()]
 	if !ok {
 		return nil, false
 	}
+
 	sess, err := session.Restore(rec)
 	if err != nil {
 		panic(fmt.Sprintf("memory store holds an invalid session: %v", err))
 	}
+
 	return sess, true
 }
 
@@ -299,18 +323,24 @@ func (s *Store) Session(id session.ID) (*session.Session, bool) {
 func (s *Store) TokensOfSession(id session.ID) []*token.RefreshToken {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	var out []*token.RefreshToken
+
 	for _, rec := range s.committed.tokens {
 		if rec.SessionID != id {
 			continue
 		}
+
 		t, err := token.Restore(rec)
 		if err != nil {
 			panic(fmt.Sprintf("memory store holds an invalid token: %v", err))
 		}
+
 		out = append(out, t)
 	}
+
 	slices.SortFunc(out, func(a, b *token.RefreshToken) int { return a.CreatedAt().Compare(b.CreatedAt()) })
+
 	return out
 }
 
@@ -318,6 +348,7 @@ func (s *Store) TokensOfSession(id session.ID) []*token.RefreshToken {
 func (s *Store) SessionCount() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	return len(s.committed.sessions)
 }
 
@@ -325,6 +356,7 @@ func (s *Store) SessionCount() int {
 func (s *Store) TokenCount() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	return len(s.committed.tokens)
 }
 
@@ -332,6 +364,7 @@ func (s *Store) TokenCount() int {
 func (s *Store) AuditEvents() []port.AuditEvent {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	return slices.Clone(s.committed.audit)
 }
 
@@ -339,5 +372,6 @@ func (s *Store) AuditEvents() []port.AuditEvent {
 func (s *Store) TicketCount() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	return len(s.committed.tickets)
 }

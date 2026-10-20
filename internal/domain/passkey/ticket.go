@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"airlance.org/auth/internal/domain/identity"
-	"airlance.org/auth/internal/domain/session"
+	"go.airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/domain/session"
 )
 
 // SecretHashLength is the size of the stored hash of a ticket secret (SHA-256).
@@ -24,9 +24,11 @@ func NewSecretHash(hash []byte) (SecretHash, error) {
 	if len(hash) != SecretHashLength {
 		return SecretHash{}, errors.New("secret hash must be 32 bytes")
 	}
+
 	var h SecretHash
 	copy(h.value[:], hash)
 	h.set = true
+
 	return h, nil
 }
 
@@ -77,6 +79,7 @@ func (k TicketKind) valid() bool {
 	case TicketEnroll, TicketSecondFactor, TicketRecoveryEnroll, TicketStepUp:
 		return true
 	}
+
 	return false
 }
 
@@ -87,6 +90,7 @@ func (k TicketKind) ttl() time.Duration {
 	case TicketSecondFactor:
 		return SecondFactorTicketTTL
 	}
+
 	return StepUpTicketTTL
 }
 
@@ -110,6 +114,7 @@ func (o Operation) Valid() bool {
 	case OperationAddPasskey, OperationDeletePasskey, OperationChangeEmail, OperationRegenerateCodes, OperationDeleteAccount, OperationApproveDevice:
 		return true
 	}
+
 	return false
 }
 
@@ -151,9 +156,11 @@ func NewTicket(p NewTicketParams) (*Ticket, error) {
 	if t.kind.valid() {
 		t.expiresAt = p.Now.Add(t.kind.ttl())
 	}
+
 	if err := t.validate(); err != nil {
 		return nil, fmt.Errorf("new ticket: %w", err)
 	}
+
 	return t, nil
 }
 
@@ -172,18 +179,23 @@ func (t *Ticket) validate() error {
 	case !t.expiresAt.After(t.createdAt):
 		return errors.New("expiry must be after creation")
 	}
+
 	if t.kind == TicketStepUp {
 		if t.sessionID.IsZero() || !t.operation.Valid() {
 			return errors.New("a step-up ticket needs a session and a known operation")
 		}
+
 		return nil
 	}
+
 	if t.binding.IsZero() {
 		return errors.New("binding hash is required")
 	}
+
 	if !t.sessionID.IsZero() || t.operation != "" {
 		return errors.New("only a step-up ticket has a session and an operation")
 	}
+
 	return nil
 }
 
@@ -209,6 +221,7 @@ func (t *Ticket) Check(now time.Time, p Presented) error {
 	case !now.Before(t.expiresAt):
 		return ErrTicketExpired
 	}
+
 	return nil
 }
 
@@ -217,7 +230,9 @@ func (t *Ticket) Use(now time.Time, p Presented) error {
 	if err := t.Check(now, p); err != nil {
 		return err
 	}
+
 	t.consumedAt = now
+
 	return nil
 }
 
@@ -247,6 +262,7 @@ func RestoreTicket(r TicketRecord) (*Ticket, error) {
 	if err := t.validate(); err != nil {
 		return nil, fmt.Errorf("restore ticket: %w", err)
 	}
+
 	return t, nil
 }
 

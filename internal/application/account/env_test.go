@@ -6,16 +6,16 @@ import (
 	"testing"
 	"time"
 
-	"airlance.org/auth/internal/adapter/crypto"
-	"airlance.org/auth/internal/adapter/memory"
-	"airlance.org/auth/internal/application/account"
-	"airlance.org/auth/internal/application/port"
-	appsession "airlance.org/auth/internal/application/session"
-	"airlance.org/auth/internal/domain/authflow"
-	"airlance.org/auth/internal/domain/identity"
-	dpasskey "airlance.org/auth/internal/domain/passkey"
-	"airlance.org/auth/internal/domain/quota"
-	"airlance.org/auth/internal/testutil"
+	"go.airlance.org/auth/internal/adapter/crypto"
+	"go.airlance.org/auth/internal/adapter/memory"
+	"go.airlance.org/auth/internal/application/account"
+	"go.airlance.org/auth/internal/application/port"
+	appsession "go.airlance.org/auth/internal/application/session"
+	"go.airlance.org/auth/internal/domain/authflow"
+	"go.airlance.org/auth/internal/domain/identity"
+	dpasskey "go.airlance.org/auth/internal/domain/passkey"
+	"go.airlance.org/auth/internal/domain/quota"
+	"go.airlance.org/auth/internal/testutil"
 )
 
 var (
@@ -31,6 +31,7 @@ func (r *countingReader) Read(p []byte) (int, error) {
 		r.n++
 		p[i] = r.n
 	}
+
 	return len(p), nil
 }
 
@@ -45,6 +46,7 @@ func (f *faults) Do(ctx context.Context, fn func(ctx context.Context, s port.Sto
 		if f.wrap != nil {
 			s = f.wrap(s)
 		}
+
 		return fn(ctx, s)
 	})
 }
@@ -55,6 +57,7 @@ func (f failingNotice) Enqueue(ctx context.Context, job port.MailJob) error {
 	if job.Kind == port.JobEmailChanged {
 		return errBoom
 	}
+
 	return f.Outbox.Enqueue(ctx, job)
 }
 
@@ -73,14 +76,17 @@ type env struct {
 
 func newEnv(t *testing.T, opts ...memory.Option) *env {
 	t.Helper()
+
 	ring, err := crypto.NewOTPKeyring("otp-a", map[string][]byte{"otp-a": make([]byte, 32)})
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	otp, err := crypto.NewOTP(ring, &countingReader{})
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	factory := testutil.NewFactory(t, t0)
 	e := &env{t: t, store: memory.NewStore(opts...), clock: factory.Clock, factory: factory, otp: otp}
 	e.faults = &faults{inner: e.store}
@@ -93,6 +99,7 @@ func newEnv(t *testing.T, opts ...memory.Option) *env {
 		UnitOfWork: e.faults, Clock: e.clock, OTP: otp, Policy: policy,
 	})
 	must(t, err)
+
 	return e
 }
 
@@ -100,6 +107,7 @@ func withQuota(p quota.Profile) memory.Option { return memory.WithQuota(p) }
 
 func must(t *testing.T, err error) {
 	t.Helper()
+
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,8 +138,10 @@ func (e *env) signedInWith(email, bindingSecret string) signedIn {
 		if _, _, err := st.Users.Ensure(ctx, user); err != nil {
 			return err
 		}
+
 		return st.Sessions.Create(ctx, sess)
 	})
+
 	return signedIn{user: user, actor: appsession.Actor{UserID: user.ID(), SessionID: sess.ID()}, binding: bindingSecret}
 }
 
@@ -140,6 +150,7 @@ func (e *env) otherSession(s signedIn, bindingSecret string) appsession.Actor {
 	e.t.Helper()
 	sess := e.factory.Session(testutil.SessionSpec{User: s.user, BindingSecret: bindingSecret})
 	e.do(func(ctx context.Context, st port.Stores) error { return st.Sessions.Create(ctx, sess) })
+
 	return appsession.Actor{UserID: s.user.ID(), SessionID: sess.ID()}
 }
 
@@ -150,7 +161,9 @@ func (e *env) revoke(actor appsession.Actor) {
 		if err != nil {
 			return err
 		}
+
 		s.Revoke(e.clock.Now())
+
 		return st.Sessions.Save(ctx, s)
 	})
 }
@@ -168,6 +181,7 @@ func (e *env) stepUp(actor appsession.Actor, op dpasskey.Operation) string {
 	})
 	must(e.t, err)
 	e.do(func(ctx context.Context, st port.Stores) error { return st.Tickets.Create(ctx, ticket) })
+
 	return secret
 }
 
@@ -176,15 +190,20 @@ func (e *env) ticketUsed(actor appsession.Actor, secret string) bool {
 	e.t.Helper()
 	hash, err := e.tickets.HashTicketSecret(secret)
 	must(e.t, err)
+
 	var used bool
+
 	e.do(func(ctx context.Context, st port.Stores) error {
 		ticket, err := st.Tickets.GetByHashForUpdate(ctx, hash)
 		if err != nil {
 			return err
 		}
+
 		used = ticket.Check(e.clock.Now(), dpasskey.Presented{Kind: dpasskey.TicketStepUp, SessionID: actor.SessionID, Operation: dpasskey.OperationChangeEmail}) != nil
+
 		return nil
 	})
+
 	return used
 }
 
@@ -192,18 +211,22 @@ func (e *env) startChange(s signedIn, ticket, email string) account.StartEmailCh
 	e.t.Helper()
 	got, err := e.start.Execute(context.Background(), account.StartEmailChangeCommand{Actor: s.actor, StepUpSecret: ticket, Email: email})
 	must(e.t, err)
+
 	return got
 }
 
 // codeOf derives the code of the flow, like the mail worker does.
 func (e *env) codeOf(id authflow.FlowID) string {
 	e.t.Helper()
+
 	flow, ok := e.store.Flow(id)
 	if !ok {
 		e.t.Fatalf("flow %s is not stored", id)
 	}
+
 	code, err := e.otp.Code(flow)
 	must(e.t, err)
+
 	return code
 }
 
@@ -211,23 +234,28 @@ func (e *env) confirmChange(actor appsession.Actor, flowID, code string) account
 	e.t.Helper()
 	got, err := e.confirm.Execute(context.Background(), account.ConfirmEmailChangeCommand{Actor: actor, FlowID: flowID, Code: code})
 	must(e.t, err)
+
 	return got
 }
 
 // begin starts a change and returns its flow ID and the right code.
 func (e *env) begin(s signedIn, email string) (flowID, code string) {
 	e.t.Helper()
+
 	started := e.startChange(s, e.stepUp(s.actor, dpasskey.OperationChangeEmail), email)
 	if started.Outcome != account.OutcomeOK {
 		e.t.Fatalf("start refused: %+v", started)
 	}
+
 	return started.FlowID.String(), e.codeOf(started.FlowID)
 }
 
 func parseEmail(t *testing.T, raw string) identity.Email {
 	t.Helper()
+
 	email, err := identity.ParseEmail(raw)
 	must(t, err)
+
 	return email
 }
 

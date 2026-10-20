@@ -7,10 +7,10 @@ import (
 	"strings"
 	"testing"
 
-	"airlance.org/auth/internal/application/passkey"
-	"airlance.org/auth/internal/application/port"
-	dpasskey "airlance.org/auth/internal/domain/passkey"
-	"airlance.org/auth/internal/testutil"
+	"go.airlance.org/auth/internal/application/passkey"
+	"go.airlance.org/auth/internal/application/port"
+	dpasskey "go.airlance.org/auth/internal/domain/passkey"
+	"go.airlance.org/auth/internal/testutil"
 )
 
 func TestFirstEnrollmentOpensASessionAndHandsOutRecoveryCodes(t *testing.T) {
@@ -28,16 +28,20 @@ func TestFirstEnrollmentOpensASessionAndHandsOutRecoveryCodes(t *testing.T) {
 	if got.Session == nil || got.User.ID() != user.ID() || got.RefreshSecret == "" || got.Access.Value == "" {
 		t.Fatalf("no session: %+v", got.SignedIn)
 	}
+
 	if want := []string{"otp", "passkey"}; !slices.Equal(got.Session.AMR(), want) {
 		t.Errorf("amr = %v, want %v", got.Session.AMR(), want)
 	}
+
 	claims, err := e.verify.VerifyAccess(got.Access.Value)
 	if err != nil || claims.UserID != user.ID() || claims.SessionID != got.Session.ID() || !slices.Equal(claims.AMR, []string{"otp", "passkey"}) {
 		t.Errorf("access claims = %+v, %v", claims, err)
 	}
+
 	if got.Session.Binding() != b.hash {
 		t.Error("the session must carry the binding of the email proof")
 	}
+
 	if got.Session.DeviceName() != "test" {
 		t.Errorf("device name = %q", got.Session.DeviceName())
 	}
@@ -50,12 +54,15 @@ func TestFirstEnrollmentOpensASessionAndHandsOutRecoveryCodes(t *testing.T) {
 	if len(got.RecoveryCodes) != dpasskey.RecoveryCodeCount || e.unusedCodes(user) != dpasskey.RecoveryCodeCount {
 		t.Fatalf("%d codes shown, %d stored", len(got.RecoveryCodes), e.unusedCodes(user))
 	}
+
 	seen := map[string]bool{}
+
 	for _, code := range got.RecoveryCodes {
 		normalized, ok := dpasskey.NormalizeRecoveryCode(code)
 		if !ok || strings.Count(code, "-") != 3 || seen[normalized] {
 			t.Errorf("recovery code %q is malformed or repeated", code)
 		}
+
 		seen[normalized] = true
 	}
 
@@ -68,6 +75,7 @@ func TestFirstEnrollmentOpensASessionAndHandsOutRecoveryCodes(t *testing.T) {
 			}
 		}
 	}
+
 	if !types[port.AuditLoginSucceeded] || !types[port.AuditPasskeyEnrolled] {
 		t.Errorf("audit events = %v", types)
 	}
@@ -82,13 +90,16 @@ func TestEnrollmentTicketIsSingleUse(t *testing.T) {
 	if first := e.enrollWith(user, testutil.NewSoftAuthenticator(t, rpID, origin), ticket, b); first.Outcome != passkey.OutcomeOK {
 		t.Fatalf("first = %+v", first)
 	}
+
 	again := e.enrollWith(user, testutil.NewSoftAuthenticator(t, rpID, origin), ticket, b)
 	if again.Outcome != passkey.OutcomeDenied || again.Reason != passkey.ReasonBadTicket {
 		t.Errorf("second use = %+v, want a bad ticket", again)
 	}
+
 	if n := len(e.credentials(user)); n != 1 {
 		t.Errorf("%d credentials, want 1", n)
 	}
+
 	if e.store.SessionCount() != 1 {
 		t.Errorf("%d sessions, want 1", e.store.SessionCount())
 	}
@@ -99,6 +110,7 @@ func TestEnrollmentRefusals(t *testing.T) {
 		e := newEnv(t)
 		user := e.newUser()
 		ticket := e.ticketFor(user, dpasskey.TicketEnroll, e.newBinding())
+
 		got := e.enrollWith(user, testutil.NewSoftAuthenticator(t, rpID, origin), ticket, e.newBinding())
 		if got.Outcome != passkey.OutcomeDenied || got.Reason != passkey.ReasonBadTicket {
 			t.Errorf("result = %+v", got)
@@ -110,15 +122,19 @@ func TestEnrollmentRefusals(t *testing.T) {
 		user := e.newUser()
 		b := e.newBinding()
 		ticket := e.ticketFor(user, dpasskey.TicketEnroll, b)
+
 		got, err := e.beginEnroll.Execute(context.Background(), passkey.BeginEnrollCommand{TicketSecret: ticket, BindingSecret: "short"})
 		if err != nil || got.Outcome != passkey.OutcomeDenied || got.Reason != passkey.ReasonBadBinding {
 			t.Errorf("bad binding = %+v, %v", got, err)
 		}
+
 		got, err = e.beginEnroll.Execute(context.Background(), passkey.BeginEnrollCommand{TicketSecret: "nope", BindingSecret: b.secret})
 		if err != nil || got.Outcome != passkey.OutcomeDenied || got.Reason != passkey.ReasonBadTicket {
 			t.Errorf("bad ticket = %+v, %v", got, err)
 		}
+
 		unknown, _, _ := e.tickets.NewTicketSecret()
+
 		got, err = e.beginEnroll.Execute(context.Background(), passkey.BeginEnrollCommand{TicketSecret: unknown, BindingSecret: b.secret})
 		if err != nil || got.Outcome != passkey.OutcomeDenied || got.Reason != passkey.ReasonBadTicket {
 			t.Errorf("unknown ticket = %+v, %v", got, err)
@@ -131,6 +147,7 @@ func TestEnrollmentRefusals(t *testing.T) {
 		b := e.newBinding()
 		ticket := e.ticketFor(user, dpasskey.TicketEnroll, b)
 		e.clock.Advance(dpasskey.EnrollTicketTTL)
+
 		got := e.enrollWith(user, testutil.NewSoftAuthenticator(t, rpID, origin), ticket, b)
 		if got.Outcome != passkey.OutcomeDenied || got.Reason != passkey.ReasonBadTicket {
 			t.Errorf("result = %+v", got)
@@ -142,10 +159,12 @@ func TestEnrollmentRefusals(t *testing.T) {
 			e := newEnv(t)
 			user := e.newUser()
 			b := e.newBinding()
+
 			got := e.enrollWith(user, testutil.NewSoftAuthenticator(t, rpID, origin), e.ticketFor(user, kind, b), b)
 			if got.Outcome != passkey.OutcomeDenied || got.Reason != passkey.ReasonBadTicket {
 				t.Errorf("%s ticket: %+v", kind, got)
 			}
+
 			if len(e.credentials(user)) != 0 || e.store.SessionCount() != 0 {
 				t.Errorf("%s ticket changed something", kind)
 			}
@@ -157,10 +176,12 @@ func TestEnrollmentRefusals(t *testing.T) {
 		holder := e.enroll()
 		b := e.newBinding()
 		stale := e.ticketFor(holder.user, dpasskey.TicketEnroll, b)
+
 		got := e.enrollWith(holder.user, testutil.NewSoftAuthenticator(t, rpID, origin), stale, b)
 		if got.Outcome != passkey.OutcomeDenied || got.Reason != passkey.ReasonAlreadyEnrolled {
 			t.Errorf("result = %+v", got)
 		}
+
 		if len(e.credentials(holder.user)) != 1 {
 			t.Error("a stale ticket added a key to an account that already has one")
 		}
@@ -172,6 +193,7 @@ func TestEnrollmentRefusals(t *testing.T) {
 		victim := e.enroll()
 		// The victim recovers, but offers an authenticator that is registered to someone else.
 		b := e.newBinding()
+
 		got := e.enrollWith(victim.user, holder.auth, e.ticketFor(victim.user, dpasskey.TicketRecoveryEnroll, b), b)
 		if got.Outcome != passkey.OutcomeDenied {
 			t.Errorf("result = %+v, want a refusal", got)
@@ -180,6 +202,7 @@ func TestEnrollmentRefusals(t *testing.T) {
 		if len(e.credentials(victim.user)) != 1 || len(e.credentials(holder.user)) != 1 {
 			t.Error("a refused recovery changed the keys")
 		}
+
 		if r := e.signIn(victim.auth, "", e.newBinding()); r.Outcome != passkey.OutcomeOK {
 			t.Errorf("the victim's own key no longer signs in: %+v", r)
 		}
@@ -191,11 +214,13 @@ func TestEnrollmentRefusals(t *testing.T) {
 		// Fill the account with keys through recovery tickets, which replace: it never holds more than one.
 		for range dpasskey.MaxPerUser + 1 {
 			b := e.newBinding()
+
 			got := e.enrollWith(holder.user, testutil.NewSoftAuthenticator(t, rpID, origin), e.ticketFor(holder.user, dpasskey.TicketRecoveryEnroll, b), b)
 			if got.Outcome != passkey.OutcomeOK {
 				t.Fatalf("recovery = %+v", got)
 			}
 		}
+
 		if n := len(e.credentials(holder.user)); n != 1 {
 			t.Errorf("%d keys after repeated recoveries, want only the last one", n)
 		}
@@ -205,12 +230,14 @@ func TestEnrollmentRefusals(t *testing.T) {
 func TestEnrollmentChallenges(t *testing.T) {
 	finish := func(e *env, ticket string, b bindingSecret, challengeID string, response []byte) passkey.FinishEnrollResult {
 		t.Helper()
+
 		got, err := e.finishEnroll.Execute(context.Background(), passkey.FinishEnrollCommand{
 			TicketSecret: ticket, BindingSecret: b.secret, ChallengeID: challengeID, Response: response,
 		})
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		return got
 	}
 
@@ -226,10 +253,12 @@ func TestEnrollmentChallenges(t *testing.T) {
 		if err != nil || begun.Outcome != passkey.OutcomeOK {
 			t.Fatalf("begin = %+v, %v", begun, err)
 		}
+
 		got := finish(e, bobTicket, bb, begun.ChallengeID, auth.Register(begun.Options))
 		if got.Outcome != passkey.OutcomeDenied || got.Reason != passkey.ReasonBadChallenge {
 			t.Errorf("result = %+v", got)
 		}
+
 		if len(e.credentials(alice))+len(e.credentials(bob)) != 0 || e.store.SessionCount() != 0 {
 			t.Error("a foreign challenge registered a key or opened a session")
 		}
@@ -239,6 +268,7 @@ func TestEnrollmentChallenges(t *testing.T) {
 		e := newEnv(t)
 		user := e.newUser()
 		b := e.newBinding()
+
 		ticket := e.ticketFor(user, dpasskey.TicketEnroll, b)
 		for _, id := range []string{"", "x", "0198a2b4-7c3d-7e5f-8a1b-2c3d4e5f6a7c"} {
 			if got := finish(e, ticket, b, id, []byte("{}")); got.Outcome != passkey.OutcomeDenied || got.Reason != passkey.ReasonBadChallenge {
@@ -255,6 +285,7 @@ func TestEnrollmentChallenges(t *testing.T) {
 		auth := testutil.NewSoftAuthenticator(t, rpID, origin)
 		begun, _ := e.beginEnroll.Execute(context.Background(), passkey.BeginEnrollCommand{TicketSecret: ticket, BindingSecret: b.secret})
 		e.clock.Advance(dpasskey.ChallengeTTL)
+
 		got := finish(e, ticket, b, begun.ChallengeID, auth.Register(begun.Options))
 		if got.Outcome != passkey.OutcomeDenied || got.Reason != passkey.ReasonBadChallenge {
 			t.Errorf("result = %+v", got)
@@ -271,10 +302,12 @@ func TestEnrollmentChallenges(t *testing.T) {
 		weak.SkipUserVerification = true
 		begun, _ := e.beginEnroll.Execute(context.Background(), passkey.BeginEnrollCommand{TicketSecret: ticket, BindingSecret: b.secret})
 		response := weak.Register(begun.Options)
+
 		got := finish(e, ticket, b, begun.ChallengeID, response)
 		if got.Outcome != passkey.OutcomeDenied || got.Reason != passkey.ReasonCeremonyFailed {
 			t.Fatalf("result = %+v", got)
 		}
+
 		if len(e.credentials(user)) != 0 || e.store.SessionCount() != 0 {
 			t.Error("a refused ceremony registered a key or opened a session")
 		}
@@ -287,12 +320,15 @@ func TestEnrollmentChallenges(t *testing.T) {
 		if ok := e.enrollWith(user, strong, ticket, b); ok.Outcome != passkey.OutcomeOK {
 			t.Errorf("fresh ceremony with the same ticket = %+v", ok)
 		}
+
 		refused := 0
+
 		for _, ev := range e.store.AuditEvents() {
 			if ev.Type == port.AuditPasskeyRefused && ev.Fields["reason"] == "ceremony_failed" {
 				refused++
 			}
 		}
+
 		if refused != 1 {
 			t.Errorf("%d refusals audited, want 1", refused)
 		}
@@ -307,22 +343,26 @@ func TestEnrollmentRollsBackWhenTheSessionCannotBeSigned(t *testing.T) {
 	auth := testutil.NewSoftAuthenticator(t, rpID, origin)
 
 	begun, _ := e.beginEnroll.Execute(context.Background(), passkey.BeginEnrollCommand{TicketSecret: ticket, BindingSecret: b.secret})
+
 	_, err := e.finishEnroll.Execute(context.Background(), passkey.FinishEnrollCommand{
 		TicketSecret: ticket, BindingSecret: b.secret, ChallengeID: begun.ChallengeID, Response: auth.Register(begun.Options),
 	})
 	if !errors.Is(err, errBoom) {
 		t.Fatalf("err = %v, want the signer's error", err)
 	}
+
 	if len(e.credentials(user)) != 0 || e.unusedCodes(user) != 0 || e.store.SessionCount() != 0 {
 		t.Error("a failed enrollment left a key, recovery codes or a session behind")
 	}
 	// Nothing was spent: the ticket and the challenge still work once the fault is gone.
 	e.do(func(ctx context.Context, st port.Stores) error {
 		hash, _ := e.tickets.HashTicketSecret(ticket)
+
 		tk, err := st.Tickets.GetByHashForUpdate(ctx, hash)
 		if err != nil || !tk.ConsumedAt().IsZero() {
 			t.Errorf("ticket after rollback: %v, consumed %v", err, tk.ConsumedAt())
 		}
+
 		return nil
 	})
 }
@@ -331,6 +371,7 @@ func TestEnrollmentRejectsUnstorableNames(t *testing.T) {
 	e := newEnv(t)
 	user := e.newUser()
 	b := e.newBinding()
+
 	ticket := e.ticketFor(user, dpasskey.TicketEnroll, b)
 	for name, cmd := range map[string]passkey.FinishEnrollCommand{
 		"long credential name": {CredentialName: strings.Repeat("x", dpasskey.MaxNameLength+1)},
@@ -349,19 +390,24 @@ func TestBeginEnrollWritesOneChallengeBoundToTheTicket(t *testing.T) {
 	user := e.newUser()
 	b := e.newBinding()
 	ticket := e.ticketFor(user, dpasskey.TicketEnroll, b)
+
 	begun, err := e.beginEnroll.Execute(context.Background(), passkey.BeginEnrollCommand{TicketSecret: ticket, BindingSecret: b.secret})
 	if err != nil || begun.Outcome != passkey.OutcomeOK || len(begun.Options) == 0 {
 		t.Fatalf("begin = %+v, %v", begun, err)
 	}
+
 	id, _ := dpasskey.ParseID(begun.ChallengeID)
+
 	e.do(func(ctx context.Context, st port.Stores) error {
 		c, err := st.Challenges.GetForUpdate(ctx, id)
 		if err != nil || c.Purpose() != dpasskey.ChallengeRegistration || c.UserID() != user.ID() || c.TicketID().IsZero() {
 			t.Errorf("challenge = %+v, %v", c, err)
 		}
+
 		if want := e.clock.Now().Add(dpasskey.ChallengeTTL); !c.ExpiresAt().Equal(want) {
 			t.Errorf("expires %v, want %v", c.ExpiresAt(), want)
 		}
+
 		return nil
 	})
 	// Beginning does not spend the ticket.
@@ -378,10 +424,13 @@ func TestFinishEnrollRefusesATicketOfAnotherKindEvenWithAMatchingChallenge(t *te
 	b := e.newBinding()
 	ticket := e.ticketFor(user, dpasskey.TicketSecondFactor, b)
 	hash, _ := e.tickets.HashTicketSecret(ticket)
+
 	var ticketID dpasskey.ID
+
 	e.do(func(ctx context.Context, st port.Stores) error {
 		tk, err := st.Tickets.GetByHashForUpdate(ctx, hash)
 		ticketID = tk.ID()
+
 		return err
 	})
 
@@ -390,6 +439,7 @@ func TestFinishEnrollRefusesATicketOfAnotherKindEvenWithAMatchingChallenge(t *te
 	subject := port.Subject{ID: user.ID(), Email: user.Email()}
 	ceremony, err := service.BeginRegistration(subject)
 	must(t, err)
+
 	id, _ := e.factory.IDs.NewPasskeyID()
 	challenge, err := dpasskey.NewChallenge(dpasskey.NewChallengeParams{
 		ID: id, Purpose: dpasskey.ChallengeRegistration, UserID: user.ID(), TicketID: ticketID, Data: ceremony.State, Now: e.clock.Now(),
@@ -401,9 +451,11 @@ func TestFinishEnrollRefusesATicketOfAnotherKindEvenWithAMatchingChallenge(t *te
 		TicketSecret: ticket, BindingSecret: b.secret, ChallengeID: id.String(), Response: auth.Register(ceremony.Options),
 	})
 	must(t, err)
+
 	if got.Outcome != passkey.OutcomeDenied || got.Reason != passkey.ReasonBadTicket {
 		t.Errorf("result = %+v", got)
 	}
+
 	if len(e.credentials(user)) != 0 || e.store.SessionCount() != 0 {
 		t.Error("a second-factor ticket registered a key or opened a session")
 	}

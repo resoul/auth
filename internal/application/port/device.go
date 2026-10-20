@@ -3,7 +3,7 @@ package port
 import (
 	"context"
 
-	"airlance.org/auth/internal/domain/deviceauth"
+	"go.airlance.org/auth/internal/domain/deviceauth"
 )
 
 // DeviceRequestRepository stores the requests of devices that ask for a session.

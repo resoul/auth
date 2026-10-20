@@ -129,43 +129,55 @@ func New(cfg Config) (*App, error) {
 	if err != nil || base.Host == "" || base.Path != "" && base.Path != "/" || base.User != nil || base.RawQuery != "" || base.Fragment != "" {
 		return nil, errors.New("bff: BaseURL must be the origin of the application")
 	}
+
 	if base.Scheme != "https" && (base.Scheme != "http" || !loopback(base.Hostname())) {
 		return nil, errors.New("bff: BaseURL must be https (http only for a loopback address)")
 	}
+
 	if cfg.InsecureCookies && base.Scheme != "http" {
 		return nil, errors.New("bff: insecure cookies are for an http loopback address only")
 	}
+
 	if cfg.Issuer == "" || cfg.ClientID == "" || cfg.ClientSecret == "" || cfg.Store == nil || cfg.Vault == nil {
 		return nil, errors.New("bff: an issuer, a client, a store and a vault are required")
 	}
+
 	for i, r := range cfg.Resources {
 		if r.Name == "" || strings.ContainsAny(r.Name, "/?#") || r.URI == "" || r.Upstream == nil || len(r.Scopes) == 0 {
 			return nil, errors.New("bff: a resource needs a name, a URI, scopes and an upstream")
 		}
+
 		for _, other := range cfg.Resources[:i] {
 			if other.Name == r.Name || other.URI == r.URI {
 				return nil, errors.New("bff: resources must differ")
 			}
 		}
 	}
+
 	if cfg.HTTPClient == nil {
 		cfg.HTTPClient = &http.Client{Timeout: 10 * time.Second}
 	}
+
 	if cfg.Now == nil {
 		cfg.Now = time.Now
 	}
+
 	if cfg.Logger == nil {
 		cfg.Logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
+
 	if cfg.SessionLifetime == 0 {
 		cfg.SessionLifetime = defaultSession
 	}
+
 	if cfg.MinKeyRefetch == 0 {
 		cfg.MinKeyRefetch = 30 * time.Second
 	}
+
 	if cfg.KeyMaxAge == 0 {
 		cfg.KeyMaxAge = 10 * time.Minute
 	}
+
 	client := *cfg.HTTPClient
 	client.Transport = &limitedTransport{next: cfg.HTTPClient.Transport, max: maxResponseSize}
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
@@ -173,6 +185,7 @@ func New(cfg Config) (*App, error) {
 	// to server call with no browser, and is authenticated by its signed token.
 	crossOr := http.NewCrossOriginProtection()
 	crossOr.AddInsecureBypassPattern("POST /auth/backchannel-logout")
+
 	return &App{
 		cfg: cfg, base: base, origin: strings.TrimSuffix(base.String(), "/"), client: &client, log: cfg.Logger, store: cfg.Store,
 		vault: cfg.Vault, crossOr: crossOr,
@@ -183,7 +196,9 @@ func loopback(host string) bool {
 	if host == "localhost" {
 		return true
 	}
+
 	ip := net.ParseIP(host)
+
 	return ip != nil && ip.IsLoopback()
 }
 
@@ -198,11 +213,14 @@ func (t *limitedTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	if next == nil {
 		next = http.DefaultTransport
 	}
+
 	resp, err := next.RoundTrip(r)
 	if err != nil {
 		return nil, err
 	}
+
 	resp.Body = &cappedBody{ReadCloser: resp.Body, left: t.max}
+
 	return resp, nil
 }
 
@@ -217,11 +235,14 @@ func (b *cappedBody) Read(p []byte) (int, error) {
 	if b.left <= 0 {
 		return 0, errTooLarge
 	}
+
 	if int64(len(p)) > b.left {
 		p = p[:b.left]
 	}
+
 	n, err := b.ReadCloser.Read(p)
 	b.left -= int64(n)
+
 	return n, err
 }
 
@@ -229,14 +250,18 @@ func (b *cappedBody) Read(p []byte) (int, error) {
 func (a *App) ensure(ctx context.Context) (*providerState, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+
 	if a.provider != nil {
 		return a.provider, nil
 	}
+
 	ctx = oidc.ClientContext(ctx, a.client)
+
 	p, err := oidc.NewProvider(ctx, a.cfg.Issuer)
 	if err != nil {
 		return nil, fmt.Errorf("bff: discover the provider: %w", err)
 	}
+
 	var meta struct {
 		JWKSURI    string `json:"jwks_uri"`
 		EndSession string `json:"end_session_endpoint"`
@@ -251,16 +276,19 @@ func (a *App) ensure(ctx context.Context) (*providerState, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	jwks, err := url.Parse(meta.JWKSURI)
 	if err != nil || jwks.Host != issuer.Host || jwks.Scheme != issuer.Scheme || jwks.User != nil || jwks.Fragment != "" {
 		return nil, errors.New("bff: the key set is not on the issuer's host")
 	}
+
 	keys := &keySet{url: meta.JWKSURI, client: a.client, now: a.cfg.Now, maxAge: a.cfg.KeyMaxAge, minRefetch: a.cfg.MinKeyRefetch}
 	verifier := oidc.NewVerifier(a.cfg.Issuer, keys, &oidc.Config{
 		ClientID: a.cfg.ClientID, SupportedSigningAlgs: []string{oidc.RS256}, Now: a.cfg.Now,
 	})
 	// One list, each scope once: the provider refuses a repeated scope, and two APIs may share a name.
 	scopes := []string{oidc.ScopeOpenID}
+
 	for _, list := range append([][]string{a.cfg.Scopes}, resourceScopes(a.cfg.Resources)...) {
 		for _, sc := range list {
 			if !slices.Contains(scopes, sc) {
@@ -268,6 +296,7 @@ func (a *App) ensure(ctx context.Context) (*providerState, error) {
 			}
 		}
 	}
+
 	endpoint := p.Endpoint()
 	endpoint.AuthStyle = oauth2.AuthStyleInHeader
 	a.provider = &providerState{
@@ -277,6 +306,7 @@ func (a *App) ensure(ctx context.Context) (*providerState, error) {
 		},
 		verifier: verifier, keys: keys, endSession: meta.EndSession, revocation: meta.Revocation, issParam: meta.IssParam,
 	}
+
 	return a.provider, nil
 }
 
@@ -285,6 +315,7 @@ func resourceScopes(list []Resource) [][]string {
 	for _, r := range list {
 		out = append(out, r.Scopes)
 	}
+
 	return out
 }
 
@@ -298,6 +329,7 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("POST /logout", a.logout)
 	mux.HandleFunc("GET /logged-out", a.loggedOut)
 	mux.HandleFunc("POST /auth/backchannel-logout", a.backchannel)
+
 	return a.crossOr.Handler(noStore(mux))
 }
 
@@ -315,6 +347,7 @@ func (a *App) cookieName(name string) string {
 	if a.cfg.InsecureCookies {
 		return name
 	}
+
 	return "__Host-" + name
 }
 
@@ -336,6 +369,7 @@ func (a *App) cookie(r *http.Request, name string) string {
 	if err != nil {
 		return ""
 	}
+
 	return c.Value
 }
 
@@ -345,7 +379,9 @@ func secret() (value, hash string, err error) {
 	if _, err := rand.Read(raw); err != nil {
 		return "", "", err
 	}
+
 	value = base64.RawURLEncoding.EncodeToString(raw)
+
 	return value, hashOf(value), nil
 }
 
@@ -360,15 +396,18 @@ func safeLocal(raw string) string {
 	if raw == "" || len(raw) > 512 || raw[0] != '/' || strings.HasPrefix(raw, "//") || strings.ContainsAny(raw, "\\\r\n\t") {
 		return "/"
 	}
+
 	u, err := url.Parse(raw)
 	if err != nil || u.Scheme != "" || u.Host != "" || u.User != nil || !strings.HasPrefix(u.Path, "/") || strings.HasPrefix(u.Path, "//") {
 		return "/"
 	}
+
 	for _, r := range raw {
 		if r < 0x20 || r == 0x7f {
 			return "/"
 		}
 	}
+
 	return raw
 }
 
@@ -379,33 +418,40 @@ func (a *App) login(w http.ResponseWriter, r *http.Request) {
 		a.unavailable(w, "discover", err)
 		return
 	}
+
 	cookieValue, key, err := secret()
 	if err != nil {
 		a.fail(w, "random", err)
 		return
 	}
+
 	state, _, err := secret()
 	if err != nil {
 		a.fail(w, "random", err)
 		return
 	}
+
 	nonce, _, err := secret()
 	if err != nil {
 		a.fail(w, "random", err)
 		return
 	}
+
 	verifier := oauth2.GenerateVerifier()
+
 	tx := LoginTx{Key: key, State: state, Nonce: nonce, Verifier: verifier, ReturnTo: safeLocal(r.URL.Query().Get("return_to")), StartedAt: a.cfg.Now(), ExpiresAt: a.cfg.Now().Add(loginTTL)}
 	if err := a.store.PutLogin(r.Context(), tx); err != nil {
 		a.fail(w, "store", err)
 		return
 	}
+
 	opts := []oauth2.AuthCodeOption{oauth2.S256ChallengeOption(verifier), oauth2.SetAuthURLParam("nonce", nonce)}
 	target := p.oauth.AuthCodeURL(state, opts...)
 	// The resource parameter is repeated, one for each API (RFC 8707), which a single option cannot express.
 	for _, res := range a.cfg.Resources {
 		target += "&resource=" + url.QueryEscape(res.URI)
 	}
+
 	a.setCookie(w, "bff_login", cookieValue, loginTTL)
 	http.Redirect(w, r, target, http.StatusSeeOther)
 }
@@ -413,12 +459,15 @@ func (a *App) login(w http.ResponseWriter, r *http.Request) {
 // callback receives the browser back from the provider.
 func (a *App) callback(w http.ResponseWriter, r *http.Request) {
 	a.clearCookie(w, "bff_login")
+
 	p, err := a.ensure(r.Context())
 	if err != nil {
 		a.unavailable(w, "discover", err)
 		return
 	}
+
 	q := r.URL.Query()
+
 	cookieValue := a.cookie(r, "bff_login")
 	if cookieValue == "" {
 		a.page(w, http.StatusBadRequest, "The sign-in did not start in this browser, or it expired.")
@@ -430,6 +479,7 @@ func (a *App) callback(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, "store", err)
 		return
 	}
+
 	if !ok || subtle.ConstantTimeCompare([]byte(q.Get("state")), []byte(tx.State)) != 1 {
 		a.page(w, http.StatusBadRequest, "The sign-in did not start in this browser, or it expired.")
 		return
@@ -439,35 +489,45 @@ func (a *App) callback(w http.ResponseWriter, r *http.Request) {
 		a.page(w, http.StatusBadRequest, "The sign-in answer came from a source this application does not trust.")
 		return
 	}
+
 	if q.Get("error") != "" {
 		// The provider's words are not shown: they come through the browser, so they are anyone's.
 		a.log.Info("sign-in refused by the provider", "error", cleanCode(q.Get("error")))
 		a.page(w, http.StatusForbidden, "The sign-in was not completed.")
+
 		return
 	}
+
 	code := q.Get("code")
 	if code == "" || len(code) > 512 {
 		a.page(w, http.StatusBadRequest, "The sign-in answer is not valid.")
 		return
 	}
+
 	ctx := context.WithValue(r.Context(), oauth2.HTTPClient, a.client)
+
 	token, err := p.oauth.Exchange(ctx, code, oauth2.VerifierOption(tx.Verifier))
 	if err != nil {
 		a.log.Warn("code exchange failed", "error", errClass(err))
 		a.page(w, http.StatusBadGateway, "The sign-in could not be completed. Try again.")
+
 		return
 	}
+
 	rawID, _ := token.Extra("id_token").(string)
 	if rawID == "" || token.RefreshToken == "" {
 		a.page(w, http.StatusBadGateway, "The sign-in answer is not complete.")
 		return
 	}
+
 	id, err := p.verifier.Verify(oidc.ClientContext(r.Context(), a.client), rawID)
 	if err != nil || subtle.ConstantTimeCompare([]byte(id.Nonce), []byte(tx.Nonce)) != 1 || id.Subject == "" || id.Issuer != a.cfg.Issuer {
 		a.log.Warn("id token refused", "error", errClass(err))
 		a.page(w, http.StatusBadGateway, "The sign-in answer is not valid.")
+
 		return
 	}
+
 	var claims struct {
 		SID string `json:"sid"`
 	}
@@ -475,27 +535,33 @@ func (a *App) callback(w http.ResponseWriter, r *http.Request) {
 		a.page(w, http.StatusBadGateway, "The sign-in answer is not valid.")
 		return
 	}
+
 	userID, err := a.store.UpsertUser(r.Context(), id.Issuer, id.Subject)
 	if err != nil {
 		a.fail(w, "store", err)
 		return
 	}
+
 	cookie, key, err := secret()
 	if err != nil {
 		a.fail(w, "random", err)
 		return
 	}
+
 	now := a.cfg.Now()
+
 	refresh, err := a.vault.Seal(token.RefreshToken, key)
 	if err != nil {
 		a.fail(w, "seal", err)
 		return
 	}
+
 	idSealed, err := a.vault.Seal(rawID, key)
 	if err != nil {
 		a.fail(w, "seal", err)
 		return
 	}
+
 	err = a.store.CreateSession(r.Context(), Session{
 		Key: key, UserID: userID, Issuer: id.Issuer, Subject: id.Subject, ProviderSession: claims.SID, IDTokenSealed: idSealed,
 		RefreshSealed: refresh, Access: map[string]SealedAccess{}, CreatedAt: now, SignInStarted: tx.StartedAt, ExpiresAt: now.Add(a.cfg.SessionLifetime),
@@ -504,10 +570,12 @@ func (a *App) callback(w http.ResponseWriter, r *http.Request) {
 		a.page(w, http.StatusForbidden, "This sign-in has already ended.")
 		return
 	}
+
 	if err != nil {
 		a.fail(w, "store", err)
 		return
 	}
+
 	a.setCookie(w, "bff_session", cookie, a.cfg.SessionLifetime)
 	// The code is in this request's address and nowhere after: the browser is sent on to a plain local path.
 	http.Redirect(w, r, tx.ReturnTo, http.StatusSeeOther)
@@ -519,14 +587,17 @@ func (a *App) session(r *http.Request) (Session, bool) {
 	if cookie == "" || len(cookie) > 128 {
 		return Session{}, false
 	}
+
 	s, err := a.store.GetSession(r.Context(), hashOf(cookie))
 	if err != nil {
 		return Session{}, false
 	}
+
 	if !a.cfg.Now().Before(s.ExpiresAt) {
 		_ = a.store.DeleteSession(r.Context(), s.Key)
 		return Session{}, false
 	}
+
 	return s, true
 }
 
@@ -549,6 +620,7 @@ func (a *App) me(w http.ResponseWriter, r *http.Request) {
 		a.loginRequired(w)
 		return
 	}
+
 	writeJSON(w, http.StatusOK, map[string]any{"user_id": s.UserID, "issuer": s.Issuer, "subject": s.Subject, "expires_at": s.ExpiresAt.UTC()})
 }
 
@@ -572,8 +644,11 @@ func (a *App) accessToken(ctx context.Context, s Session, res Resource) (string,
 	if err != nil {
 		return "", ErrProvider
 	}
+
 	var token string
+
 	ambiguous := false
+
 	err = a.store.WithSessionLock(ctx, s.Key, func(held *Session) error {
 		now := a.cfg.Now()
 		// An earlier refresh began and never finished: the provider may have rotated the token, so the one held must not be
@@ -583,20 +658,25 @@ func (a *App) accessToken(ctx context.Context, s Session, res Resource) (string,
 		if interrupted {
 			held.RefreshSealed = ""
 		}
+
 		if e, ok := held.Access[res.URI]; ok && now.Add(accessSkew).Before(e.ExpiresAt) {
 			if t, err := a.vault.Open(e.Sealed, s.Key); err == nil {
 				token = t
 				return nil
 			}
 		}
+
 		if interrupted {
 			held.Access = map[string]SealedAccess{}
 			ambiguous = true
+
 			return nil
 		}
+
 		if held.RefreshSealed == "" {
 			return ErrLoginRequired
 		}
+
 		refresh, err := a.vault.Open(held.RefreshSealed, s.Key)
 		if err != nil {
 			return ErrLoginRequired
@@ -608,14 +688,17 @@ func (a *App) accessToken(ctx context.Context, s Session, res Resource) (string,
 				return ErrProvider
 			}
 		}
+
 		got, err := a.refresh(ctx, p, refresh, res.URI)
 		if errors.Is(err, errAmbiguous) {
 			// The provider may have rotated the token and the answer was lost: the one held is spent or about to be, and
 			// presenting it again would be a replay that ends the grant. It is dropped now; the person signs in again.
 			held.RefreshSealed, held.Access = "", map[string]SealedAccess{}
 			ambiguous = true
+
 			return nil
 		}
+
 		if err != nil {
 			return err
 		}
@@ -628,18 +711,23 @@ func (a *App) accessToken(ctx context.Context, s Session, res Resource) (string,
 				if held.Access == nil {
 					held.Access = map[string]SealedAccess{}
 				}
+
 				held.Access[res.URI] = SealedAccess{Sealed: sealedAccess, ExpiresAt: now.Add(got.expiresIn)}
 				token = got.accessToken
+
 				return nil
 			}
 		}
+
 		held.RefreshSealed, held.Access = "", map[string]SealedAccess{}
 		ambiguous = true
+
 		return nil
 	})
 	if err == nil && ambiguous {
 		return "", ErrProvider
 	}
+
 	switch {
 	case errors.Is(err, ErrLoginRequired):
 		// The grant is over, here or at the provider: the session goes with it. The next call finds none.
@@ -650,6 +738,7 @@ func (a *App) accessToken(ctx context.Context, s Session, res Resource) (string,
 	case err != nil:
 		return "", err
 	}
+
 	return token, nil
 }
 
@@ -663,12 +752,15 @@ type refreshed struct {
 // provider's words are not the person's to read.
 func (a *App) refresh(ctx context.Context, p *providerState, refreshToken, resource string) (refreshed, error) {
 	form := url.Values{"grant_type": {"refresh_token"}, "refresh_token": {refreshToken}, "resource": {resource}}
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.oauth.Endpoint.TokenURL, strings.NewReader(form.Encode()))
 	if err != nil {
 		return refreshed{}, ErrProvider
 	}
+
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.SetBasicAuth(url.QueryEscape(a.cfg.ClientID), url.QueryEscape(a.cfg.ClientSecret))
+
 	resp, err := a.client.Do(req)
 	if err != nil {
 		// Whether the provider acted is not known. The request is not repeated: if it did rotate the token, a repeat is a
@@ -676,7 +768,9 @@ func (a *App) refresh(ctx context.Context, p *providerState, refreshToken, resou
 		a.log.Warn("refresh did not complete", "error", errClass(err))
 		return refreshed{}, errAmbiguous
 	}
+
 	defer func() { _ = resp.Body.Close() }()
+
 	var body struct {
 		AccessToken  string `json:"access_token"`
 		RefreshToken string `json:"refresh_token"`
@@ -688,23 +782,29 @@ func (a *App) refresh(ctx context.Context, p *providerState, refreshToken, resou
 		a.log.Warn("refresh answered with a server error", "status", resp.StatusCode)
 		return refreshed{}, errAmbiguous
 	}
+
 	data, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseSize))
 	if err != nil || json.Unmarshal(data, &body) != nil && resp.StatusCode == http.StatusOK {
 		return refreshed{}, errAmbiguous
 	}
+
 	if resp.StatusCode == http.StatusOK {
 		if body.AccessToken == "" || body.RefreshToken == "" || body.ExpiresIn <= 0 {
 			return refreshed{}, errAmbiguous
 		}
+
 		return refreshed{accessToken: body.AccessToken, refreshToken: body.RefreshToken, expiresIn: time.Duration(body.ExpiresIn) * time.Second}, nil
 	}
+
 	switch body.Error {
 	case "invalid_grant":
 		return refreshed{}, ErrLoginRequired
 	case "invalid_target", "invalid_scope":
 		return refreshed{}, ErrResourceRefused
 	}
+
 	a.log.Warn("refresh refused", "status", resp.StatusCode, "error", cleanCode(body.Error))
+
 	return refreshed{}, ErrProvider
 }
 
@@ -715,21 +815,26 @@ func (a *App) proxy(w http.ResponseWriter, r *http.Request) {
 		a.loginRequired(w)
 		return
 	}
+
 	var res *Resource
+
 	for i := range a.cfg.Resources {
 		if a.cfg.Resources[i].Name == r.PathValue("name") {
 			res = &a.cfg.Resources[i]
 		}
 	}
+
 	if res == nil {
 		http.NotFound(w, r)
 		return
 	}
+
 	token, err := a.accessToken(r.Context(), s, *res)
 	switch {
 	case errors.Is(err, ErrLoginRequired):
 		a.clearCookie(w, "bff_session")
 		a.loginRequired(w)
+
 		return
 	case errors.Is(err, ErrResourceRefused):
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "resource_refused"})
@@ -738,6 +843,7 @@ func (a *App) proxy(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "provider_unavailable"})
 		return
 	}
+
 	rest := r.PathValue("rest")
 	for _, seg := range strings.Split(rest, "/") {
 		if seg == ".." || seg == "." || strings.ContainsAny(seg, "\\\x00") {
@@ -745,29 +851,37 @@ func (a *App) proxy(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+
 	target := *res.Upstream
 	target.Path = strings.TrimSuffix(target.Path, "/") + "/" + strings.TrimPrefix(r.PathValue("rest"), "/")
 	target.RawQuery = r.URL.RawQuery
+
 	out, err := http.NewRequestWithContext(r.Context(), r.Method, target.String(), http.MaxBytesReader(w, r.Body, maxResponseSize))
 	if err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
+
 	for _, h := range []string{"Content-Type", "Accept"} {
 		if v := r.Header.Get(h); v != "" {
 			out.Header.Set(h, v)
 		}
 	}
+
 	out.Header.Set("Authorization", "Bearer "+token)
+
 	resp, err := a.client.Do(out)
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "upstream_unavailable"})
 		return
 	}
+
 	defer func() { _ = resp.Body.Close() }()
+
 	if ct := resp.Header.Get("Content-Type"); ct != "" {
 		w.Header().Set("Content-Type", ct)
 	}
+
 	w.WriteHeader(resp.StatusCode)
 	_, _ = io.Copy(w, resp.Body)
 }
@@ -779,31 +893,41 @@ func (a *App) logout(w http.ResponseWriter, r *http.Request) {
 		a.unavailable(w, "discover", err)
 		return
 	}
+
 	hint := ""
+
 	if s, ok := a.session(r); ok {
 		if refresh, err := a.vault.Open(s.RefreshSealed, s.Key); err == nil {
 			a.revoke(r.Context(), p, refresh)
 		}
+
 		if t, err := a.vault.Open(s.IDTokenSealed, s.Key); err == nil {
 			hint = t
 		}
+
 		_ = a.store.DeleteSession(r.Context(), s.Key)
 	}
+
 	a.clearCookie(w, "bff_session")
+
 	if p.endSession == "" {
 		http.Redirect(w, r, "/logged-out", http.StatusSeeOther)
 		return
 	}
+
 	state, _, err := secret()
 	if err != nil {
 		a.fail(w, "random", err)
 		return
 	}
+
 	a.setCookie(w, "bff_logout", state, loginTTL)
+
 	q := url.Values{"client_id": {a.cfg.ClientID}, "post_logout_redirect_uri": {a.origin + "/logged-out"}, "state": {state}}
 	if hint != "" {
 		q.Set("id_token_hint", hint)
 	}
+
 	http.Redirect(w, r, p.endSession+"?"+q.Encode(), http.StatusSeeOther)
 }
 
@@ -813,17 +937,21 @@ func (a *App) revoke(ctx context.Context, p *providerState, refreshToken string)
 	if p.revocation == "" {
 		return
 	}
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.revocation, strings.NewReader(url.Values{"token": {refreshToken}}.Encode()))
 	if err != nil {
 		return
 	}
+
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.SetBasicAuth(url.QueryEscape(a.cfg.ClientID), url.QueryEscape(a.cfg.ClientSecret))
+
 	resp, err := a.client.Do(req)
 	if err != nil {
 		a.log.Warn("revocation did not complete", "error", errClass(err))
 		return
 	}
+
 	_ = resp.Body.Close()
 }
 
@@ -831,6 +959,7 @@ func (a *App) revoke(ctx context.Context, p *providerState, refreshToken string)
 func (a *App) loggedOut(w http.ResponseWriter, r *http.Request) {
 	want := a.cookie(r, "bff_logout")
 	a.clearCookie(w, "bff_logout")
+
 	got := r.URL.Query().Get("state")
 	if got != "" || want != "" {
 		if want == "" || subtle.ConstantTimeCompare([]byte(got), []byte(want)) != 1 {
@@ -838,27 +967,32 @@ func (a *App) loggedOut(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+
 	a.page(w, http.StatusOK, "You are signed out.")
 }
 
 // backchannel receives the provider's notice that a sign-in ended (OpenID Connect Back-Channel Logout 1.0).
 func (a *App) backchannel(w http.ResponseWriter, r *http.Request) {
 	refuse := func() { writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_request"}) }
+
 	r.Body = http.MaxBytesReader(w, r.Body, maxFormBytes)
 	if mt := strings.SplitN(r.Header.Get("Content-Type"), ";", 2)[0]; strings.TrimSpace(mt) != "application/x-www-form-urlencoded" {
 		refuse()
 		return
 	}
+
 	if err := r.ParseForm(); err != nil || len(r.PostForm["logout_token"]) != 1 {
 		refuse()
 		return
 	}
+
 	p, err := a.ensure(r.Context())
 	if err != nil {
 		// Not "invalid": the provider delivers again.
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "temporarily_unavailable"})
 		return
 	}
+
 	raw := r.PostForm.Get("logout_token")
 	if !hasType(raw, backchannelType) {
 		refuse()
@@ -872,19 +1006,26 @@ func (a *App) backchannel(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "temporarily_unavailable"})
 		return
 	}
+
 	tok, err := p.verifier.Verify(oidc.ClientContext(r.Context(), a.client), raw)
 	if err != nil {
 		a.log.Info("logout token refused", "error", errClass(err))
 		refuse()
+
 		return
 	}
+
 	var claims map[string]json.RawMessage
 	if err := tok.Claims(&claims); err != nil {
 		refuse()
 		return
 	}
-	var events map[string]json.RawMessage
-	var sid, jti string
+
+	var (
+		events   map[string]json.RawMessage
+		sid, jti string
+	)
+
 	_ = json.Unmarshal(claims["events"], &events)
 	_ = json.Unmarshal(claims["sid"], &sid)
 	_ = json.Unmarshal(claims["jti"], &jti)
@@ -893,9 +1034,12 @@ func (a *App) backchannel(w http.ResponseWriter, r *http.Request) {
 		refuse()
 		return
 	}
+
 	_, hasEvent := events[backchannelKey]
 	_, hasNonce := claims["nonce"]
+
 	var iat float64
+
 	_ = json.Unmarshal(claims["iat"], &iat)
 	if !hasEvent || hasNonce || sid == "" || jti == "" || len(jti) > 256 || len(sid) > 256 || tok.Subject == "" || iat <= 0 ||
 		time.Unix(int64(iat), 0).After(a.cfg.Now().Add(time.Minute)) {
@@ -909,9 +1053,11 @@ func (a *App) backchannel(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "temporarily_unavailable"})
 		return
 	}
+
 	if first {
 		a.log.Info("sign-in ended by the provider", "sessions", n)
 	}
+
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -921,13 +1067,16 @@ func hasType(token, typ string) bool {
 	if !ok {
 		return false
 	}
+
 	raw, err := base64.RawURLEncoding.DecodeString(seg)
 	if err != nil {
 		return false
 	}
+
 	var h struct {
 		Typ string `json:"typ"`
 	}
+
 	return json.Unmarshal(raw, &h) == nil && h.Typ == typ
 }
 
@@ -964,10 +1113,12 @@ func errClass(err error) string {
 	case errors.Is(err, errTooLarge):
 		return "too_large"
 	}
+
 	var oauthErr *oauth2.RetrieveError
 	if errors.As(err, &oauthErr) {
 		return "oauth_" + cleanCode(oauthErr.ErrorCode)
 	}
+
 	return "error"
 }
 
@@ -976,10 +1127,12 @@ func cleanCode(s string) string {
 	if len(s) > 40 {
 		return "other"
 	}
+
 	for _, r := range s {
 		if r != '_' && (r < 'a' || r > 'z') {
 			return "other"
 		}
 	}
+
 	return s
 }

@@ -13,7 +13,7 @@ import (
 	"github.com/pressly/goose/v3"
 	"github.com/pressly/goose/v3/lock"
 
-	"airlance.org/auth/migrations"
+	"go.airlance.org/auth/migrations"
 )
 
 // MigrationStep describes one migration for callers outside this package.
@@ -42,12 +42,15 @@ func OpenSchemaMigrationDB(dsn, schema string) (*sql.DB, error) {
 	if err != nil {
 		return nil, errors.New("open database: invalid connection string")
 	}
+
 	if schema != "" {
 		if err := ValidateSchemaName(schema); err != nil {
 			return nil, err
 		}
+
 		cfg.RuntimeParams["search_path"] = schema
 	}
+
 	return stdlib.OpenDB(*cfg), nil
 }
 
@@ -57,9 +60,11 @@ func EnsureSchema(ctx context.Context, db *sql.DB, schema string) error {
 	if err := ValidateSchemaName(schema); err != nil {
 		return err
 	}
+
 	if _, err := db.ExecContext(ctx, "CREATE SCHEMA IF NOT EXISTS "+pgx.Identifier{schema}.Sanitize()); err != nil {
 		return fmt.Errorf("create schema %q: %w", schema, err)
 	}
+
 	return nil
 }
 
@@ -68,10 +73,12 @@ func newProvider(db *sql.DB) (*goose.Provider, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create migration lock: %w", err)
 	}
+
 	provider, err := goose.NewProvider(goose.DialectPostgres, db, migrations.FS, goose.WithSessionLocker(locker), goose.WithTableName(VersionTable))
 	if err != nil {
 		return nil, fmt.Errorf("create migration provider: %w", err)
 	}
+
 	return provider, nil
 }
 
@@ -80,18 +87,22 @@ func MigrateUp(ctx context.Context, db *sql.DB) ([]MigrationStep, error) {
 	if err := adoptLegacyVersionTable(ctx, db); err != nil {
 		return nil, err
 	}
+
 	provider, err := newProvider(db)
 	if err != nil {
 		return nil, err
 	}
+
 	results, err := provider.Up(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("migrate up: %w", err)
 	}
+
 	steps := make([]MigrationStep, 0, len(results))
 	for _, r := range results {
 		steps = append(steps, MigrationStep{Version: r.Source.Version, Name: r.Source.Path, AppliedAt: time.Now()})
 	}
+
 	return steps, nil
 }
 
@@ -101,17 +112,21 @@ func MigrateDown(ctx context.Context, db *sql.DB) (MigrationStep, bool, error) {
 	if err := adoptLegacyVersionTable(ctx, db); err != nil {
 		return MigrationStep{}, false, err
 	}
+
 	provider, err := newProvider(db)
 	if err != nil {
 		return MigrationStep{}, false, err
 	}
+
 	result, err := provider.Down(ctx)
 	if errors.Is(err, goose.ErrNoNextVersion) {
 		return MigrationStep{}, false, nil
 	}
+
 	if err != nil {
 		return MigrationStep{}, false, fmt.Errorf("migrate down: %w", err)
 	}
+
 	return MigrationStep{Version: result.Source.Version, Name: result.Source.Path}, true, nil
 }
 
@@ -120,22 +135,27 @@ func MigrationStatus(ctx context.Context, db *sql.DB) ([]MigrationStep, error) {
 	if err := adoptLegacyVersionTable(ctx, db); err != nil {
 		return nil, err
 	}
+
 	provider, err := newProvider(db)
 	if err != nil {
 		return nil, err
 	}
+
 	statuses, err := provider.Status(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("migration status: %w", err)
 	}
+
 	steps := make([]MigrationStep, 0, len(statuses))
 	for _, s := range statuses {
 		step := MigrationStep{Version: s.Source.Version, Name: s.Source.Path}
 		if s.State == goose.StateApplied {
 			step.AppliedAt = s.AppliedAt
 		}
+
 		steps = append(steps, step)
 	}
+
 	return steps, nil
 }
 
@@ -146,13 +166,16 @@ func KnownMigrations() ([]MigrationStep, error) {
 		return nil, err
 	}
 	defer func() { _ = db.Close() }()
+
 	provider, err := newProvider(db)
 	if err != nil {
 		return nil, err
 	}
+
 	var steps []MigrationStep
 	for _, s := range provider.ListSources() {
 		steps = append(steps, MigrationStep{Version: s.Version, Name: s.Path})
 	}
+
 	return steps, nil
 }

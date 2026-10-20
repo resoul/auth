@@ -3,8 +3,8 @@ package http
 import (
 	"context"
 
-	"airlance.org/auth/internal/application/port"
-	"airlance.org/auth/internal/transport/http/openapi"
+	"go.airlance.org/auth/internal/application/port"
+	"go.airlance.org/auth/internal/transport/http/openapi"
 )
 
 // apiConnectedApp is a live grant as the person sees it. Nothing of a token, a secret or a hash is in it.
@@ -13,6 +13,7 @@ func apiConnectedApp(g port.AppGrant) openapi.ConnectedApp {
 	for _, r := range g.Resources {
 		resources = append(resources, openapi.ConnectedAppResource{Id: r.ID, Name: r.Name, Scopes: append([]string{}, r.Scopes...)})
 	}
+
 	return openapi.ConnectedApp{
 		GrantId: g.ID, ClientId: g.ClientID, Name: g.ClientName, Scopes: append([]string{}, g.Scopes...), Resources: resources,
 		CreatedAt: g.CreatedAt.UTC(), LastActiveAt: g.LastUsedAt.UTC(), ExpiresAt: g.ExpiresAt.UTC(),
@@ -25,14 +26,17 @@ func (a *API) listApps(ctx context.Context) (body openapi.ConnectedAppList, ok b
 	if err != nil || !ok {
 		return openapi.ConnectedAppList{}, false, err
 	}
+
 	grants, err := a.apps.List(ctx, actor.UserID)
 	if err != nil {
 		return openapi.ConnectedAppList{}, false, err
 	}
+
 	body.Apps = make([]openapi.ConnectedApp, 0, len(grants))
 	for _, g := range grants {
 		body.Apps = append(body.Apps, apiConnectedApp(g))
 	}
+
 	return body, true, nil
 }
 
@@ -42,6 +46,7 @@ func (a *API) revokeAppGrant(ctx context.Context, id string) (authenticated bool
 	if err != nil || !ok {
 		return false, err
 	}
+
 	return true, a.apps.RevokeGrant(ctx, actor.UserID, id)
 }
 
@@ -51,6 +56,7 @@ func (a *API) revokeApp(ctx context.Context, clientID string) (authenticated boo
 	if err != nil || !ok {
 		return false, err
 	}
+
 	return true, a.apps.RevokeClient(ctx, actor.UserID, clientID)
 }
 
@@ -61,9 +67,11 @@ func (a *API) BrowserListApps(ctx context.Context, _ openapi.BrowserListAppsRequ
 	if err != nil {
 		return nil, err
 	}
+
 	if !ok {
 		return openapi.BrowserListApps401JSONResponse{UnauthenticatedJSONResponse: unauthenticated(ctx)}, nil
 	}
+
 	return openapi.BrowserListApps200JSONResponse(body), nil
 }
 
@@ -72,9 +80,11 @@ func (a *API) BrowserRevokeAppGrant(ctx context.Context, req openapi.BrowserRevo
 	if err != nil {
 		return nil, err
 	}
+
 	if !ok {
 		return openapi.BrowserRevokeAppGrant401JSONResponse{UnauthenticatedJSONResponse: unauthenticated(ctx)}, nil
 	}
+
 	return openapi.BrowserRevokeAppGrant204Response{}, nil
 }
 
@@ -83,9 +93,11 @@ func (a *API) BrowserRevokeApp(ctx context.Context, req openapi.BrowserRevokeApp
 	if err != nil {
 		return nil, err
 	}
+
 	if !ok {
 		return openapi.BrowserRevokeApp401JSONResponse{UnauthenticatedJSONResponse: unauthenticated(ctx)}, nil
 	}
+
 	return openapi.BrowserRevokeApp204Response{}, nil
 }
 
@@ -96,9 +108,11 @@ func (a *API) NativeListApps(ctx context.Context, _ openapi.NativeListAppsReques
 	if err != nil {
 		return nil, err
 	}
+
 	if !ok {
 		return openapi.NativeListApps401JSONResponse{UnauthenticatedJSONResponse: unauthenticated(ctx)}, nil
 	}
+
 	return openapi.NativeListApps200JSONResponse(body), nil
 }
 
@@ -107,9 +121,11 @@ func (a *API) NativeRevokeAppGrant(ctx context.Context, req openapi.NativeRevoke
 	if err != nil {
 		return nil, err
 	}
+
 	if !ok {
 		return openapi.NativeRevokeAppGrant401JSONResponse{UnauthenticatedJSONResponse: unauthenticated(ctx)}, nil
 	}
+
 	return openapi.NativeRevokeAppGrant204Response{}, nil
 }
 
@@ -118,8 +134,10 @@ func (a *API) NativeRevokeApp(ctx context.Context, req openapi.NativeRevokeAppRe
 	if err != nil {
 		return nil, err
 	}
+
 	if !ok {
 		return openapi.NativeRevokeApp401JSONResponse{UnauthenticatedJSONResponse: unauthenticated(ctx)}, nil
 	}
+
 	return openapi.NativeRevokeApp204Response{}, nil
 }

@@ -8,12 +8,12 @@ import (
 	"testing"
 	"time"
 
-	"airlance.org/auth/internal/application/deviceauth"
-	"airlance.org/auth/internal/application/port"
-	appsession "airlance.org/auth/internal/application/session"
-	dpasskey "airlance.org/auth/internal/domain/passkey"
-	"airlance.org/auth/internal/domain/session"
-	"airlance.org/auth/internal/testutil"
+	"go.airlance.org/auth/internal/application/deviceauth"
+	"go.airlance.org/auth/internal/application/port"
+	appsession "go.airlance.org/auth/internal/application/session"
+	dpasskey "go.airlance.org/auth/internal/domain/passkey"
+	"go.airlance.org/auth/internal/domain/session"
+	"go.airlance.org/auth/internal/testutil"
 )
 
 // readsThen runs after the approving session has been read, while the redeeming transaction is still open.
@@ -25,6 +25,7 @@ type readsThen struct {
 func (r readsThen) Get(ctx context.Context, id session.ID) (*session.Session, error) {
 	s, err := r.SessionRepository.Get(ctx, id)
 	r.after()
+
 	return s, err
 }
 
@@ -36,6 +37,7 @@ func TestARedemptionCannotOutliveTheRevocationOfEverySession(t *testing.T) {
 	e.faults.inner = testutil.PostgresStore(t)
 
 	phone := e.phone()
+
 	laptop := e.newLaptop("Laptop")
 	if got := e.approve(phone, laptop, laptop.res.PairingCode, e.stepUp(phone, dpasskey.OperationApproveDevice)); got.Outcome != deviceauth.OutcomeOK {
 		t.Fatalf("approve = %+v", got)
@@ -43,42 +45,56 @@ func TestARedemptionCannotOutliveTheRevocationOfEverySession(t *testing.T) {
 
 	read := make(chan struct{})
 	revoked := make(chan struct{})
+
 	var once sync.Once
+
 	e.faults.wrap = func(s port.Stores) port.Stores {
 		s.Sessions = readsThen{SessionRepository: s.Sessions, after: func() {
 			once.Do(func() { close(read) })
+
 			select {
 			case <-revoked: // the revocation got through: the redemption now acts on a stale read
 			case <-time.After(time.Second): // the revocation is queued behind this transaction, as it should be
 			}
 		}}
+
 		return s
 	}
 
-	var redeemed deviceauth.RedeemResult
-	var wg sync.WaitGroup
+	var (
+		redeemed deviceauth.RedeemResult
+		wg       sync.WaitGroup
+	)
+
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
+
 		redeemed = e.redeemFor(laptop)
 	}()
 	go func() {
 		defer wg.Done()
+
 		<-read
+
 		e.faults.wrap = nil
 		e.do(func(ctx context.Context, st port.Stores) error {
 			return appsession.RevokeEverything(ctx, st, phone.user.ID(), e.clock.Now())
 		})
 		close(revoked)
 	}()
+
 	wg.Wait()
 
 	active := -1
+
 	e.do(func(ctx context.Context, st port.Stores) error {
 		list, err := st.Sessions.ListActive(ctx, phone.user.ID(), e.clock.Now(), 10)
 		active = len(list)
+
 		return err
 	})
+
 	if active != 0 {
 		t.Errorf("%d sessions are active after every session was revoked (the redemption was %+v)", active, redeemed.Outcome)
 	}

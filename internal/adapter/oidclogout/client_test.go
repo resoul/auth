@@ -17,6 +17,7 @@ func TestWhichAddressesMayBeCalled(t *testing.T) {
 			t.Errorf("%s is a public address and was refused", ip)
 		}
 	}
+
 	for _, ip := range []string{
 		"127.0.0.1", "127.1.2.3", "::1", "0.0.0.0", "::", "10.1.2.3", "172.16.0.1", "172.31.255.255", "192.168.1.1", "169.254.169.254", "169.254.0.1",
 		"100.64.0.1", "100.127.255.255", "198.18.0.1", "224.0.0.1", "239.1.1.1", "255.255.255.255", "240.0.0.1", "fc00::1", "fd12:3456::1", "fe80::1",
@@ -56,16 +57,21 @@ func TestTheClientDoesNotConnectToInternalAddresses(t *testing.T) {
 		"an IPv6 loopback":     "http://[::1]:9/",
 	} {
 		req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, target, nil)
+
 		resp, err := client.Do(req)
 		if err == nil {
 			_ = resp.Body.Close()
+
 			t.Errorf("%s: the call was made", name)
+
 			continue
 		}
+
 		if !errors.Is(err, errBlocked) {
 			t.Errorf("%s: the call failed for another reason, so the check did not run: %v", name, err)
 		}
 	}
+
 	select {
 	case <-hit:
 		t.Error("the local server was reached")
@@ -77,6 +83,7 @@ func TestAnAllowedNetworkIsReachedAndARedirectIsNotFollowed(t *testing.T) {
 	second := make(chan struct{}, 1)
 	target := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { second <- struct{}{} }))
 	t.Cleanup(target.Close)
+
 	redirect := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, target.URL, http.StatusFound)
 	}))
@@ -84,14 +91,17 @@ func TestAnAllowedNetworkIsReachedAndARedirectIsNotFollowed(t *testing.T) {
 
 	client := NewHTTPClient([]netip.Prefix{netip.MustParsePrefix("127.0.0.0/8")}, 2*time.Second)
 	req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, redirect.URL, nil)
+
 	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusFound {
 		t.Errorf("status = %d, want the redirect itself", resp.StatusCode)
 	}
+
 	select {
 	case <-second:
 		t.Error("the redirect was followed")
@@ -102,6 +112,7 @@ func TestAnAllowedNetworkIsReachedAndARedirectIsNotFollowed(t *testing.T) {
 func TestEnvironmentProxiesAreIgnored(t *testing.T) {
 	t.Setenv("HTTPS_PROXY", "http://127.0.0.1:1")
 	t.Setenv("HTTP_PROXY", "http://127.0.0.1:1")
+
 	if tr := NewHTTPClient(nil, time.Second).Transport.(*http.Transport); tr.Proxy != nil {
 		t.Error("the client honours proxy settings of the environment, which would carry the call around the address check")
 	}
@@ -109,9 +120,11 @@ func TestEnvironmentProxiesAreIgnored(t *testing.T) {
 
 func portOf(t *testing.T, rawURL string) string {
 	t.Helper()
+
 	_, port, err := net.SplitHostPort(rawURL[len("http://"):])
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	return port
 }

@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"time"
 
-	"airlance.org/auth/internal/adapter/postgres/sqlc"
-	"airlance.org/auth/internal/application/port"
-	"airlance.org/auth/internal/domain/quota"
+	"go.airlance.org/auth/internal/adapter/postgres/sqlc"
+	"go.airlance.org/auth/internal/application/port"
+	"go.airlance.org/auth/internal/domain/quota"
 )
 
 // CleanupPolicy holds retention bounds. A grace period counts from the moment a record stopped
@@ -58,6 +58,7 @@ func (p CleanupPolicy) validate() error {
 	if p.FlowGrace < 0 || p.RecognizedGrace < 0 || p.SessionGrace < 0 || p.ChallengeGrace < 0 || p.TicketGrace < 0 || p.InvitationGrace < 0 || p.AuditRetention <= 0 || p.LastingAuditRetention < p.AuditRetention || p.BatchSize < 1 || p.MaxBatches < 1 {
 		return errors.New("cleanup policy: grace periods must not be negative, retention and batch bounds must be positive, and the lasting audit retention not shorter than the ordinary one")
 	}
+
 	return nil
 }
 
@@ -88,12 +89,16 @@ func (s *Store) Cleanup(ctx context.Context, now time.Time, p CleanupPolicy) (Cl
 	if err := p.validate(); err != nil {
 		return CleanupResult{}, err
 	}
+
 	q := sqlc.New(s.pool)
+
 	var lastingEvents []string
 	for _, t := range port.LastingAuditTypes() {
 		lastingEvents = append(lastingEvents, string(t))
 	}
+
 	var res CleanupResult
+
 	steps := []struct {
 		name  string
 		total *int64
@@ -190,19 +195,23 @@ func (s *Store) Cleanup(ctx context.Context, now time.Time, p CleanupPolicy) (Cl
 			if err := ctx.Err(); err != nil {
 				return res, fmt.Errorf("cleanup %s: %w", step.name, err)
 			}
+
 			if batch == p.MaxBatches {
 				res.More = true
 				break
 			}
+
 			n, err := step.run()
 			if err != nil {
 				return res, fmt.Errorf("cleanup %s: %w", step.name, err)
 			}
+
 			*step.total += n
 			if n < int64(p.BatchSize) {
 				break
 			}
 		}
 	}
+
 	return res, nil
 }

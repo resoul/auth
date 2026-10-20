@@ -11,11 +11,11 @@ import (
 	"sync"
 	"testing"
 
-	"airlance.org/auth/internal/application/emailauth"
-	"airlance.org/auth/internal/application/port"
-	"airlance.org/auth/internal/domain/authflow"
-	"airlance.org/auth/internal/domain/identity"
-	"airlance.org/auth/internal/domain/passkey"
+	"go.airlance.org/auth/internal/application/emailauth"
+	"go.airlance.org/auth/internal/application/port"
+	"go.airlance.org/auth/internal/domain/authflow"
+	"go.airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/domain/passkey"
 )
 
 type failingTicketCreate struct{ port.TicketRepository }
@@ -36,10 +36,12 @@ func (failingRecognizedRegister) Register(context.Context, *identity.RecognizedC
 
 func rowCounts(t *testing.T, db *sql.DB) map[string]int {
 	t.Helper()
+
 	counts := map[string]int{}
 	for _, table := range []string{"users", "sessions", "refresh_tokens", "recognized_clients", "audit_events", "auth_tickets"} {
 		counts[table] = count(t, db, table)
 	}
+
 	return counts
 }
 
@@ -59,26 +61,34 @@ func TestAtomicVerifyWritesTheTicketOnPostgres(t *testing.T) {
 		}
 	}
 
-	var event, result, kind string
-	var userID, sessionID sql.NullString
-	var fields []byte
+	var (
+		event, result, kind string
+		userID, sessionID   sql.NullString
+		fields              []byte
+	)
+
 	err := a.db.QueryRow(`SELECT event, result, user_id::text, session_id::text, fields FROM audit_events`).Scan(&event, &result, &userID, &sessionID, &fields)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if event != "email.verified" || result != "success" || userID.String != res.User.ID().String() || sessionID.Valid {
 		t.Errorf("event = %s/%s user=%s session=%v", event, result, userID.String, sessionID)
 	}
+
 	var decoded map[string]string
 	if err := json.Unmarshal(fields, &decoded); err != nil {
 		t.Fatal(err)
 	}
+
 	if decoded["method"] != "otp" || decoded["new_user"] != "true" || decoded["quota_class"] != "unknown" || decoded["next"] != "enroll_passkey" || len(decoded) != 4 {
 		t.Errorf("fields = %v", decoded)
 	}
+
 	if strings.Contains(string(fields), res.TicketSecret) {
 		t.Error("the audit event carries the ticket secret")
 	}
+
 	if err := a.db.QueryRow(`SELECT kind FROM auth_tickets`).Scan(&kind); err != nil || kind != "enroll" {
 		t.Errorf("ticket kind = %q, %v", kind, err)
 	}
@@ -106,15 +116,18 @@ func TestFailedVerifyLeavesNoRowsOnPostgres(t *testing.T) {
 			if !errors.Is(err, errBoom) {
 				t.Fatalf("error = %v, want boom", err)
 			}
+
 			for table, n := range rowCounts(t, a.db) {
 				if n != 0 {
 					t.Errorf("%s has %d rows after a failed verify", table, n)
 				}
 			}
+
 			flow := a.flow(flowID)
 			if flow.State() != authflow.StatePending || flow.Attempts() != 1 {
 				t.Errorf("flow state=%s attempts=%d", flow.State(), flow.Attempts())
 			}
+
 			a.faults.wrap = nil
 			if retry := a.check(flowID, code, binding); retry.Outcome != emailauth.OutcomeOK {
 				t.Errorf("retry = %+v", retry)
@@ -125,8 +138,11 @@ func TestFailedVerifyLeavesNoRowsOnPostgres(t *testing.T) {
 
 func TestConcurrentFirstVerifiesOfOneEmailMakeOneUserAndManyTickets(t *testing.T) {
 	a := newApp(t)
+
 	const devices = 8
+
 	type login struct{ flowID, binding string }
+
 	logins := make([]login, devices)
 	for i := range logins {
 		f, b := a.begin("race@example.test")
@@ -134,25 +150,31 @@ func TestConcurrentFirstVerifiesOfOneEmailMakeOneUserAndManyTickets(t *testing.T
 	}
 
 	results := make([]emailauth.VerifyCodeResult, devices)
+
 	var wg sync.WaitGroup
 	for i := range logins {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+
 			results[i] = a.check(logins[i].flowID, a.code(logins[i].flowID), logins[i].binding)
 		}()
 	}
+
 	wg.Wait()
 
 	created := 0
+
 	for i, r := range results {
 		if r.Outcome != emailauth.OutcomeOK || r.TicketSecret == "" {
 			t.Fatalf("verify %d = %+v", i, r)
 		}
+
 		if r.UserCreated {
 			created++
 		}
 	}
+
 	counts := rowCounts(t, a.db)
 	if created != 1 || counts["users"] != 1 || counts["auth_tickets"] != devices || counts["sessions"] != 0 ||
 		counts["recognized_clients"] != devices || counts["audit_events"] != devices {
@@ -162,6 +184,7 @@ func TestConcurrentFirstVerifiesOfOneEmailMakeOneUserAndManyTickets(t *testing.T
 
 func TestConcurrentLoginsFromOneDeviceKeepOneRecognizedClient(t *testing.T) {
 	a := newApp(t)
+
 	flowID, binding := a.begin("alice@example.test")
 	if res := a.check(flowID, a.code(flowID), binding); res.Outcome != emailauth.OutcomeOK {
 		t.Fatalf("first login = %+v", res)
@@ -169,27 +192,32 @@ func TestConcurrentLoginsFromOneDeviceKeepOneRecognizedClient(t *testing.T) {
 
 	// The same browser, with the same binding, signs in six more times at once.
 	const logins = 6
+
 	flows := make([]string, logins)
 	for i := range flows {
 		res, err := a.start.Execute(context.Background(), emailauth.StartCommand{Email: "alice@example.test", BindingSecret: binding})
 		if err != nil || res.Outcome != emailauth.OutcomeOK {
 			t.Fatalf("start = %+v, %v", res, err)
 		}
+
 		flows[i] = res.FlowID.String()
 		if got := a.flow(flows[i]).QuotaClass(); got != authflow.QuotaRecognized {
 			t.Fatalf("flow %d class = %s, want recognized", i, got)
 		}
 	}
+
 	var wg sync.WaitGroup
 	for i := range flows {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+
 			if res := a.check(flows[i], a.code(flows[i]), binding); res.Outcome != emailauth.OutcomeOK {
 				t.Errorf("login %d = %+v", i, res)
 			}
 		}()
 	}
+
 	wg.Wait()
 
 	counts := rowCounts(t, a.db)
@@ -201,6 +229,7 @@ func TestConcurrentLoginsFromOneDeviceKeepOneRecognizedClient(t *testing.T) {
 func TestAuditEventsKeepNoPersonalDataAfterUserDeletion(t *testing.T) {
 	a := newApp(t)
 	flowID, binding := a.begin("alice@example.test")
+
 	res := a.check(flowID, a.code(flowID), binding)
 	if res.Outcome != emailauth.OutcomeOK {
 		t.Fatalf("verify = %+v", res)
@@ -209,19 +238,25 @@ func TestAuditEventsKeepNoPersonalDataAfterUserDeletion(t *testing.T) {
 	if _, err := a.db.Exec(`DELETE FROM users WHERE id = $1`, res.User.ID().String()); err != nil {
 		t.Fatal(err)
 	}
-	var userID, sessionID sql.NullString
-	var fields []byte
+
+	var (
+		userID, sessionID sql.NullString
+		fields            []byte
+	)
 	if err := a.db.QueryRow(`SELECT user_id::text, session_id::text, fields FROM audit_events`).Scan(&userID, &sessionID, &fields); err != nil {
 		t.Fatalf("the audit event must survive the deletion of the user: %v", err)
 	}
+
 	if userID.Valid || sessionID.Valid {
 		t.Errorf("references survived: user=%v session=%v; they must be cleared", userID, sessionID)
 	}
+
 	for _, personal := range []string{"alice", "example.test", "@"} {
 		if strings.Contains(string(fields), personal) {
 			t.Errorf("event fields %s contain %q", fields, personal)
 		}
 	}
+
 	if count(t, a.db, "auth_tickets") != 0 || count(t, a.db, "recognized_clients") != 0 {
 		t.Error("the user's tickets and recognitions must be deleted with the user")
 	}

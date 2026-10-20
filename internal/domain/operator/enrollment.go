@@ -4,7 +4,7 @@ import (
 	"errors"
 	"time"
 
-	"airlance.org/auth/internal/domain/passkey"
+	"go.airlance.org/auth/internal/domain/passkey"
 )
 
 // EnrollmentTTL is how long the operator has to register a key with the code the server printed.
@@ -41,6 +41,7 @@ func NewEnrollment(id passkey.ID, operatorID ID, codeHash passkey.SecretHash, no
 	case now.IsZero():
 		return nil, errors.New("new enrollment: time is required")
 	}
+
 	return &Enrollment{id: id, operatorID: operatorID, codeHash: codeHash, createdAt: now, expiresAt: now.Add(EnrollmentTTL)}, nil
 }
 
@@ -52,6 +53,7 @@ func (e *Enrollment) Usable(now time.Time) error {
 	case !now.Before(e.expiresAt):
 		return ErrEnrollmentExpired
 	}
+
 	return nil
 }
 
@@ -60,7 +62,9 @@ func (e *Enrollment) Consume(now time.Time) error {
 	if err := e.Usable(now); err != nil {
 		return err
 	}
+
 	e.consumedAt = now
+
 	return nil
 }
 
@@ -97,6 +101,7 @@ func RestoreEnrollment(r EnrollmentRecord) (*Enrollment, error) {
 	if r.ID.IsZero() || r.OperatorID.IsZero() || r.CodeHash.IsZero() || r.CreatedAt.IsZero() || !r.ExpiresAt.After(r.CreatedAt) {
 		return nil, errors.New("restore enrollment: incomplete or impossible record")
 	}
+
 	return &Enrollment{id: r.ID, operatorID: r.OperatorID, codeHash: r.CodeHash, createdAt: r.CreatedAt, expiresAt: r.ExpiresAt, consumedAt: r.ConsumedAt}, nil
 }
 

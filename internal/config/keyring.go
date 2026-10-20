@@ -40,10 +40,12 @@ func LoadKeyring(path string) (*Keyring, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read keyring file: %w", err)
 	}
+
 	ring, err := ParseKeyring(data)
 	if err != nil {
 		return nil, fmt.Errorf("keyring file %s: %w", path, err)
 	}
+
 	return ring, nil
 }
 
@@ -57,10 +59,12 @@ func ParseKeyring(data []byte) (*Keyring, error) {
 
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
+
 	var ring Keyring
 	if err := dec.Decode(&ring); err != nil {
 		return nil, fmt.Errorf("decode keyring: %s", describeDecodeError(err))
 	}
+
 	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
 		return nil, errors.New("decode keyring: unexpected data after top-level object")
 	}
@@ -68,6 +72,7 @@ func ParseKeyring(data []byte) (*Keyring, error) {
 	if err := ring.validate(); err != nil {
 		return nil, err
 	}
+
 	return &ring, nil
 }
 
@@ -77,6 +82,7 @@ func (k *Keyring) validate() error {
 	if k.FormatVersion != KeyringFormatVersion {
 		return fmt.Errorf("unsupported format_version %d, want %d", k.FormatVersion, KeyringFormatVersion)
 	}
+
 	return errors.Join(
 		validateKeySet("otp_hmac", k.OTPHMAC),
 		validateKeySet("jwt_signing", k.JWTSigning),
@@ -88,21 +94,27 @@ func validateKeySet(purpose string, set *KeySet) error {
 	if set == nil {
 		return nil
 	}
+
 	if len(set.Keys) == 0 {
 		return fmt.Errorf("%s: keys must not be empty", purpose)
 	}
+
 	var errs []error
+
 	for kid, ref := range set.Keys {
 		if kid == "" {
 			errs = append(errs, fmt.Errorf("%s: empty kid", purpose))
 		}
+
 		if ref.KeyFile == "" {
 			errs = append(errs, fmt.Errorf("%s: kid %q has no key_file", purpose, kid))
 		}
 	}
+
 	if _, ok := set.Keys[set.ActiveKID]; !ok {
 		errs = append(errs, fmt.Errorf("%s: active_kid %q is not in keys", purpose, set.ActiveKID))
 	}
+
 	return errors.Join(errs...)
 }
 
@@ -113,6 +125,7 @@ func rejectDuplicateKeys(data []byte) error {
 	if err := walkJSON(dec); err != nil {
 		return fmt.Errorf("decode keyring: %s", describeDecodeError(err))
 	}
+
 	return nil
 }
 
@@ -121,23 +134,29 @@ func walkJSON(dec *json.Decoder) error {
 	if err != nil {
 		return err
 	}
+
 	delim, ok := tok.(json.Delim)
 	if !ok {
 		return nil
 	}
+
 	switch delim {
 	case '{':
 		seen := make(map[string]struct{})
+
 		for dec.More() {
 			keyTok, err := dec.Token()
 			if err != nil {
 				return err
 			}
+
 			key, _ := keyTok.(string)
 			if _, dup := seen[key]; dup {
 				return fmt.Errorf("duplicate key %q", key)
 			}
+
 			seen[key] = struct{}{}
+
 			if err := walkJSON(dec); err != nil {
 				return err
 			}
@@ -149,7 +168,9 @@ func walkJSON(dec *json.Decoder) error {
 			}
 		}
 	}
+
 	_, err = dec.Token() // closing delimiter
+
 	return err
 }
 
@@ -160,12 +181,15 @@ func describeDecodeError(err error) string {
 	if errors.As(err, &syntaxErr) {
 		return fmt.Sprintf("invalid JSON at offset %d", syntaxErr.Offset)
 	}
+
 	var typeErr *json.UnmarshalTypeError
 	if errors.As(err, &typeErr) {
 		return fmt.Sprintf("field %q has an invalid type", typeErr.Field)
 	}
+
 	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
 		return "unexpected end of JSON"
 	}
+
 	return err.Error()
 }

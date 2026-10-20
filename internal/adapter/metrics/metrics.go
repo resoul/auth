@@ -11,8 +11,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	"airlance.org/auth/internal/application/port"
-	"airlance.org/auth/internal/domain/authflow"
+	"go.airlance.org/auth/internal/application/port"
+	"go.airlance.org/auth/internal/domain/authflow"
 )
 
 var (
@@ -109,15 +109,19 @@ func New() *Registry {
 		reasons:    newLabelSet(maxReasons),
 	}
 	r.reg.MustRegister(r.mailJobs, r.queueDelay, r.sendTime, r.reuse, r.requests, r.duration, r.denied, r.resTokens, r.introspect, r.changes, r.ended)
+
 	for _, class := range classes {
 		r.queueDelay.WithLabelValues(string(class))
+
 		for _, outcome := range outcomes {
 			r.mailJobs.WithLabelValues(string(outcome), string(class))
 		}
 	}
+
 	for _, outcome := range outcomes {
 		r.sendTime.WithLabelValues(string(outcome))
 	}
+
 	return r
 }
 
@@ -155,15 +159,20 @@ func (l *labelSet) admit(value string, valid func(string) bool) string {
 	if !valid(value) {
 		return otherLabel
 	}
+
 	l.mu.Lock()
 	defer l.mu.Unlock()
+
 	if l.seen[value] {
 		return value
 	}
+
 	if len(l.seen) >= l.max {
 		return otherLabel
 	}
+
 	l.seen[value] = true
+
 	return value
 }
 
@@ -173,15 +182,18 @@ func validRoute(route string) bool {
 	if route == "unmatched" {
 		return true
 	}
+
 	method, path, ok := strings.Cut(route, " ")
 	if !ok || len(route) > 120 || !methodLabel.MatchString(method) || !strings.HasPrefix(path, "/") {
 		return false
 	}
+
 	for _, segment := range strings.Split(path[1:], "/") {
 		if !segmentLabel.MatchString(segment) {
 			return false
 		}
 	}
+
 	return true
 }
 
@@ -196,6 +208,7 @@ func statusClass(status int) string {
 	case status >= 500 && status < 600:
 		return "5xx"
 	}
+
 	return "other"
 }
 
@@ -234,6 +247,7 @@ func (r *Registry) Introspection(resource, outcome string) {
 func (r *Registry) PermissionChange(change string, grantsEnded int) {
 	label := r.reasons.admit(change, codeLabel.MatchString)
 	r.changes.WithLabelValues(label).Inc()
+
 	if grantsEnded > 0 {
 		r.ended.WithLabelValues(label).Add(float64(grantsEnded))
 	}
@@ -243,6 +257,7 @@ func (r *Registry) PermissionChange(change string, grantsEnded int) {
 func (r *Registry) MailProcessed(class authflow.QuotaClass, outcome port.MailOutcome, queueDelay, sendDuration time.Duration) {
 	r.mailJobs.WithLabelValues(string(outcome), string(class)).Inc()
 	r.queueDelay.WithLabelValues(string(class)).Observe(queueDelay.Seconds())
+
 	if sendDuration > 0 {
 		r.sendTime.WithLabelValues(string(outcome)).Observe(sendDuration.Seconds())
 	}
@@ -279,21 +294,27 @@ type queueCollector struct {
 
 func (c *queueCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.depth
+
 	ch <- c.oldest
+
 	ch <- c.errors
 }
 
 func (c *queueCollector) Collect(ch chan<- prometheus.Metric) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+
 	stats, err := c.stats(ctx, c.clock.Now())
 	if err != nil {
 		ch <- prometheus.MustNewConstMetric(c.errors, prometheus.GaugeValue, 0)
 		return
 	}
+
 	ch <- prometheus.MustNewConstMetric(c.errors, prometheus.GaugeValue, 1)
+
 	for _, class := range classes {
 		ch <- prometheus.MustNewConstMetric(c.depth, prometheus.GaugeValue, float64(stats.Queued[class]), string(class))
+
 		ch <- prometheus.MustNewConstMetric(c.oldest, prometheus.GaugeValue, stats.OldestWait[class].Seconds(), string(class))
 	}
 }

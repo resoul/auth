@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	"airlance.org/auth/internal/application/port"
-	"airlance.org/auth/internal/domain/authflow"
+	"go.airlance.org/auth/internal/application/port"
+	"go.airlance.org/auth/internal/domain/authflow"
 )
 
 // recognitionLost reports whether a flow of the recognized class has lost its record,
@@ -18,12 +18,15 @@ func recognitionLost(ctx context.Context, st port.Stores, flow *authflow.Flow, n
 	if flow.QuotaClass() != authflow.QuotaRecognized {
 		return false, nil
 	}
+
 	rc, err := st.Recognized.FindActive(ctx, flow.Email(), flow.BindingHash(), now)
 	if errors.Is(err, port.ErrNotFound) {
 		return true, nil
 	}
+
 	if err != nil {
 		return false, fmt.Errorf("look up recognized client: %w", err)
 	}
+
 	return rc.ID() != flow.RecognizedClientID(), nil
 }

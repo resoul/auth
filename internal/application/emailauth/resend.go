@@ -7,9 +7,9 @@ import (
 	"net/netip"
 	"time"
 
-	"airlance.org/auth/internal/application/port"
-	"airlance.org/auth/internal/domain/authflow"
-	"airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/application/port"
+	"go.airlance.org/auth/internal/domain/authflow"
+	"go.airlance.org/auth/internal/domain/identity"
 )
 
 // ResendDeps are the dependencies of Resend.
@@ -33,9 +33,11 @@ func NewResend(d ResendDeps) (*Resend, error) {
 	if d.UnitOfWork == nil || d.Clock == nil || d.OTP == nil || d.Bindings == nil {
 		return nil, errors.New("new resend: all dependencies are required")
 	}
+
 	if err := d.Policy.Validate(); err != nil {
 		return nil, fmt.Errorf("new resend: %w", err)
 	}
+
 	return &Resend{d}, nil
 }
 
@@ -64,10 +66,12 @@ func (s *Resend) Execute(ctx context.Context, cmd ResendCommand) (ResendResult, 
 	if err != nil {
 		return ResendResult{Outcome: OutcomeDenied, Reason: ReasonUnknownFlow}, nil
 	}
+
 	binding, err := s.Bindings.HashBinding(cmd.BindingSecret)
 	if errors.Is(err, port.ErrInvalidBindingSecret) {
 		return ResendResult{Outcome: OutcomeDenied, Reason: ReasonBadBinding}, nil
 	}
+
 	if err != nil {
 		return ResendResult{}, fmt.Errorf("resend: binding: %w", err)
 	}
@@ -76,15 +80,18 @@ func (s *Resend) Execute(ctx context.Context, cmd ResendCommand) (ResendResult, 
 	if err != nil {
 		return ResendResult{}, fmt.Errorf("resend: %w", err)
 	}
+
 	now := s.Clock.Now()
 
 	var result ResendResult
+
 	err = s.UnitOfWork.Do(ctx, func(ctx context.Context, st port.Stores) error {
 		flow, err := st.Flows.GetForUpdate(ctx, id)
 		if errors.Is(err, port.ErrNotFound) {
 			result = ResendResult{Outcome: OutcomeDenied, Reason: ReasonUnknownFlow}
 			return nil
 		}
+
 		if err != nil {
 			return fmt.Errorf("load flow: %w", err)
 		}
@@ -96,9 +103,12 @@ func (s *Resend) Execute(ctx context.Context, cmd ResendCommand) (ResendResult, 
 					return fmt.Errorf("store expired flow: %w", err)
 				}
 			}
+
 			result = ResendResult{Outcome: outcome, Reason: reason, ExpiresAt: flow.ExpiresAt(), ResendAfter: flow.ResendAfter()}
+
 			return nil
 		}
+
 		if err != nil {
 			return fmt.Errorf("resend flow state: %w", err)
 		}
@@ -117,6 +127,7 @@ func (s *Resend) Execute(ctx context.Context, cmd ResendCommand) (ResendResult, 
 		if err != nil {
 			return fmt.Errorf("spend send quota: %w", err)
 		}
+
 		if !allowed {
 			// The new generation was only built in memory; leaving it unsaved discards it.
 			result = ResendResult{Outcome: OutcomeRateLimited, Reason: ReasonQuota}
@@ -126,24 +137,30 @@ func (s *Resend) Execute(ctx context.Context, cmd ResendCommand) (ResendResult, 
 		if err := st.Flows.Save(ctx, flow); err != nil {
 			return fmt.Errorf("store flow: %w", err)
 		}
+
 		result = ResendResult{Outcome: OutcomeOK, ExpiresAt: flow.ExpiresAt(), ResendAfter: flow.ResendAfter()}
+
 		refusal, err := mayReceiveCode(ctx, st, s.Registration, flow.Email(), now)
 		if err != nil {
 			return err
 		}
+
 		if refusal != "" {
 			result.Reason = refusal
 			return nil
 		}
+
 		if err := st.Outbox.Enqueue(ctx, port.MailJob{
 			FlowID: flow.ID(), Generation: flow.Generation(), QuotaClass: flow.QuotaClass(), AvailableAt: now,
 		}); err != nil {
 			return fmt.Errorf("enqueue mail: %w", err)
 		}
+
 		return nil
 	})
 	if err != nil {
 		return ResendResult{}, fmt.Errorf("resend: %w", err)
 	}
+
 	return result, nil
 }

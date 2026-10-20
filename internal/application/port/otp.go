@@ -1,6 +1,6 @@
 package port
 
-import "airlance.org/auth/internal/domain/authflow"
+import "go.airlance.org/auth/internal/domain/authflow"
 
 // OTPGeneration is the fresh per-generation material of a flow: a random salt and
 // the ID of the key that will derive the code. Both are stored with the flow.

@@ -3,9 +3,9 @@ package bootstrap
 import (
 	"context"
 
-	"airlance.org/auth/internal/adapter/id"
-	"airlance.org/auth/internal/adapter/postgres"
-	"airlance.org/auth/internal/config"
+	"go.airlance.org/auth/internal/adapter/id"
+	"go.airlance.org/auth/internal/adapter/postgres"
+	"go.airlance.org/auth/internal/config"
 )
 
 // openStore connects to the configured database in the configured schema.

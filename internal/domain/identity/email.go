@@ -29,6 +29,7 @@ func ParseEmail(raw string) (Email, error) {
 	if value == "" || len(value) > maxEmailLength {
 		return Email{}, ErrInvalidEmail
 	}
+
 	for i := 0; i < len(value); i++ {
 		if c := value[i]; c < asciiPrintableLow || c > asciiPrintableHigh {
 			return Email{}, ErrInvalidEmail
@@ -39,10 +40,12 @@ func ParseEmail(raw string) (Email, error) {
 	if err != nil || addr.Name != "" || addr.Address != value {
 		return Email{}, ErrInvalidEmail
 	}
+
 	local, domain, ok := strings.Cut(value, "@")
 	if !ok || local == "" || len(local) > maxEmailLocalPart || !strings.Contains(domain, ".") {
 		return Email{}, ErrInvalidEmail
 	}
+
 	return Email{value: value}, nil
 }
 

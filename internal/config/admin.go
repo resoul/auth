@@ -15,12 +15,15 @@ func loadAdmin(lookup LookupFunc, cfg *Config) []error {
 				return []error{fmt.Errorf("%s is set without %s", key, EnvAdminAddr)}
 			}
 		}
+
 		return nil
 	}
+
 	var errs []error
 	if err := checkListenAddr(addr); err != nil {
 		errs = append(errs, fmt.Errorf("%s: %w", EnvAdminAddr, err))
 	}
+
 	switch {
 	case rp == "":
 		errs = append(errs, fmt.Errorf("%s is required when %s is set: operators sign in with a passkey", EnvAdminRPID, EnvAdminAddr))
@@ -30,7 +33,9 @@ func loadAdmin(lookup LookupFunc, cfg *Config) []error {
 	case rp == cfg.WebAuthn.RPID:
 		errs = append(errs, fmt.Errorf("%s must differ from %s: an operator's page must not offer a user's passkey", EnvAdminRPID, EnvWebAuthnRPID))
 	}
+
 	var list []string
+
 	if origins == "" {
 		errs = append(errs, fmt.Errorf("%s is required when %s is set", EnvAdminOrigins, EnvAdminAddr))
 	} else if parsed, err := parseBrowserOrigins(origins); err != nil {
@@ -43,9 +48,12 @@ func loadAdmin(lookup LookupFunc, cfg *Config) []error {
 			}
 		}
 	}
+
 	if len(errs) > 0 {
 		return errs
 	}
+
 	cfg.Admin = AdminConfig{Addr: addr, RPID: rp, Origins: list}
+
 	return nil
 }

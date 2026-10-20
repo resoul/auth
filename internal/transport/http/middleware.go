@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"airlance.org/auth/internal/application/port"
+	"go.airlance.org/auth/internal/application/port"
 )
 
 // RequestIDHeader carries the ID that error bodies and logs also show.
@@ -45,6 +45,7 @@ func noStore(next http.Handler) http.Handler {
 		if strings.HasPrefix(r.URL.Path, "/v1/") || strings.HasPrefix(r.URL.Path, "/health/") {
 			w.Header().Set("Cache-Control", "no-store")
 		}
+
 		next.ServeHTTP(w, r)
 	})
 }
@@ -56,13 +57,16 @@ func logRequests(logger *slog.Logger, requests port.RequestMetrics, mux *http.Se
 		began := time.Now()
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		mux.ServeHTTP(rec, r)
+
 		route := r.Pattern // set by the mux on this request
 		if route == "" {
 			route = "unmatched"
 		}
+
 		if route != "GET /metrics" { // the scrape is not traffic to alert on
 			requests.RequestServed(route, rec.status, time.Since(began))
 		}
+
 		logger.InfoContext(r.Context(), "http request",
 			"route", route, "status", rec.status,
 			"duration_ms", time.Since(began).Milliseconds(),

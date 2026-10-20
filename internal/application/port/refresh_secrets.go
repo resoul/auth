@@ -3,7 +3,7 @@ package port
 import (
 	"errors"
 
-	"airlance.org/auth/internal/domain/token"
+	"go.airlance.org/auth/internal/domain/token"
 )
 
 // ErrInvalidRefreshSecret reports a refresh secret of the wrong shape.

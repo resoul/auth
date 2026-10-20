@@ -6,8 +6,8 @@ import (
 	"net/netip"
 	"time"
 
-	"airlance.org/auth/internal/application/port"
-	"airlance.org/auth/internal/domain/authflow"
+	"go.airlance.org/auth/internal/application/port"
+	"go.airlance.org/auth/internal/domain/authflow"
 )
 
 const (
@@ -31,6 +31,7 @@ func (o *outbox) Enqueue(_ context.Context, job port.MailJob) error {
 	if err := job.Validate(); err != nil {
 		return fmt.Errorf("enqueue mail: %w", err)
 	}
+
 	job.Kind = job.EffectiveKind()
 	for _, r := range o.tx.outbox {
 		// An invitation job has no flow, so nothing identifies it: the same address may be invited again.
@@ -38,8 +39,10 @@ func (o *outbox) Enqueue(_ context.Context, job port.MailJob) error {
 			return fmt.Errorf("enqueue mail: generation %d of this flow is already queued", job.Generation)
 		}
 	}
+
 	id := fmt.Sprintf("00000000-0000-7000-8000-%012x", len(o.tx.outbox)+1)
 	o.tx.outbox = append(o.tx.outbox, mailRecord{id: id, job: job, status: statusQueued})
+
 	return nil
 }
 
@@ -52,24 +55,30 @@ func (o *outbox) Claim(_ context.Context, now time.Time, lease time.Duration) (p
 	// Recognized clients first; within a class the oldest due job.
 	for _, class := range []authflow.QuotaClass{authflow.QuotaRecognized, authflow.QuotaUnknown} {
 		best := -1
+
 		for i, r := range o.tx.outbox {
 			if !o.ready(r, class, now) {
 				continue
 			}
+
 			if best < 0 || r.job.AvailableAt.Before(o.tx.outbox[best].job.AvailableAt) {
 				best = i
 			}
 		}
+
 		if best < 0 {
 			continue
 		}
+
 		r := &o.tx.outbox[best]
 		r.attempts++
 		r.leaseUntil = now.Add(lease)
+
 		id, err := port.ParseMailJobID(r.id)
 		if err != nil {
 			return port.ClaimedMail{}, err
 		}
+
 		return port.ClaimedMail{
 			Kind: r.job.Kind, Recipient: r.job.Recipient,
 			UserID: r.job.UserID, DeviceName: r.job.DeviceName, ClientIP: r.job.ClientIP, EventAt: r.job.EventAt,
@@ -77,6 +86,7 @@ func (o *outbox) Claim(_ context.Context, now time.Time, lease time.Duration) (p
 			Attempts: r.attempts, AvailableAt: r.job.AvailableAt,
 		}, nil
 	}
+
 	return port.ClaimedMail{}, port.ErrNotFound
 }
 
@@ -86,6 +96,7 @@ func (o *outbox) queued(id port.MailJobID) (*mailRecord, error) {
 			return &o.tx.outbox[i], nil
 		}
 	}
+
 	return nil, port.ErrNotFound
 }
 
@@ -94,8 +105,10 @@ func (o *outbox) Complete(_ context.Context, id port.MailJobID) error {
 	if err != nil {
 		return err
 	}
+
 	r.status, r.leaseUntil, r.lastError = statusSent, time.Time{}, ""
 	r.job.ClientIP = netip.Addr{} // kept only to be put into the mail
+
 	return nil
 }
 
@@ -103,11 +116,14 @@ func (o *outbox) Retry(_ context.Context, id port.MailJobID, availableAt time.Ti
 	if !reason.Valid() {
 		return fmt.Errorf("retry mail: invalid reason code")
 	}
+
 	r, err := o.queued(id)
 	if err != nil {
 		return err
 	}
+
 	r.job.AvailableAt, r.leaseUntil, r.lastError = availableAt, time.Time{}, reason
+
 	return nil
 }
 
@@ -115,12 +131,15 @@ func (o *outbox) Abandon(_ context.Context, id port.MailJobID, reason port.MailR
 	if !reason.Valid() {
 		return fmt.Errorf("abandon mail: invalid reason code")
 	}
+
 	r, err := o.queued(id)
 	if err != nil {
 		return err
 	}
+
 	r.status, r.leaseUntil, r.lastError = statusDead, time.Time{}, reason
 	r.job.ClientIP = netip.Addr{}
+
 	return nil
 }
 
@@ -129,15 +148,19 @@ func (o *outbox) Stats(_ context.Context, now time.Time) (port.QueueStats, error
 		Queued:     map[authflow.QuotaClass]int{authflow.QuotaRecognized: 0, authflow.QuotaUnknown: 0},
 		OldestWait: map[authflow.QuotaClass]time.Duration{authflow.QuotaRecognized: 0, authflow.QuotaUnknown: 0},
 	}
+
 	for _, r := range o.tx.outbox {
 		if r.status != statusQueued {
 			continue
 		}
+
 		class := r.job.QuotaClass
+
 		stats.Queued[class]++
 		if wait := now.Sub(r.job.AvailableAt); wait > stats.OldestWait[class] {
 			stats.OldestWait[class] = wait
 		}
 	}
+
 	return stats, nil
 }

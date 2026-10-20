@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"airlance.org/auth/internal/transport/http/openapi"
+	"go.airlance.org/auth/internal/transport/http/openapi"
 )
 
 // problem is the error body: a stable public code and the request ID, nothing internal.

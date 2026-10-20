@@ -18,11 +18,11 @@ import (
 	"github.com/go-jose/go-jose/v4"
 	josejwt "github.com/go-jose/go-jose/v4/jwt"
 
-	"airlance.org/auth/internal/adapter/jwt"
-	"airlance.org/auth/internal/application/port"
-	"airlance.org/auth/internal/domain/identity"
-	"airlance.org/auth/internal/domain/session"
-	"airlance.org/auth/internal/testutil"
+	"go.airlance.org/auth/internal/adapter/jwt"
+	"go.airlance.org/auth/internal/application/port"
+	"go.airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/domain/session"
+	"go.airlance.org/auth/internal/testutil"
 )
 
 const (
@@ -47,22 +47,28 @@ type world struct {
 func newWorld(t *testing.T) *world {
 	t.Helper()
 	key := testutil.NewSigningKeyPEM(t)
+
 	ring, err := jwt.LoadRing("sign-a", map[string]string{"sign-a": testutil.WriteFile(t, "a.pem", key.Private)})
 	if err != nil {
 		t.Fatalf("LoadRing: %v", err)
 	}
+
 	clock := testutil.NewFakeClock(t0)
+
 	signer, err := jwt.NewSigner(ring, clock, issuer, audience, 5*time.Minute)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	verifier, err := jwt.NewVerifier(ring.PublicKeys(), clock, issuer, audience, leeway)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	f := testutil.NewFactory(t, t0)
 	user := f.User(testutil.UserSpec{})
 	sess := f.Session(testutil.SessionSpec{User: user})
+
 	return &world{
 		t: t, clock: clock, pem: key, ring: ring, signer: signer, verifier: verifier,
 		claims: port.AccessClaims{UserID: user.ID(), SessionID: sess.ID(), AuthTime: t0.Add(-time.Minute), AMR: []string{"otp"}},
@@ -71,19 +77,23 @@ func newWorld(t *testing.T) *world {
 
 func (w *world) token() string {
 	w.t.Helper()
+
 	tok, err := w.signer.SignAccess(w.claims)
 	if err != nil {
 		w.t.Fatalf("SignAccess: %v", err)
 	}
+
 	return tok.Value
 }
 
 func TestSignedTokenVerifiesAndCarriesTheClaims(t *testing.T) {
 	w := newWorld(t)
+
 	tok, err := w.signer.SignAccess(w.claims)
 	if err != nil {
 		t.Fatalf("SignAccess: %v", err)
 	}
+
 	if !tok.ExpiresAt.Equal(t0.Add(5 * time.Minute)) {
 		t.Errorf("ExpiresAt = %v", tok.ExpiresAt)
 	}
@@ -92,9 +102,11 @@ func TestSignedTokenVerifiesAndCarriesTheClaims(t *testing.T) {
 	if err != nil {
 		t.Fatalf("VerifyAccess: %v", err)
 	}
+
 	if got.UserID != w.claims.UserID || got.SessionID != w.claims.SessionID || len(got.AMR) != 1 || got.AMR[0] != "otp" {
 		t.Errorf("claims = %+v", got)
 	}
+
 	if !got.AuthTime.Equal(w.claims.AuthTime) || !got.IssuedAt.Equal(t0) || !got.ExpiresAt.Equal(t0.Add(5*time.Minute)) {
 		t.Errorf("times = auth %v iat %v exp %v", got.AuthTime, got.IssuedAt, got.ExpiresAt)
 	}
@@ -108,10 +120,12 @@ func TestTokenShape(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		var m map[string]any
 		if err := json.Unmarshal(raw, &m); err != nil {
 			t.Fatal(err)
 		}
+
 		return m
 	}
 	header, claims := decode(0), decode(1)
@@ -119,11 +133,13 @@ func TestTokenShape(t *testing.T) {
 	if header["alg"] != "ES256" || header["typ"] != "at+jwt" || header["kid"] != "sign-a" || len(header) != 3 {
 		t.Errorf("header = %v", header)
 	}
+
 	for _, name := range []string{"iss", "sub", "aud", "exp", "iat", "sid", "auth_time", "amr"} {
 		if _, ok := claims[name]; !ok {
 			t.Errorf("claim %s is missing: %v", name, claims)
 		}
 	}
+
 	for _, name := range []string{"email", "ip", "user_agent", "name", "nbf"} {
 		if _, ok := claims[name]; ok {
 			t.Errorf("claim %s must not be present", name)
@@ -151,10 +167,12 @@ func TestVerifierTimeBounds(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			w.clock.Set(tt.at)
+
 			_, err := w.verifier.VerifyAccess(token)
 			if tt.ok && err != nil {
 				t.Errorf("rejected: %v", err)
 			}
+
 			if !tt.ok && !isInvalid(err) {
 				t.Errorf("accepted, or wrong error: %v", err)
 			}
@@ -176,18 +194,22 @@ type forge struct {
 
 func (f forge) sign(t *testing.T, claims map[string]any) string {
 	t.Helper()
+
 	opts := (&jose.SignerOptions{}).WithType(jose.ContentType(f.typ))
 	for k, v := range f.headers {
 		opts = opts.WithHeader(k, v)
 	}
+
 	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.ES256, Key: jose.JSONWebKey{Key: f.key, KeyID: f.kid}}, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	tok, err := josejwt.Signed(signer).Claims(claims).Serialize()
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	return tok
 }
 
@@ -202,10 +224,12 @@ func (w *world) validClaims() map[string]any {
 func (w *world) activeKey() *ecdsa.PrivateKey {
 	w.t.Helper()
 	block, _ := pem.Decode(w.pem.Private)
+
 	parsed, err := x509.ParsePKCS8PrivateKey(block.Bytes)
 	if err != nil {
 		w.t.Fatal(err)
 	}
+
 	return parsed.(*ecdsa.PrivateKey)
 }
 
@@ -223,8 +247,10 @@ func TestVerifierRejectsBrokenClaims(t *testing.T) {
 	mutate := func(f func(map[string]any)) string {
 		c := w.validClaims()
 		f(c)
+
 		return w.good().sign(t, c)
 	}
+
 	tests := map[string]string{
 		"wrong issuer":         mutate(func(c map[string]any) { c["iss"] = "https://evil.example.test" }),
 		"wrong audience":       mutate(func(c map[string]any) { c["aud"] = []string{"other"} }),
@@ -259,6 +285,7 @@ func TestVerifierRejectsBrokenClaims(t *testing.T) {
 func TestVerifierAcceptsAnAudienceListThatContainsOurs(t *testing.T) {
 	w := newWorld(t)
 	c := w.validClaims()
+
 	c["aud"] = []string{"other", audience}
 	if _, err := w.verifier.VerifyAccess(w.good().sign(t, c)); err != nil {
 		t.Errorf("rejected: %v", err)
@@ -268,14 +295,17 @@ func TestVerifierAcceptsAnAudienceListThatContainsOurs(t *testing.T) {
 func TestVerifierRejectsBrokenHeadersAndKeys(t *testing.T) {
 	w := newWorld(t)
 	claims := w.validClaims()
+
 	otherKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	p384, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		t.Fatal(err)
@@ -286,15 +316,18 @@ func TestVerifierRejectsBrokenHeadersAndKeys(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		tok, err := josejwt.Signed(signer).Claims(claims).Serialize()
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		return tok
 	}
 	withHeader := func(k jose.HeaderKey, v any) string {
 		f := w.good()
 		f.headers = map[jose.HeaderKey]any{k: v}
+
 		return f.sign(t, claims)
 	}
 
@@ -303,6 +336,7 @@ func TestVerifierRejectsBrokenHeadersAndKeys(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	b64 := func(b []byte) string { return base64.RawURLEncoding.EncodeToString(b) }
 	hsHeader := b64([]byte(`{"alg":"HS256","typ":"at+jwt","kid":"sign-a"}`))
 	payload, _ := json.Marshal(claims)
@@ -320,6 +354,7 @@ func TestVerifierRejectsBrokenHeadersAndKeys(t *testing.T) {
 		if s[0] == 'A' {
 			return "B" + s[1:]
 		}
+
 		return "A" + s[1:]
 	}
 
@@ -353,6 +388,7 @@ func TestVerifierRejectsBrokenHeadersAndKeys(t *testing.T) {
 	for _, in := range badFormats {
 		tests["format "+in] = in
 	}
+
 	for name, token := range tests {
 		t.Run(name, func(t *testing.T) {
 			if _, err := w.verifier.VerifyAccess(token); !isInvalid(err) {
@@ -366,6 +402,7 @@ func TestVerifierErrorsDoNotEchoTheToken(t *testing.T) {
 	w := newWorld(t)
 	token := w.token()
 	broken := token[:len(token)-4] + "AAAA"
+
 	_, err := w.verifier.VerifyAccess(broken)
 	if err == nil || strings.Contains(err.Error(), broken) || strings.Contains(err.Error(), strings.Split(token, ".")[1]) {
 		t.Errorf("error %v echoes the token", err)
@@ -382,6 +419,7 @@ func TestSignerRefusesIncompleteClaims(t *testing.T) {
 	} {
 		c := w.claims
 		mutate(&c)
+
 		if tok, err := w.signer.SignAccess(c); err == nil || tok.Value != "" {
 			t.Errorf("%s: SignAccess = %+v, %v", name, tok, err)
 		}
@@ -393,6 +431,7 @@ func TestConstructorsRequireTheirInputs(t *testing.T) {
 	if _, err := jwt.NewSigner(nil, w.clock, issuer, audience, time.Minute); err == nil {
 		t.Error("NewSigner accepted a nil ring")
 	}
+
 	for name, args := range map[string][3]any{
 		"no issuer": {"", audience, time.Minute}, "no audience": {issuer, "", time.Minute}, "no ttl": {issuer, audience, time.Duration(0)},
 	} {
@@ -400,10 +439,13 @@ func TestConstructorsRequireTheirInputs(t *testing.T) {
 			t.Errorf("NewSigner accepted %s", name)
 		}
 	}
+
 	if _, err := jwt.NewSigner(w.ring, nil, issuer, audience, time.Minute); err == nil {
 		t.Error("NewSigner accepted a nil clock")
 	}
+
 	keys := w.ring.PublicKeys()
+
 	for name, build := range map[string]func() error{
 		"no keys":         func() error { _, err := jwt.NewVerifier(nil, w.clock, issuer, audience, leeway); return err },
 		"no clock":        func() error { _, err := jwt.NewVerifier(keys, nil, issuer, audience, leeway); return err },
@@ -424,17 +466,21 @@ func TestConstructorsRequireTheirInputs(t *testing.T) {
 func TestTimesAreUTCWhateverTheServerZone(t *testing.T) {
 	previous := time.Local
 	time.Local = time.FixedZone("EEST", 3*60*60)
+
 	t.Cleanup(func() { time.Local = previous })
 
 	w := newWorld(t)
+
 	tok, err := w.signer.SignAccess(w.claims)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	got, err := w.verifier.VerifyAccess(tok.Value)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	for name, instant := range map[string]time.Time{
 		"token ExpiresAt": tok.ExpiresAt, "claims ExpiresAt": got.ExpiresAt, "claims IssuedAt": got.IssuedAt, "claims AuthTime": got.AuthTime,
 	} {

@@ -1,4 +1,4 @@
-module airlance.org/auth
+module go.airlance.org/auth
 
 go 1.27.1
 

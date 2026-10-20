@@ -8,7 +8,7 @@ import (
 	"github.com/go-jose/go-jose/v4"
 	josejwt "github.com/go-jose/go-jose/v4/jwt"
 
-	"airlance.org/auth/internal/application/port"
+	"go.airlance.org/auth/internal/application/port"
 )
 
 var _ port.AccessSigner = (*Signer)(nil)
@@ -38,9 +38,11 @@ func NewSigner(ring *Ring, clock port.Clock, issuer, audience string, ttl time.D
 	if ring == nil || ring.private == nil || clock == nil {
 		return nil, errors.New("new signer: a keyring with a private key and a clock are required")
 	}
+
 	if issuer == "" || audience == "" || ttl <= 0 {
 		return nil, errors.New("new signer: issuer, audience and a positive ttl are required")
 	}
+
 	signer, err := jose.NewSigner(
 		jose.SigningKey{Algorithm: jose.ES256, Key: jose.JSONWebKey{Key: ring.private, KeyID: ring.activeKID}},
 		(&jose.SignerOptions{}).WithType(tokenType),
@@ -48,6 +50,7 @@ func NewSigner(ring *Ring, clock port.Clock, issuer, audience string, ttl time.D
 	if err != nil {
 		return nil, fmt.Errorf("new signer: %w", err)
 	}
+
 	return &Signer{signer: signer, clock: clock, issuer: issuer, audience: audience, ttl: ttl}, nil
 }
 
@@ -56,8 +59,10 @@ func (s *Signer) SignAccess(c port.AccessClaims) (port.AccessToken, error) {
 	if c.UserID.IsZero() || c.SessionID.IsZero() || c.AuthTime.IsZero() || len(c.AMR) == 0 {
 		return port.AccessToken{}, errors.New("sign access: user, session, auth time and methods are required")
 	}
+
 	now := s.clock.Now()
 	expiry := josejwt.NewNumericDate(now.Add(s.ttl))
+
 	value, err := josejwt.Signed(s.signer).
 		Claims(josejwt.Claims{
 			Issuer: s.issuer, Subject: c.UserID.String(), Audience: josejwt.Audience{s.audience},

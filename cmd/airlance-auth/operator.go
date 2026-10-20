@@ -7,8 +7,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"airlance.org/auth/internal/bootstrap"
-	"airlance.org/auth/internal/config"
+	"go.airlance.org/auth/internal/bootstrap"
+	"go.airlance.org/auth/internal/config"
 )
 
 // newOperatorCommand manages the operators of the admin API. It is run on the server by whoever holds it and
@@ -23,8 +23,10 @@ func newOperatorCommand() *cobra.Command {
 		if err != nil {
 			return err
 		}
+
 		ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
+
 		return bootstrap.Operator(ctx, cfg, req, cmd.OutOrStdout())
 	}
 	withEmail := func(use, short string, action bootstrap.OperatorAction) *cobra.Command {
@@ -51,5 +53,6 @@ func newOperatorCommand() *cobra.Command {
 			},
 		},
 	)
+
 	return operator
 }

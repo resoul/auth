@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"airlance.org/auth/internal/application/port"
-	"airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/application/port"
+	"go.airlance.org/auth/internal/domain/identity"
 )
 
 // Revoke is the revocation endpoint (RFC 7009): an application that logs a person out of itself tells the provider that
@@ -20,6 +20,7 @@ func NewRevoke(d Deps) (*Revoke, error) {
 	if err := d.validate("revoke"); err != nil {
 		return nil, err
 	}
+
 	return &Revoke{d}, nil
 }
 
@@ -39,18 +40,24 @@ type RevokeResult struct {
 // Execute authenticates the client and ends the grant of the token if it is the client's own.
 func (u *Revoke) Execute(ctx context.Context, cmd RevokeCommand) (RevokeResult, error) {
 	now := u.Clock.Now()
+
 	var result RevokeResult
+
 	err := u.UnitOfWork.Do(ctx, func(ctx context.Context, st port.Stores) error {
 		client, err := u.authenticateClient(ctx, st, cmd.ClientID, cmd.ClientSecret, now)
 		if err != nil {
 			return err
 		}
+
 		if client == nil {
 			result = RevokeResult{Failure: fail(ErrInvalidClient, "The client could not be authenticated.")}
 			return nil
 		}
+
 		grantID := ""
+
 		var owner identity.UserID
+
 		if hash, err := u.Secrets.HashOIDCSecret(cmd.Token); err == nil {
 			// An opaque refresh token. The user and the grant are locked in the order every statement uses.
 			if _, grant, err := st.OIDCRefresh.GetByHashForUpdate(ctx, hash); err == nil && grant.ClientID == client.ID {
@@ -64,12 +71,15 @@ func (u *Revoke) Execute(ctx context.Context, cmd RevokeCommand) (RevokeResult, 
 				grantID, owner = claims.GrantID, claims.Subject
 			}
 		}
+
 		if grantID == "" {
 			return nil
 		}
+
 		if err := st.OIDCGrants.Revoke(ctx, grantID, now); err != nil {
 			return fmt.Errorf("revoke grant: %w", err)
 		}
+
 		return st.Audit.Record(ctx, port.AuditEvent{
 			Type: port.AuditOIDCRevoked, Result: port.AuditSuccess, UserID: owner, At: now, Fields: map[string]string{"client": client.ID},
 		})
@@ -77,5 +87,6 @@ func (u *Revoke) Execute(ctx context.Context, cmd RevokeCommand) (RevokeResult, 
 	if err != nil {
 		return RevokeResult{}, fmt.Errorf("revoke: %w", err)
 	}
+
 	return result, nil
 }

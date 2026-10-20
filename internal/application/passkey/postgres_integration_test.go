@@ -8,11 +8,11 @@ import (
 	"testing"
 	"time"
 
-	"airlance.org/auth/internal/application/passkey"
-	"airlance.org/auth/internal/application/port"
-	"airlance.org/auth/internal/domain/identity"
-	dpasskey "airlance.org/auth/internal/domain/passkey"
-	"airlance.org/auth/internal/testutil"
+	"go.airlance.org/auth/internal/application/passkey"
+	"go.airlance.org/auth/internal/application/port"
+	"go.airlance.org/auth/internal/domain/identity"
+	dpasskey "go.airlance.org/auth/internal/domain/passkey"
+	"go.airlance.org/auth/internal/testutil"
 )
 
 // newPostgresEnv runs the use cases of newEnv against PostgreSQL. The in-memory store runs one transaction at a
@@ -21,6 +21,7 @@ func newPostgresEnv(t *testing.T) *env {
 	t.Helper()
 	e := newEnv(t)
 	e.faults.inner = testutil.PostgresStore(t)
+
 	return e
 }
 
@@ -41,11 +42,13 @@ func newMeet(n int, patience time.Duration) *meet {
 
 func (m *meet) wait() {
 	m.mu.Lock()
+
 	m.arrived++
 	if m.arrived == m.n {
 		close(m.ready)
 	}
 	m.mu.Unlock()
+
 	select {
 	case <-m.ready:
 	case <-time.After(m.patience):
@@ -62,6 +65,7 @@ type listsAt struct {
 func (l listsAt) ListByUser(ctx context.Context, id identity.UserID) ([]*dpasskey.Credential, error) {
 	list, err := l.CredentialRepository.ListByUser(ctx, id)
 	l.at.wait()
+
 	return list, err
 }
 
@@ -77,6 +81,7 @@ func TestTwoFirstKeysCannotBeRegisteredAtOnce(t *testing.T) {
 		challenge string
 		options   []byte
 	}
+
 	var attempts [2]attempt
 	for i := range attempts {
 		a := &attempts[i]
@@ -85,9 +90,11 @@ func TestTwoFirstKeysCannotBeRegisteredAtOnce(t *testing.T) {
 		a.auth = testutil.NewSoftAuthenticator(t, rpID, origin)
 		begun, err := e.beginEnroll.Execute(context.Background(), passkey.BeginEnrollCommand{TicketSecret: a.ticket, BindingSecret: a.binding.secret})
 		must(t, err)
+
 		if begun.Outcome != passkey.OutcomeOK {
 			t.Fatalf("begin %d = %+v", i, begun)
 		}
+
 		a.challenge = begun.ChallengeID
 		a.options = a.auth.Register(begun.Options)
 	}
@@ -97,13 +104,18 @@ func TestTwoFirstKeysCannotBeRegisteredAtOnce(t *testing.T) {
 		s.Credentials = listsAt{CredentialRepository: s.Credentials, at: at}
 		return s
 	}
-	var results [2]passkey.FinishEnrollResult
-	var wg sync.WaitGroup
+
+	var (
+		results [2]passkey.FinishEnrollResult
+		wg      sync.WaitGroup
+	)
 	for i := range attempts {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+
 			a := attempts[i]
+
 			got, err := e.finishEnroll.Execute(context.Background(), passkey.FinishEnrollCommand{
 				TicketSecret: a.ticket, BindingSecret: a.binding.secret, ChallengeID: a.challenge, Response: a.options,
 				CredentialName: "Laptop", DeviceName: "test",
@@ -111,13 +123,17 @@ func TestTwoFirstKeysCannotBeRegisteredAtOnce(t *testing.T) {
 			if err != nil {
 				t.Errorf("finish %d: %v", i, err)
 			}
+
 			results[i] = got
 		}()
 	}
+
 	wg.Wait()
+
 	e.faults.wrap = nil
 
 	ok, refused := 0, 0
+
 	for _, r := range results {
 		switch {
 		case r.Outcome == passkey.OutcomeOK:
@@ -128,12 +144,15 @@ func TestTwoFirstKeysCannotBeRegisteredAtOnce(t *testing.T) {
 			t.Errorf("unexpected result %+v", r)
 		}
 	}
+
 	if ok != 1 || refused != 1 {
 		t.Errorf("%d registrations succeeded and %d were refused, want exactly one of each", ok, refused)
 	}
+
 	if n := len(e.credentials(user)); n != 1 {
 		t.Errorf("%d keys stored, want 1", n)
 	}
+
 	if n := e.unusedCodes(user); n != dpasskey.RecoveryCodeCount {
 		t.Errorf("%d recovery codes, want one set of %d", n, dpasskey.RecoveryCodeCount)
 	}
@@ -145,20 +164,25 @@ func TestRecoveryReplacesEveryOldKeyOnPostgres(t *testing.T) {
 
 	b := e.newBinding()
 	second := e.ticketFor(holder.user, dpasskey.TicketSecondFactor, b)
+
 	redeemed := e.redeem(second, b, holder.codes[0])
 	if redeemed.Outcome != passkey.OutcomeOK {
 		t.Fatalf("redeem = %+v", redeemed)
 	}
+
 	fresh := testutil.NewSoftAuthenticator(t, rpID, origin)
 	if got := e.enrollWith(holder.user, fresh, redeemed.TicketSecret, b); got.Outcome != passkey.OutcomeOK {
 		t.Fatalf("enroll after recovery = %+v", got)
 	}
+
 	if n := len(e.credentials(holder.user)); n != 1 {
 		t.Errorf("%d keys after the recovery, want only the new one", n)
 	}
+
 	if r := e.signIn(holder.auth, "", e.newBinding()); r.Outcome == passkey.OutcomeOK {
 		t.Error("the lost key signs in after the recovery")
 	}
+
 	if r := e.signIn(fresh, "", e.newBinding()); r.Outcome != passkey.OutcomeOK {
 		t.Errorf("the new key does not sign in: %+v", r)
 	}
@@ -171,21 +195,26 @@ func TestSignInAndRecoveryDoNotDeadlock(t *testing.T) {
 		e := newPostgresEnv(t)
 		holder := e.enroll()
 		b := e.newBinding()
+
 		redeemed := e.redeem(e.ticketFor(holder.user, dpasskey.TicketSecondFactor, b), b, holder.codes[0])
 		if redeemed.Outcome != passkey.OutcomeOK {
 			t.Fatalf("round %d: redeem = %+v", i, redeemed)
 		}
+
 		fresh := testutil.NewSoftAuthenticator(t, rpID, origin)
 
 		var wg sync.WaitGroup
+
 		wg.Add(2)
 		go func() { // the lost key keeps trying
 			defer wg.Done()
+
 			begun, err := e.beginLogin.Execute(context.Background(), passkey.BeginLoginCommand{})
 			if err != nil {
 				t.Errorf("round %d: begin login: %v", i, err)
 				return
 			}
+
 			if _, err := e.finishLogin.Execute(context.Background(), passkey.FinishLoginCommand{
 				ChallengeID: begun.ChallengeID, Response: holder.auth.Assert(begun.Options), BindingSecret: e.newBinding().secret, DeviceName: "x", ClientIP: clientAddr,
 			}); err != nil {
@@ -194,11 +223,13 @@ func TestSignInAndRecoveryDoNotDeadlock(t *testing.T) {
 		}()
 		go func() {
 			defer wg.Done()
+
 			begun, err := e.beginEnroll.Execute(context.Background(), passkey.BeginEnrollCommand{TicketSecret: redeemed.TicketSecret, BindingSecret: b.secret})
 			if err != nil || begun.Outcome != passkey.OutcomeOK {
 				t.Errorf("round %d: begin enroll = %+v, %v", i, begun, err)
 				return
 			}
+
 			got, err := e.finishEnroll.Execute(context.Background(), passkey.FinishEnrollCommand{
 				TicketSecret: redeemed.TicketSecret, BindingSecret: b.secret, ChallengeID: begun.ChallengeID, Response: fresh.Register(begun.Options),
 				CredentialName: "New", DeviceName: "test",
@@ -207,6 +238,7 @@ func TestSignInAndRecoveryDoNotDeadlock(t *testing.T) {
 				t.Errorf("round %d: finish enroll = %+v, %v", i, got, err)
 			}
 		}()
+
 		wg.Wait()
 	}
 }

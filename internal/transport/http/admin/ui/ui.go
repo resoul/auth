@@ -24,6 +24,7 @@ func Handler() http.Handler {
 	if err != nil {
 		panic(err) // the directory is part of the embed pattern
 	}
+
 	return NewHandler(sub)
 }
 
@@ -40,10 +41,12 @@ func NewHandler(fsys fs.FS) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
 		h.Set("Content-Security-Policy", contentSecurityPolicy)
+
 		name := strings.TrimPrefix(r.URL.Path, prefix)
 		switch {
 		case name == "" || name == "index.html":
 			name = "index.html"
+
 			h.Set("Cache-Control", "no-cache")
 		case strings.HasPrefix(name, "assets/"):
 			h.Set("Cache-Control", "public, max-age=31536000, immutable")
@@ -51,11 +54,13 @@ func NewHandler(fsys fs.FS) http.Handler {
 			http.NotFound(w, r)
 			return
 		}
+
 		clean := path.Clean(name)
 		if clean != name || strings.Contains(name, "..") {
 			http.NotFound(w, r)
 			return
 		}
+
 		file, err := fsys.Open(clean)
 		if err != nil {
 			if clean == "index.html" {
@@ -63,17 +68,23 @@ func NewHandler(fsys fs.FS) http.Handler {
 				h.Set("Content-Type", "text/plain; charset=utf-8")
 				w.WriteHeader(http.StatusServiceUnavailable)
 				_, _ = w.Write([]byte("The admin page is not built into this binary: put a build of it in internal/transport/http/admin/ui/dist and rebuild. The API works.\n"))
+
 				return
 			}
+
 			http.NotFound(w, r)
+
 			return
 		}
+
 		defer func() { _ = file.Close() }()
+
 		info, err := file.Stat()
 		if err != nil || info.IsDir() {
 			http.NotFound(w, r)
 			return
 		}
+
 		seeker, ok := file.(interface {
 			Read([]byte) (int, error)
 			Seek(int64, int) (int64, error)
@@ -82,6 +93,7 @@ func NewHandler(fsys fs.FS) http.Handler {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
+
 		http.ServeContent(w, r, clean, info.ModTime(), seeker)
 	})
 }

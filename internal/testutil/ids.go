@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"sync/atomic"
 
-	"airlance.org/auth/internal/application/port"
-	"airlance.org/auth/internal/domain/authflow"
-	"airlance.org/auth/internal/domain/identity"
-	"airlance.org/auth/internal/domain/operator"
-	"airlance.org/auth/internal/domain/passkey"
-	"airlance.org/auth/internal/domain/session"
-	"airlance.org/auth/internal/domain/token"
+	"go.airlance.org/auth/internal/application/port"
+	"go.airlance.org/auth/internal/domain/authflow"
+	"go.airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/domain/operator"
+	"go.airlance.org/auth/internal/domain/passkey"
+	"go.airlance.org/auth/internal/domain/session"
+	"go.airlance.org/auth/internal/domain/token"
 )
 
 var (
@@ -44,6 +44,7 @@ func (s *SequentialIDs) NewRecognizedClientID() (identity.RecognizedClientID, er
 func (s *SequentialIDs) NewFlowID() (authflow.FlowID, error) {
 	var raw [16]byte
 	binary.BigEndian.PutUint64(raw[8:], s.n.Add(1))
+
 	return authflow.NewFlowID(raw), nil
 }
 

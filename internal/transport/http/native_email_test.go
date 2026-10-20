@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"airlance.org/auth/internal/adapter/memory"
-	"airlance.org/auth/internal/application/port"
-	"airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/adapter/memory"
+	"go.airlance.org/auth/internal/application/port"
+	"go.airlance.org/auth/internal/domain/identity"
 )
 
 func TestNativeStartIssuesAFlowAndABindingToANewClient(t *testing.T) {
@@ -21,12 +21,15 @@ func TestNativeStartIssuesAFlowAndABindingToANewClient(t *testing.T) {
 	if res.FlowID == "" || res.ClientBinding == "" {
 		t.Fatalf("response = %+v, want a flow and a new binding", res)
 	}
+
 	if !res.ExpiresAt.Equal(t0.Add(10*time.Minute)) || !res.ResendAfter.Equal(t0.Add(time.Minute)) {
 		t.Errorf("expires_at = %v, resend_after = %v", res.ExpiresAt, res.ResendAfter)
 	}
+
 	if got := rec.Header().Get("Cache-Control"); got != "no-store" {
 		t.Errorf("Cache-Control = %q: the response carries a client secret", got)
 	}
+
 	if jobs := e.store.OutboxJobs(); len(jobs) != 1 || jobs[0].FlowID.String() != res.FlowID {
 		t.Errorf("outbox = %+v, want one job of the flow", jobs)
 	}
@@ -35,6 +38,7 @@ func TestNativeStartIssuesAFlowAndABindingToANewClient(t *testing.T) {
 func TestNativeStartWithAKnownBindingIssuesNoNewOne(t *testing.T) {
 	e := newEnv(t)
 	first := e.start("alice@example.test", "")
+
 	again := e.start("alice@example.test", first.ClientBinding)
 	if again.ClientBinding != "" || again.FlowID == first.FlowID {
 		t.Errorf("second start = %+v, want a new flow and no new binding", again)
@@ -48,12 +52,15 @@ func TestNativeStartLooksTheSameForNewAndExistingEmails(t *testing.T) {
 	fields := func(email string) []string {
 		rec := e.post(startPath, map[string]string{"email": email})
 		body := decode[map[string]any](t, rec, http.StatusAccepted)
+
 		return slices.Sorted(maps.Keys(body))
 	}
+
 	existing, unknown := fields("alice@example.test"), fields("bob@example.test")
 	if !slices.Equal(existing, unknown) {
 		t.Errorf("existing email gives %v, new email gives %v", existing, unknown)
 	}
+
 	if slices.Contains(existing, "user_id") || slices.Contains(existing, "is_existing_user") {
 		t.Errorf("start reveals the account: %v", existing)
 	}
@@ -76,6 +83,7 @@ func TestNativeStartRefusesMalformedInputAndWritesNothing(t *testing.T) {
 			wantProblem(t, e.postRaw(startPath, body), http.StatusBadRequest, "invalid_request")
 		})
 	}
+
 	if e.store.FlowCount() != 0 || len(e.store.OutboxJobs()) != 0 {
 		t.Error("a refused start wrote a flow or a mail")
 	}
@@ -96,12 +104,15 @@ func TestNativeVerifyIssuesATicketAndNoSession(t *testing.T) {
 	if rec.Header().Get("Cache-Control") != "no-store" {
 		t.Error("the response may be cached")
 	}
+
 	if len(body) != 3 || body["next"] != "enroll_passkey" || body["ticket"] == "" || body["expires_at"] == nil {
 		t.Errorf("body = %v, want next, ticket and expires_at only", body)
 	}
+
 	if _, ok := e.store.User(mustEmail(t, "alice@example.test")); !ok {
 		t.Error("the user of a proven email was not created")
 	}
+
 	if e.store.SessionCount() != 0 || e.store.TokenCount() != 0 {
 		t.Error("verify opened a session: that needs a passkey")
 	}
@@ -111,10 +122,12 @@ func TestNativeVerifyOfAUserWithAPasskeyAsksForTheSecondFactor(t *testing.T) {
 	e := newEnv(t)
 	e.signIn("alice@example.test")
 	started := e.start("alice@example.test", "")
+
 	step := decode[nextStepResponse](t, e.verify(started.FlowID, e.code(started.FlowID), started.ClientBinding), http.StatusOK)
 	if step.Next != "second_factor" || step.Ticket == "" {
 		t.Errorf("step = %+v", step)
 	}
+
 	if e.store.SessionCount() != 1 {
 		t.Errorf("%d sessions: a second factor ticket must not be a session", e.store.SessionCount())
 	}
@@ -125,6 +138,7 @@ func TestNativeVerifyRefusalsLookAlike(t *testing.T) {
 	started := e.start("alice@example.test", "")
 	other := e.start("bob@example.test", "")
 	code := e.code(started.FlowID)
+
 	wrong := "00000000"
 	if code == wrong {
 		wrong = "11111111"
@@ -143,6 +157,7 @@ func TestNativeVerifyRefusalsLookAlike(t *testing.T) {
 			wantProblem(t, e.post(verifyPath, body), http.StatusBadRequest, "invalid_code")
 		})
 	}
+
 	if e.store.SessionCount() != 0 {
 		t.Error("a refused verify created a session")
 	}
@@ -154,6 +169,7 @@ func TestNativeVerifyWorksOncePerFlow(t *testing.T) {
 	code := e.code(started.FlowID)
 	decode[nextStepResponse](t, e.verify(started.FlowID, code, started.ClientBinding), http.StatusOK)
 	wantProblem(t, e.verify(started.FlowID, code, started.ClientBinding), http.StatusBadRequest, "invalid_code")
+
 	if e.store.TicketCount() != 1 {
 		t.Errorf("%d tickets, want one", e.store.TicketCount())
 	}
@@ -171,12 +187,15 @@ func TestTechnicalFailureIsTemporarilyUnavailableAndLoggedOnce(t *testing.T) {
 	rec := e.post(startPath, map[string]string{"email": "alice@example.test"})
 
 	wantProblem(t, rec, http.StatusServiceUnavailable, "temporarily_unavailable")
+
 	if strings.Contains(rec.Body.String(), "boom") {
 		t.Errorf("the response leaks the internal error: %s", rec.Body)
 	}
+
 	if e.store.FlowCount() != 0 {
 		t.Error("the flow survived the failed enqueue")
 	}
+
 	logs := e.logs.String()
 	if strings.Count(logs, `"msg":"request failed"`) != 1 || !strings.Contains(logs, rec.Header().Get("X-Request-Id")) || !strings.Contains(logs, "boom") {
 		t.Errorf("want one error line with the request id and the cause:\n%s", logs)
@@ -185,9 +204,11 @@ func TestTechnicalFailureIsTemporarilyUnavailableAndLoggedOnce(t *testing.T) {
 
 func mustEmail(t *testing.T, s string) identity.Email {
 	t.Helper()
+
 	email, err := identity.ParseEmail(s)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	return email
 }

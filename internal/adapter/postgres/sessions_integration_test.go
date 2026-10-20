@@ -11,17 +11,17 @@ import (
 	"testing"
 	"time"
 
-	"airlance.org/auth/internal/adapter/crypto"
-	"airlance.org/auth/internal/adapter/id"
-	"airlance.org/auth/internal/adapter/jwt"
-	"airlance.org/auth/internal/adapter/metrics"
-	"airlance.org/auth/internal/adapter/postgres"
-	"airlance.org/auth/internal/application/port"
-	appsession "airlance.org/auth/internal/application/session"
-	"airlance.org/auth/internal/domain/identity"
-	"airlance.org/auth/internal/domain/session"
-	"airlance.org/auth/internal/domain/token"
-	"airlance.org/auth/internal/testutil"
+	"go.airlance.org/auth/internal/adapter/crypto"
+	"go.airlance.org/auth/internal/adapter/id"
+	"go.airlance.org/auth/internal/adapter/jwt"
+	"go.airlance.org/auth/internal/adapter/metrics"
+	"go.airlance.org/auth/internal/adapter/postgres"
+	"go.airlance.org/auth/internal/application/port"
+	appsession "go.airlance.org/auth/internal/application/session"
+	"go.airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/domain/session"
+	"go.airlance.org/auth/internal/domain/token"
+	"go.airlance.org/auth/internal/testutil"
 )
 
 const (
@@ -41,10 +41,12 @@ func insertSession(t *testing.T, db *sql.DB, id, user string) {
 
 func insertToken(t *testing.T, db *sql.DB, id, session, parent, hashSeed string) {
 	t.Helper()
+
 	var p any
 	if parent != "" {
 		p = parent
 	}
+
 	exec(t, db, `INSERT INTO refresh_tokens (id, session_id, family_id, parent_id, token_hash, created_at, expires_at)
 		VALUES ($1, $2, $3, $4, decode(repeat($5, 32), 'hex'), now(), now() + interval '30 days')`, id, session, family1, p, hashSeed)
 }
@@ -59,6 +61,7 @@ func TestSessionConstraints(t *testing.T) {
 			VALUES ($1, $2, ` + binding + `, ` + amr + `, ` + authTime + `, $3, ` + createdAt + `, ` + lastActive + `, ` + idleExp + `, ` + exp + `)`, []any{sess2, userID, device}
 	}
 	now := `now()`
+
 	tests := []struct {
 		name       string
 		constraint string
@@ -87,6 +90,7 @@ func TestSessionConstraints(t *testing.T) {
 			if tt.name == "duplicate id" {
 				id = sess1
 			}
+
 			query, args := insert(tt.binding, tt.amr, tt.device, tt.created, tt.lastActive, tt.idle, tt.expires, tt.authTime)
 			args[0] = id
 			mustViolate(t, db, tt.constraint, query, args...)
@@ -129,6 +133,7 @@ func TestOnlyOneLiveChildPerParent(t *testing.T) {
 	// Revoking the first child frees the slot, which keeps history for a replacement policy.
 	exec(t, db, `UPDATE refresh_tokens SET revoked_at = now() WHERE id = $1`, tok2)
 	exec(t, db, childQuery, tok3, sess1, family1, tok1)
+
 	if count(t, db, "refresh_tokens") != 3 {
 		t.Error("the revoked child must stay as history")
 	}
@@ -148,12 +153,14 @@ func TestSessionDeletionCascades(t *testing.T) {
 
 	t.Run("deleting a session deletes its tokens only", func(t *testing.T) {
 		exec(t, db, `DELETE FROM sessions WHERE id = $1`, sess1)
+
 		if count(t, db, "refresh_tokens") != 1 || count(t, db, "sessions") != 1 {
 			t.Errorf("sessions=%d tokens=%d", count(t, db, "sessions"), count(t, db, "refresh_tokens"))
 		}
 	})
 	t.Run("deleting a user deletes sessions and tokens", func(t *testing.T) {
 		exec(t, db, `DELETE FROM users WHERE id = $1`, userID)
+
 		if count(t, db, "sessions") != 0 || count(t, db, "refresh_tokens") != 0 {
 			t.Errorf("sessions=%d tokens=%d", count(t, db, "sessions"), count(t, db, "refresh_tokens"))
 		}
@@ -169,6 +176,7 @@ func TestDeletingAParentTokenDeletesItsDescendants(t *testing.T) {
 	insertToken(t, db, tok3, sess1, tok2, "cc")
 
 	exec(t, db, `DELETE FROM refresh_tokens WHERE id = $1`, tok1)
+
 	if n := count(t, db, "refresh_tokens"); n != 0 {
 		t.Errorf("%d descendants survived the deletion of their ancestor", n)
 	}
@@ -192,99 +200,128 @@ func newSessionApp(t *testing.T) *sessionApp {
 	t.Helper()
 	store, db := newStore(t)
 	a := &sessionApp{t: t, store: store, db: db, faults: &faultyUoW{inner: store}, clock: testutil.NewFakeClock(t0)}
+
 	var err error
+
 	secrets := crypto.Refresh{}
+
 	policy := session.DefaultPolicy()
 	if a.issuer, err = appsession.NewIssuer(appsession.IssuerDeps{SessionIDs: id.Generator{}, TokenIDs: id.Generator{}, Secrets: secrets, Policy: policy}); err != nil {
 		t.Fatal(err)
 	}
+
 	keys := testutil.NewSigningKeyPEM(t)
+
 	ring, err := jwt.LoadRing("sign-a", map[string]string{"sign-a": testutil.WriteFile(t, "a.pem", keys.Private)})
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	signer, err := jwt.NewSigner(ring, a.clock, "https://auth.example.test", "example", 5*time.Minute)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if a.refresh, err = appsession.NewRefresh(appsession.RefreshDeps{UnitOfWork: a.faults, Clock: a.clock, TokenIDs: id.Generator{}, Secrets: secrets, Signer: signer, Metrics: metrics.New(), Policy: policy}); err != nil {
 		t.Fatal(err)
 	}
+
 	if a.revoke, err = appsession.NewRevokeSession(appsession.RevokeDeps{UnitOfWork: a.faults, Clock: a.clock}); err != nil {
 		t.Fatal(err)
 	}
+
 	if a.revokeAll, err = appsession.NewRevokeAll(appsession.RevokeDeps{UnitOfWork: a.faults, Clock: a.clock}); err != nil {
 		t.Fatal(err)
 	}
+
 	return a
 }
 
 func (a *sessionApp) newUser(email string) *identity.User {
 	a.t.Helper()
+
 	uid, err := id.Generator{}.NewUserID()
 	if err != nil {
 		a.t.Fatal(err)
 	}
+
 	parsed, err := identity.ParseEmail(email)
 	if err != nil {
 		a.t.Fatal(err)
 	}
+
 	candidate, err := identity.NewUser(uid, parsed, a.clock.Now())
 	if err != nil {
 		a.t.Fatal(err)
 	}
+
 	var user *identity.User
+
 	err = a.store.Do(context.Background(), func(ctx context.Context, st port.Stores) error {
 		var err error
+
 		user, _, err = st.Users.Ensure(ctx, candidate)
+
 		return err
 	})
 	if err != nil {
 		a.t.Fatal(err)
 	}
+
 	return user
 }
 
 func (a *sessionApp) signIn(user *identity.User, device string) appsession.Issued {
 	a.t.Helper()
+
 	var issued appsession.Issued
+
 	err := a.store.Do(context.Background(), func(ctx context.Context, st port.Stores) error {
 		var err error
+
 		issued, err = a.issuer.Issue(ctx, st, a.clock.Now(), appsession.IssueParams{
 			UserID: user.ID(), Binding: testutil.BindingHash(device), AMR: []string{"otp"}, AuthTime: a.clock.Now(), DeviceName: device,
 		})
+
 		return err
 	})
 	if err != nil {
 		a.t.Fatalf("sign in: %v", err)
 	}
+
 	return issued
 }
 
 func (a *sessionApp) exchange(secret string) appsession.RefreshResult {
 	a.t.Helper()
+
 	res, err := a.refresh.Execute(context.Background(), appsession.RefreshCommand{RefreshSecret: secret})
 	if err != nil {
 		a.t.Errorf("refresh: %v", err)
 	}
+
 	return res
 }
 
 func (a *sessionApp) sessionRevoked(id session.ID) bool {
 	a.t.Helper()
+
 	var revoked bool
 	if err := a.db.QueryRow(`SELECT revoked_at IS NOT NULL FROM sessions WHERE id = $1`, id.String()).Scan(&revoked); err != nil {
 		a.t.Fatal(err)
 	}
+
 	return revoked
 }
 
 func (a *sessionApp) liveTokens(id session.ID) int {
 	a.t.Helper()
+
 	var n int
 	if err := a.db.QueryRow(`SELECT count(*) FROM refresh_tokens WHERE session_id = $1 AND revoked_at IS NULL`, id.String()).Scan(&n); err != nil {
 		a.t.Fatal(err)
 	}
+
 	return n
 }
 
@@ -293,18 +330,23 @@ func TestRefreshChainOnPostgres(t *testing.T) {
 	issued := a.signIn(a.newUser("alice@example.test"), "laptop")
 
 	secret := issued.RefreshSecret
+
 	for day := 1; day <= 5; day++ {
 		a.clock.Advance(24 * time.Hour)
+
 		res := a.exchange(secret)
 		if res.Outcome != appsession.OutcomeOK {
 			t.Fatalf("exchange %d = %+v", day, res)
 		}
+
 		secret = res.NewRefreshSecret
 	}
+
 	var total, used int
 	if err := a.db.QueryRow(`SELECT count(*), count(used_at) FROM refresh_tokens WHERE session_id = $1`, issued.Session.ID().String()).Scan(&total, &used); err != nil {
 		t.Fatal(err)
 	}
+
 	if total != 6 || used != 5 || a.liveTokens(issued.Session.ID()) != 6 {
 		t.Errorf("tokens=%d used=%d live=%d, want a chain of 6 with the last unused", total, used, a.liveTokens(issued.Session.ID()))
 	}
@@ -319,9 +361,11 @@ func TestReplayRevocationIsCommittedOnPostgres(t *testing.T) {
 	if replay.Outcome != appsession.OutcomeDenied || replay.Reason != appsession.ReasonTokenReused {
 		t.Fatalf("replay = %+v", replay)
 	}
+
 	if !a.sessionRevoked(issued.Session.ID()) || a.liveTokens(issued.Session.ID()) != 0 {
 		t.Errorf("revoked=%v live=%d: the revocation must be committed with the denial", a.sessionRevoked(issued.Session.ID()), a.liveTokens(issued.Session.ID()))
 	}
+
 	if res := a.exchange(child.NewRefreshSecret); res.Outcome != appsession.OutcomeDenied {
 		t.Errorf("the child of a replayed token still works: %+v", res)
 	}
@@ -332,32 +376,41 @@ func TestParallelRefreshOfOneTokenOnPostgres(t *testing.T) {
 	issued := a.signIn(a.newUser("alice@example.test"), "laptop")
 
 	const workers = 16
+
 	results := make([]appsession.RefreshResult, workers)
+
 	var wg sync.WaitGroup
 	for i := range results {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+
 			results[i] = a.exchange(issued.RefreshSecret)
 		}()
 	}
+
 	wg.Wait()
 
 	var winner *appsession.RefreshResult
+
 	for i := range results {
 		if results[i].Outcome == appsession.OutcomeOK {
 			if winner != nil {
 				t.Fatal("two parallel exchanges both succeeded")
 			}
+
 			winner = &results[i]
 		}
 	}
+
 	if winner == nil {
 		t.Fatal("no exchange succeeded")
 	}
+
 	if !a.sessionRevoked(issued.Session.ID()) || a.liveTokens(issued.Session.ID()) != 0 {
 		t.Error("strict policy: parallel use of one token must end the session")
 	}
+
 	if res := a.exchange(winner.NewRefreshSecret); res.Outcome != appsession.OutcomeDenied {
 		t.Errorf("the winner's child still works: %+v", res)
 	}
@@ -376,17 +429,23 @@ func raceRefreshAgainstSignOut(t *testing.T, i int) {
 	user := a.newUser("alice@example.test")
 	issued := a.signIn(user, "laptop")
 
-	var refreshRes appsession.RefreshResult
-	var revokeRes appsession.RevokeResult
-	var revokeErr error
-	var wg sync.WaitGroup
+	var (
+		refreshRes appsession.RefreshResult
+		revokeRes  appsession.RevokeResult
+		revokeErr  error
+		wg         sync.WaitGroup
+	)
+
 	wg.Add(2)
 	go func() { defer wg.Done(); refreshRes = a.exchange(issued.RefreshSecret) }()
 	go func() {
 		defer wg.Done()
+
 		revokeRes, revokeErr = a.revoke.Execute(context.Background(), appsession.RevokeSessionCommand{ActorUserID: user.ID(), SessionID: issued.Session.ID().String()})
 	}()
+
 	wg.Wait()
+
 	if revokeErr != nil || revokeRes.Outcome != appsession.OutcomeOK {
 		t.Fatalf("iteration %d: revoke = %+v, %v", i, revokeRes, revokeErr)
 	}
@@ -394,9 +453,11 @@ func raceRefreshAgainstSignOut(t *testing.T, i int) {
 	if !a.sessionRevoked(issued.Session.ID()) {
 		t.Fatalf("iteration %d: the session survived sign-out", i)
 	}
+
 	if live := a.liveTokens(issued.Session.ID()); live != 0 {
 		t.Fatalf("iteration %d: %d live tokens after sign-out (refresh: %+v)", i, live, refreshRes)
 	}
+
 	if refreshRes.Outcome == appsession.OutcomeOK {
 		if res := a.exchange(refreshRes.NewRefreshSecret); res.Outcome != appsession.OutcomeDenied {
 			t.Fatalf("iteration %d: a token issued during sign-out still works: %+v", i, res)
@@ -407,7 +468,9 @@ func raceRefreshAgainstSignOut(t *testing.T, i int) {
 func TestMixedRefreshAndRevokeAllNeverFailOrLeakTokens(t *testing.T) {
 	a := newSessionApp(t)
 	user := a.newUser("alice@example.test")
+
 	const devices = 6
+
 	issued := make([]appsession.Issued, devices)
 	for i := range issued {
 		issued[i] = a.signIn(user, string(rune('a'+i))+"-device")
@@ -415,23 +478,28 @@ func TestMixedRefreshAndRevokeAllNeverFailOrLeakTokens(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+
 	var wg sync.WaitGroup
 	for i := range issued {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+
 			if _, err := a.refresh.Execute(ctx, appsession.RefreshCommand{RefreshSecret: issued[i].RefreshSecret}); err != nil {
 				t.Errorf("refresh %d: %v", i, err)
 			}
 		}()
 	}
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+
 		if _, err := a.revokeAll.Execute(ctx, appsession.RevokeAllCommand{ActorUserID: user.ID()}); err != nil {
 			t.Errorf("revoke all: %v", err)
 		}
 	}()
+
 	wg.Wait()
 
 	for i := range issued {
@@ -450,13 +518,16 @@ func TestFailedExchangeRollsBackOnPostgres(t *testing.T) {
 	if !errors.Is(err, errBoom) {
 		t.Fatalf("error = %v, want boom", err)
 	}
+
 	var used, total int
 	if err := a.db.QueryRow(`SELECT count(*), count(used_at) FROM refresh_tokens WHERE session_id = $1`, issued.Session.ID().String()).Scan(&total, &used); err != nil {
 		t.Fatal(err)
 	}
+
 	if total != 1 || used != 0 {
 		t.Errorf("tokens=%d used=%d: the failed exchange must leave the token untouched", total, used)
 	}
+
 	a.faults.wrap = nil
 	if res := a.exchange(issued.RefreshSecret); res.Outcome != appsession.OutcomeOK {
 		t.Errorf("retry = %+v", res)
@@ -466,16 +537,19 @@ func TestFailedExchangeRollsBackOnPostgres(t *testing.T) {
 func TestIssueFailureRollsBackUserSessionAndTokens(t *testing.T) {
 	a := newSessionApp(t)
 	user := a.newUser("alice@example.test")
+
 	err := a.faults.Do(context.Background(), func(ctx context.Context, st port.Stores) error {
 		st.Tokens = failingTokenCreate{st.Tokens}
 		_, err := a.issuer.Issue(ctx, st, a.clock.Now(), appsession.IssueParams{
 			UserID: user.ID(), Binding: testutil.BindingHash("x"), AMR: []string{"otp"}, AuthTime: a.clock.Now(),
 		})
+
 		return err
 	})
 	if !errors.Is(err, errBoom) {
 		t.Fatalf("error = %v", err)
 	}
+
 	if count(t, a.db, "sessions") != 0 || count(t, a.db, "refresh_tokens") != 0 {
 		t.Error("a failed issue left rows behind")
 	}
@@ -497,6 +571,7 @@ func (h hookSessions) GetForUpdate(ctx context.Context, id session.ID) (*session
 	if err == nil {
 		h.afterLock()
 	}
+
 	return s, err
 }
 
@@ -512,6 +587,7 @@ func TestSignOutWaitsForARefreshInProgress(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	signedOut := make(chan appsession.RevokeResult, 1)
 	a.faults.wrap = func(s port.Stores) port.Stores {
 		s.Sessions = hookSessions{SessionRepository: s.Sessions, afterLock: func() {
@@ -520,19 +596,23 @@ func TestSignOutWaitsForARefreshInProgress(t *testing.T) {
 				if err != nil {
 					t.Errorf("sign-out: %v", err)
 				}
+
 				signedOut <- res
 			}()
 			// Give the sign-out time to run into the lock (or, without it, to finish).
 			time.Sleep(300 * time.Millisecond)
 		}}
+
 		return s
 	}
 
 	refreshed := a.exchange(issued.RefreshSecret)
 	a.faults.wrap = nil
+
 	if refreshed.Outcome != appsession.OutcomeOK {
 		t.Fatalf("refresh = %+v", refreshed)
 	}
+
 	if res := <-signedOut; res.Outcome != appsession.OutcomeOK {
 		t.Fatalf("sign-out = %+v", res)
 	}
@@ -540,9 +620,11 @@ func TestSignOutWaitsForARefreshInProgress(t *testing.T) {
 	if !a.sessionRevoked(issued.Session.ID()) {
 		t.Error("the session survived the sign-out")
 	}
+
 	if live := a.liveTokens(issued.Session.ID()); live != 0 {
 		t.Errorf("%d live tokens: the token issued during the sign-out was not revoked", live)
 	}
+
 	if res := a.exchange(refreshed.NewRefreshSecret); res.Outcome != appsession.OutcomeDenied {
 		t.Errorf("the new token works after the sign-out: %+v", res)
 	}

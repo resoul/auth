@@ -9,7 +9,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/domain/identity"
 )
 
 // Limits of a stored credential.
@@ -76,6 +76,7 @@ func NewCredential(p NewCredentialParams) (*Credential, error) {
 	if err := c.validate(); err != nil {
 		return nil, fmt.Errorf("new credential: %w", err)
 	}
+
 	return c, nil
 }
 
@@ -98,6 +99,7 @@ func (c *Credential) validate() error {
 	case !validName(c.name):
 		return ErrInvalidName
 	}
+
 	return nil
 }
 
@@ -112,11 +114,13 @@ func validName(name string) bool {
 // normalizeTransports keeps the known transports once each, in a stable order.
 func normalizeTransports(in []string) []string {
 	var out []string
+
 	for _, t := range transports {
 		if slices.Contains(in, t) {
 			out = append(out, t)
 		}
 	}
+
 	return out
 }
 
@@ -127,12 +131,15 @@ func (c *Credential) RecordUse(now time.Time, signCount uint32, backupState bool
 	if (c.signCount != 0 || signCount != 0) && signCount <= c.signCount {
 		return ErrCloneSuspected
 	}
+
 	if backupState && !c.backupEligible {
 		return errors.New("record use: a credential that is not backup eligible cannot be backed up")
 	}
+
 	c.signCount = signCount
 	c.backupState = backupState
 	c.lastUsedAt = now
+
 	return nil
 }
 
@@ -142,7 +149,9 @@ func (c *Credential) Rename(name string) error {
 	if !validName(name) {
 		return ErrInvalidName
 	}
+
 	c.name = name
+
 	return nil
 }
 
@@ -174,6 +183,7 @@ func RestoreCredential(r CredentialRecord) (*Credential, error) {
 	if err := c.validate(); err != nil {
 		return nil, fmt.Errorf("restore credential: %w", err)
 	}
+
 	return c, nil
 }
 
@@ -231,5 +241,6 @@ func UserHandle(id identity.UserID) []byte {
 	if err != nil {
 		panic(fmt.Sprintf("user id %q is not a uuid: %v", id, err)) // unreachable: UserID is validated
 	}
+
 	return raw
 }

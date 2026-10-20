@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"strings"
 
-	"airlance.org/auth/internal/application/port"
-	appsession "airlance.org/auth/internal/application/session"
-	"airlance.org/auth/internal/domain/identity"
-	dpasskey "airlance.org/auth/internal/domain/passkey"
-	dsession "airlance.org/auth/internal/domain/session"
+	"go.airlance.org/auth/internal/application/port"
+	appsession "go.airlance.org/auth/internal/application/session"
+	"go.airlance.org/auth/internal/domain/identity"
+	dpasskey "go.airlance.org/auth/internal/domain/passkey"
+	dsession "go.airlance.org/auth/internal/domain/session"
 )
 
 // Paging of the user list.
@@ -37,6 +37,7 @@ func NewUsers(d UsersDeps) (*Users, error) {
 	if d.UnitOfWork == nil || d.Clock == nil {
 		return nil, errors.New("new admin users: all dependencies are required")
 	}
+
 	return &Users{d}, nil
 }
 
@@ -65,6 +66,7 @@ func (u *Users) List(ctx context.Context, cmd ListUsersCommand) (ListUsersResult
 	if len(prefix) > maxAddress || len(after) > maxAddress {
 		return ListUsersResult{}, invalid("the search is longer than any address")
 	}
+
 	limit := cmd.Limit
 	switch {
 	case limit == 0:
@@ -72,8 +74,11 @@ func (u *Users) List(ctx context.Context, cmd ListUsersCommand) (ListUsersResult
 	case limit < 0 || limit > MaxPageSize:
 		return ListUsersResult{}, invalid("the page size must be between 1 and %d", MaxPageSize)
 	}
+
 	now := u.Clock.Now()
+
 	var result ListUsersResult
+
 	err := u.UnitOfWork.Do(ctx, func(ctx context.Context, st port.Stores) error {
 		if outcome, err := cmd.Actor.authorize(ctx, st, now, false); err != nil || outcome != OutcomeOK {
 			result.Outcome = outcome
@@ -84,16 +89,19 @@ func (u *Users) List(ctx context.Context, cmd ListUsersCommand) (ListUsersResult
 		if err != nil {
 			return fmt.Errorf("list users: %w", err)
 		}
+
 		result = ListUsersResult{Outcome: OutcomeOK, Users: users}
 		if len(users) > limit {
 			result.Users = users[:limit]
 			result.Next = users[limit-1].Email().String()
 		}
+
 		return nil
 	})
 	if err != nil {
 		return ListUsersResult{}, fmt.Errorf("list users: %w", err)
 	}
+
 	return result, nil
 }
 
@@ -124,39 +132,50 @@ func (u *Users) Get(ctx context.Context, cmd UserCommand) (GetResult, error) {
 	if err != nil {
 		return GetResult{Outcome: OutcomeNotFound}, nil
 	}
+
 	now := u.Clock.Now()
+
 	var result GetResult
+
 	err = u.UnitOfWork.Do(ctx, func(ctx context.Context, st port.Stores) error {
 		if outcome, err := cmd.Actor.authorize(ctx, st, now, false); err != nil || outcome != OutcomeOK {
 			result.Outcome = outcome
 			return err
 		}
+
 		user, err := st.Users.Get(ctx, id)
 		if errors.Is(err, port.ErrNotFound) {
 			result.Outcome = OutcomeNotFound
 			return nil
 		}
+
 		if err != nil {
 			return fmt.Errorf("load user: %w", err)
 		}
+
 		sessions, err := st.Sessions.ListActive(ctx, id, now, maxDetailSessions)
 		if err != nil {
 			return fmt.Errorf("list sessions: %w", err)
 		}
+
 		keys, err := st.Credentials.ListByUser(ctx, id)
 		if err != nil {
 			return fmt.Errorf("list credentials: %w", err)
 		}
+
 		left, err := st.Recovery.CountUnused(ctx, id)
 		if err != nil {
 			return fmt.Errorf("count recovery codes: %w", err)
 		}
+
 		result = GetResult{Outcome: OutcomeOK, Detail: UserDetail{User: user, Sessions: sessions, Keys: keys, RecoveryCodesLeft: left}}
+
 		return nil
 	})
 	if err != nil {
 		return GetResult{}, fmt.Errorf("get user: %w", err)
 	}
+
 	return result, nil
 }
 
@@ -176,35 +195,45 @@ func (u *Users) change(ctx context.Context, cmd UserCommand, fresh bool, operati
 	if err != nil {
 		return Result{Outcome: OutcomeNotFound}, nil
 	}
+
 	now := u.Clock.Now()
+
 	var result Result
+
 	err = u.UnitOfWork.Do(ctx, func(ctx context.Context, st port.Stores) error {
 		if outcome, err := cmd.Actor.authorize(ctx, st, now, fresh); err != nil || outcome != OutcomeOK {
 			result.Outcome = outcome
 			return err
 		}
+
 		user, err := st.Users.Get(ctx, id)
 		if errors.Is(err, port.ErrNotFound) {
 			result.Outcome = OutcomeNotFound
 			return nil
 		}
+
 		if err != nil {
 			return fmt.Errorf("load user: %w", err)
 		}
+
 		if result, err = apply(ctx, st, user); err != nil || result.Outcome != OutcomeOK {
 			return err
 		}
+
 		if err := act(ctx, st, now, cmd.Actor, about(id), operation); err != nil {
 			return err
 		}
+
 		if after != nil {
 			return after(ctx, st, user)
 		}
+
 		return nil
 	})
 	if err != nil {
 		return Result{}, fmt.Errorf("%s: %w", operation, err)
 	}
+
 	return result, nil
 }
 
@@ -212,16 +241,20 @@ func (u *Users) change(ctx context.Context, cmd UserCommand, fresh bool, operati
 // write takes the user's row, so a sign-in that is under way either sees it or is revoked right after.
 func (u *Users) Block(ctx context.Context, cmd UserCommand) (Result, error) {
 	now := u.Clock.Now()
+
 	return u.change(ctx, cmd, false, "block", func(ctx context.Context, st port.Stores, user *identity.User) (Result, error) {
 		if err := user.Block(now); err != nil {
 			return Result{}, err
 		}
+
 		if err := st.Users.SetBlocked(ctx, user); err != nil {
 			return Result{}, fmt.Errorf("store block: %w", err)
 		}
+
 		if err := appsession.RevokeEverything(ctx, st, user.ID(), now); err != nil {
 			return Result{}, fmt.Errorf("revoke sessions: %w", err)
 		}
+
 		return Result{Outcome: OutcomeOK}, nil
 	}, nil)
 }
@@ -229,13 +262,16 @@ func (u *Users) Block(ctx context.Context, cmd UserCommand) (Result, error) {
 // Unblock lets the user sign in again. The sessions that were ended stay ended.
 func (u *Users) Unblock(ctx context.Context, cmd UserCommand) (Result, error) {
 	now := u.Clock.Now()
+
 	return u.change(ctx, cmd, false, "unblock", func(ctx context.Context, st port.Stores, user *identity.User) (Result, error) {
 		if err := user.Unblock(now); err != nil {
 			return Result{}, err
 		}
+
 		if err := st.Users.SetBlocked(ctx, user); err != nil {
 			return Result{}, fmt.Errorf("store unblock: %w", err)
 		}
+
 		return Result{Outcome: OutcomeOK}, nil
 	}, nil)
 }
@@ -243,10 +279,12 @@ func (u *Users) Unblock(ctx context.Context, cmd UserCommand) (Result, error) {
 // RevokeSessions ends every session, token and recognition record of the user.
 func (u *Users) RevokeSessions(ctx context.Context, cmd UserCommand) (Result, error) {
 	now := u.Clock.Now()
+
 	return u.change(ctx, cmd, false, "revoke_sessions", func(ctx context.Context, st port.Stores, user *identity.User) (Result, error) {
 		if err := appsession.RevokeEverything(ctx, st, user.ID(), now); err != nil {
 			return Result{}, fmt.Errorf("revoke sessions: %w", err)
 		}
+
 		return Result{Outcome: OutcomeOK}, nil
 	}, nil)
 }
@@ -266,10 +304,12 @@ func (u *Users) Delete(ctx context.Context, cmd DeleteCommand) (Result, error) {
 		// An address that cannot be one cannot match: the same answer as a wrong address.
 		confirm = identity.Email{}
 	}
+
 	return u.change(ctx, cmd.UserCommand, true, "delete_user", func(ctx context.Context, st port.Stores, user *identity.User) (Result, error) {
 		if confirm.IsZero() || confirm != user.Email() {
 			return Result{Outcome: OutcomeConflict, Reason: ReasonConfirmMismatch}, nil
 		}
+
 		return Result{Outcome: OutcomeOK}, nil
 	}, func(ctx context.Context, st port.Stores, user *identity.User) error {
 		return st.Users.Delete(ctx, user.ID())

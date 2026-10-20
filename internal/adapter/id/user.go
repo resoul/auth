@@ -5,12 +5,12 @@ import (
 
 	"github.com/google/uuid"
 
-	"airlance.org/auth/internal/application/port"
-	"airlance.org/auth/internal/domain/identity"
-	"airlance.org/auth/internal/domain/operator"
-	"airlance.org/auth/internal/domain/passkey"
-	"airlance.org/auth/internal/domain/session"
-	"airlance.org/auth/internal/domain/token"
+	"go.airlance.org/auth/internal/application/port"
+	"go.airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/domain/operator"
+	"go.airlance.org/auth/internal/domain/passkey"
+	"go.airlance.org/auth/internal/domain/session"
+	"go.airlance.org/auth/internal/domain/token"
 )
 
 var _ port.UserIDGenerator = Generator{}
@@ -24,6 +24,7 @@ func (Generator) NewUserID() (identity.UserID, error) {
 	if err != nil {
 		return identity.UserID{}, fmt.Errorf("generate user id: %w", err)
 	}
+
 	return identity.ParseUserID(u.String())
 }
 
@@ -34,6 +35,7 @@ func (Generator) NewRecordID() (uuid.UUID, error) {
 	if err != nil {
 		return uuid.UUID{}, fmt.Errorf("generate record id: %w", err)
 	}
+
 	return u, nil
 }
 
@@ -49,6 +51,7 @@ func (Generator) NewSessionID() (session.ID, error) {
 	if err != nil {
 		return session.ID{}, fmt.Errorf("generate session id: %w", err)
 	}
+
 	return session.ParseID(u.String())
 }
 
@@ -58,6 +61,7 @@ func (Generator) NewRefreshTokenID() (token.ID, error) {
 	if err != nil {
 		return token.ID{}, fmt.Errorf("generate refresh token id: %w", err)
 	}
+
 	return token.ParseID(u.String())
 }
 
@@ -67,6 +71,7 @@ func (Generator) NewFamilyID() (token.FamilyID, error) {
 	if err != nil {
 		return token.FamilyID{}, fmt.Errorf("generate family id: %w", err)
 	}
+
 	return token.ParseFamilyID(u.String())
 }
 
@@ -76,6 +81,7 @@ func (Generator) NewRecognizedClientID() (identity.RecognizedClientID, error) {
 	if err != nil {
 		return identity.RecognizedClientID{}, fmt.Errorf("generate recognized client id: %w", err)
 	}
+
 	return identity.ParseRecognizedClientID(u.String())
 }
 
@@ -87,6 +93,7 @@ func (Generator) NewPasskeyID() (passkey.ID, error) {
 	if err != nil {
 		return passkey.ID{}, fmt.Errorf("generate passkey record id: %w", err)
 	}
+
 	return passkey.ParseID(u.String())
 }
 
@@ -98,6 +105,7 @@ func (Generator) NewOperatorID() (operator.ID, error) {
 	if err != nil {
 		return operator.ID{}, fmt.Errorf("generate operator id: %w", err)
 	}
+
 	return operator.ParseID(u.String())
 }
 
@@ -109,5 +117,6 @@ func (Generator) NewOIDCID() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("generate oidc id: %w", err)
 	}
+
 	return u.String(), nil
 }

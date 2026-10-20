@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/domain/identity"
 )
 
 // ErrEmailTaken reports a change to an address another user already has.

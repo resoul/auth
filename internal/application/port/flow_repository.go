@@ -3,7 +3,7 @@ package port
 import (
 	"context"
 
-	"airlance.org/auth/internal/domain/authflow"
+	"go.airlance.org/auth/internal/domain/authflow"
 )
 
 // FlowRepository stores flows.

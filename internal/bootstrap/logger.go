@@ -4,8 +4,8 @@ import (
 	"io"
 	"log/slog"
 
-	"airlance.org/auth/internal/config"
-	httpapi "airlance.org/auth/internal/transport/http"
+	"go.airlance.org/auth/internal/config"
+	httpapi "go.airlance.org/auth/internal/transport/http"
 )
 
 // NewLogger builds the process logger. Handlers log only the attributes passed
@@ -13,9 +13,11 @@ import (
 // context of a request carries its request_id without the caller passing it.
 func NewLogger(w io.Writer, cfg config.LogConfig) *slog.Logger {
 	opts := &slog.HandlerOptions{Level: cfg.Level}
+
 	var inner slog.Handler = slog.NewJSONHandler(w, opts)
 	if cfg.Format == config.LogFormatText {
 		inner = slog.NewTextHandler(w, opts)
 	}
+
 	return slog.New(httpapi.RequestIDHandler(inner))
 }

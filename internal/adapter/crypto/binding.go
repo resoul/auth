@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"io"
 
-	"airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/domain/identity"
 
-	"airlance.org/auth/internal/application/port"
+	"go.airlance.org/auth/internal/application/port"
 )
 
 var _ port.BindingSecrets = Binding{}
@@ -29,14 +29,17 @@ func (b Binding) NewBinding() (string, identity.BindingHash, error) {
 	if source == nil {
 		source = rand.Reader
 	}
+
 	raw := make([]byte, bindingSecretBytes)
 	if _, err := io.ReadFull(source, raw); err != nil {
 		return "", identity.BindingHash{}, fmt.Errorf("generate binding secret: %w", err)
 	}
+
 	hash, err := hashBinding(raw)
 	if err != nil {
 		return "", identity.BindingHash{}, err
 	}
+
 	return base64.RawURLEncoding.EncodeToString(raw), hash, nil
 }
 
@@ -47,6 +50,7 @@ func (Binding) HashBinding(secret string) (identity.BindingHash, error) {
 	if err != nil || len(raw) != bindingSecretBytes || base64.RawURLEncoding.EncodeToString(raw) != secret {
 		return identity.BindingHash{}, port.ErrInvalidBindingSecret
 	}
+
 	return hashBinding(raw)
 }
 

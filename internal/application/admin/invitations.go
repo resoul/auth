@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"time"
 
-	"airlance.org/auth/internal/application/port"
-	"airlance.org/auth/internal/domain/authflow"
-	"airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/application/port"
+	"go.airlance.org/auth/internal/domain/authflow"
+	"go.airlance.org/auth/internal/domain/identity"
 )
 
 // Invite allows an address to register, in the caller's transaction, and queues the email that announces
@@ -20,20 +20,25 @@ func Invite(ctx context.Context, st port.Stores, email identity.Email, now time.
 	if err != nil {
 		return nil, false, err
 	}
+
 	if _, err := st.Users.FindByEmail(ctx, email); err == nil {
 		return nil, true, nil
 	} else if !errors.Is(err, port.ErrNotFound) {
 		return nil, false, fmt.Errorf("look up user: %w", err)
 	}
+
 	if err := st.Invitations.Save(ctx, inv); err != nil {
 		return nil, false, fmt.Errorf("store invitation: %w", err)
 	}
+
 	if noMail {
 		return inv, false, nil
 	}
+
 	if err := st.Outbox.Enqueue(ctx, port.MailJob{Kind: port.JobInvitation, Recipient: email, QuotaClass: authflow.QuotaUnknown, AvailableAt: now}); err != nil {
 		return nil, false, fmt.Errorf("queue invitation mail: %w", err)
 	}
+
 	return inv, false, nil
 }
 
@@ -51,6 +56,7 @@ func NewInvitations(d InvitationsDeps) (*Invitations, error) {
 	if d.UnitOfWork == nil || d.Clock == nil {
 		return nil, errors.New("new admin invitations: all dependencies are required")
 	}
+
 	return &Invitations{d}, nil
 }
 
@@ -81,34 +87,44 @@ func (i *Invitations) Create(ctx context.Context, cmd CreateInvitationCommand) (
 	if err != nil {
 		return CreateInvitationResult{}, invalid("the address is not valid")
 	}
+
 	ttl := cmd.TTL
 	if ttl == 0 {
 		ttl = DefaultInvitationTTL
 	}
+
 	if ttl < identity.MinInvitationTTL || ttl > identity.MaxInvitationTTL {
 		return CreateInvitationResult{}, invalid("the lifetime must be between %v and %v", identity.MinInvitationTTL, identity.MaxInvitationTTL)
 	}
+
 	now := i.Clock.Now()
+
 	var result CreateInvitationResult
+
 	err = i.UnitOfWork.Do(ctx, func(ctx context.Context, st port.Stores) error {
 		if outcome, err := cmd.Actor.authorize(ctx, st, now, false); err != nil || outcome != OutcomeOK {
 			result.Outcome = outcome
 			return err
 		}
+
 		inv, registered, err := Invite(ctx, st, email, now, ttl, cmd.NoMail)
 		if err != nil {
 			return err
 		}
+
 		if registered {
 			result = CreateInvitationResult{Outcome: OutcomeConflict, Reason: ReasonAlreadyUser}
 			return nil
 		}
+
 		result = CreateInvitationResult{Outcome: OutcomeOK, Invitation: inv}
+
 		return act(ctx, st, now, cmd.Actor, noUser, "invite")
 	})
 	if err != nil {
 		return CreateInvitationResult{}, fmt.Errorf("invite: %w", err)
 	}
+
 	return result, nil
 }
 
@@ -123,22 +139,28 @@ type ListInvitationsResult struct {
 // List returns every invitation, active and expired, oldest first.
 func (i *Invitations) List(ctx context.Context, actor Actor) (ListInvitationsResult, error) {
 	now := i.Clock.Now()
+
 	var result ListInvitationsResult
+
 	err := i.UnitOfWork.Do(ctx, func(ctx context.Context, st port.Stores) error {
 		if outcome, err := actor.authorize(ctx, st, now, false); err != nil || outcome != OutcomeOK {
 			result.Outcome = outcome
 			return err
 		}
+
 		list, err := st.Invitations.List(ctx)
 		if err != nil {
 			return fmt.Errorf("list invitations: %w", err)
 		}
+
 		result = ListInvitationsResult{Outcome: OutcomeOK, Invitations: list, At: now}
+
 		return nil
 	})
 	if err != nil {
 		return ListInvitationsResult{}, fmt.Errorf("list invitations: %w", err)
 	}
+
 	return result, nil
 }
 
@@ -154,26 +176,34 @@ func (i *Invitations) Revoke(ctx context.Context, cmd RevokeInvitationCommand) (
 	if err != nil {
 		return Result{}, invalid("the address is not valid")
 	}
+
 	now := i.Clock.Now()
+
 	var result Result
+
 	err = i.UnitOfWork.Do(ctx, func(ctx context.Context, st port.Stores) error {
 		if outcome, err := cmd.Actor.authorize(ctx, st, now, false); err != nil || outcome != OutcomeOK {
 			result.Outcome = outcome
 			return err
 		}
+
 		removed, err := st.Invitations.Delete(ctx, email)
 		if err != nil {
 			return fmt.Errorf("delete invitation: %w", err)
 		}
+
 		if !removed {
 			result.Outcome = OutcomeNotFound
 			return nil
 		}
+
 		result.Outcome = OutcomeOK
+
 		return act(ctx, st, now, cmd.Actor, noUser, "uninvite")
 	})
 	if err != nil {
 		return Result{}, fmt.Errorf("revoke invitation: %w", err)
 	}
+
 	return result, nil
 }

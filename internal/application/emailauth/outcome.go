@@ -3,7 +3,7 @@ package emailauth
 import (
 	"errors"
 
-	"airlance.org/auth/internal/domain/authflow"
+	"go.airlance.org/auth/internal/domain/authflow"
 )
 
 // Outcome is the externally visible result class of a use case. Transports map
@@ -62,6 +62,7 @@ func denial(err error) (Outcome, Reason, bool) {
 	case errors.Is(err, authflow.ErrResendTooSoon):
 		return OutcomeRateLimited, ReasonResendPause, true
 	}
+
 	return "", "", false
 }
 

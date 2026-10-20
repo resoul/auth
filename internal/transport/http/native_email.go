@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"log/slog"
 
-	"airlance.org/auth/internal/application/emailauth"
-	"airlance.org/auth/internal/application/passkey"
-	"airlance.org/auth/internal/application/port"
-	appsession "airlance.org/auth/internal/application/session"
-	"airlance.org/auth/internal/domain/identity"
-	"airlance.org/auth/internal/transport/http/openapi"
+	"go.airlance.org/auth/internal/application/emailauth"
+	"go.airlance.org/auth/internal/application/passkey"
+	"go.airlance.org/auth/internal/application/port"
+	appsession "go.airlance.org/auth/internal/application/session"
+	"go.airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/transport/http/openapi"
 )
 
 // NativeStartEmail starts a flow. A new client gets its binding secret in the response.
@@ -20,10 +20,12 @@ func (a *API) NativeStartEmail(ctx context.Context, req openapi.NativeStartEmail
 	if req.Body.ClientBinding != nil {
 		cmd.BindingSecret = *req.Body.ClientBinding
 	}
+
 	res, err := a.start.Execute(ctx, cmd)
 	if errors.Is(err, identity.ErrInvalidEmail) || errors.Is(err, port.ErrInvalidBindingSecret) {
 		return openapi.NativeStartEmail400JSONResponse{InvalidRequestJSONResponse: openapi.InvalidRequestJSONResponse(problem(ctx, openapi.ErrorCodeInvalidRequest))}, nil
 	}
+
 	if err != nil {
 		return nil, err
 	}
@@ -33,17 +35,20 @@ func (a *API) NativeStartEmail(ctx context.Context, req openapi.NativeStartEmail
 		if res.Reason == emailauth.ReasonNotInvited || res.Reason == emailauth.ReasonBlocked {
 			a.denied(ctx, "start", string(res.Reason)) // the client sees an ordinary start; the operator sees the refusal
 		}
+
 		body := openapi.NativeStartEmail202JSONResponse{
 			FlowId: res.FlowID.String(), ExpiresAt: res.ExpiresAt, ResendAfter: res.ResendAfter,
 		}
 		if res.NewBindingSecret != "" {
 			body.ClientBinding = &res.NewBindingSecret
 		}
+
 		return body, nil
 	case emailauth.OutcomeRateLimited:
 		a.denied(ctx, "start", string(res.Reason))
 		return openapi.NativeStartEmail429JSONResponse{RateLimitedJSONResponse: openapi.RateLimitedJSONResponse(problem(ctx, openapi.ErrorCodeRateLimited))}, nil
 	}
+
 	return nil, fmt.Errorf("start: unexpected outcome %q", res.Outcome)
 }
 
@@ -67,6 +72,7 @@ func (a *API) NativeVerifyEmail(ctx context.Context, req openapi.NativeVerifyEma
 		a.denied(ctx, "verify", string(res.Reason))
 		return openapi.NativeVerifyEmail429JSONResponse{RateLimitedJSONResponse: openapi.RateLimitedJSONResponse(problem(ctx, openapi.ErrorCodeRateLimited))}, nil
 	}
+
 	return nil, fmt.Errorf("verify: unexpected outcome %q", res.Outcome)
 }
 
@@ -79,10 +85,12 @@ func verifiedNextStep(res emailauth.VerifyCodeResult) openapi.NextStepResponse {
 // someone may hold a secret they should not are warnings, so they show at the default level and can be alerted on.
 func (a *API) denied(ctx context.Context, operation, reason string) {
 	a.requests.AuthDenied(operation, reason)
+
 	level := slog.LevelDebug
 	if securitySignals[reason] {
 		level = slog.LevelWarn
 	}
+
 	a.logger.Log(ctx, level, "request denied", "operation", operation, "reason", reason)
 }
 

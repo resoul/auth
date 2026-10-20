@@ -10,13 +10,13 @@ import (
 	"testing"
 	"time"
 
-	"airlance.org/auth/internal/adapter/postgres"
-	"airlance.org/auth/internal/application/port"
-	"airlance.org/auth/internal/domain/authflow"
-	"airlance.org/auth/internal/domain/identity"
-	"airlance.org/auth/internal/domain/passkey"
-	"airlance.org/auth/internal/domain/session"
-	"airlance.org/auth/internal/testutil"
+	"go.airlance.org/auth/internal/adapter/postgres"
+	"go.airlance.org/auth/internal/application/port"
+	"go.airlance.org/auth/internal/domain/authflow"
+	"go.airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/domain/passkey"
+	"go.airlance.org/auth/internal/domain/session"
+	"go.airlance.org/auth/internal/testutil"
 )
 
 const (
@@ -36,6 +36,7 @@ type retention struct {
 func newRetention(t *testing.T) *retention {
 	store, db := newStore(t)
 	now := time.Date(2027, 1, 1, 12, 0, 0, 0, time.UTC)
+
 	return &retention{t: t, store: store, db: db, now: now, f: testutil.NewFactory(t, now)}
 }
 
@@ -47,6 +48,7 @@ func (r *retention) factory(at time.Time) *testutil.Factory {
 
 func (r *retention) do(fn func(ctx context.Context, s port.Stores) error) {
 	r.t.Helper()
+
 	if err := r.store.Do(context.Background(), fn); err != nil {
 		r.t.Fatal(err)
 	}
@@ -61,8 +63,10 @@ func (r *retention) flowExpiredAgo(ago time.Duration) authflow.FlowID {
 		if err := s.Flows.Create(ctx, flow); err != nil {
 			return err
 		}
+
 		return s.Outbox.Enqueue(ctx, port.MailJob{FlowID: flow.ID(), Generation: 1, QuotaClass: authflow.QuotaUnknown, AvailableAt: created})
 	})
+
 	return flow.ID()
 }
 
@@ -73,27 +77,33 @@ func (r *retention) user(at time.Time) *identity.User {
 		_, _, err := s.Users.Ensure(ctx, user)
 		return err
 	})
+
 	return user
 }
 
 // recognizedEndedAgo registers a record that expired (or, with revoke, was revoked) ago in the past.
 func (r *retention) recognizedEndedAgo(ago time.Duration, revoke bool) identity.RecognizedClientID {
 	r.t.Helper()
+
 	verified := r.now
 	if !revoke {
 		verified = r.now.Add(-ago).Add(-identity.RecognitionTTL)
 	}
+
 	user := r.user(verified)
 	rc := r.factory(verified).RecognizedClient(testutil.RecognizedSpec{User: user})
 	r.do(func(ctx context.Context, s port.Stores) error {
 		if _, err := s.Recognized.Register(ctx, rc); err != nil {
 			return err
 		}
+
 		if revoke {
 			return s.Recognized.Revoke(ctx, user.ID(), rc.Record().Binding, r.now.Add(-ago))
 		}
+
 		return nil
 	})
+
 	return rc.ID()
 }
 
@@ -107,30 +117,38 @@ type seededSession struct {
 // that was revoked ago in the past (revoke true), with a refresh token.
 func (r *retention) sessionEndedAgo(ago time.Duration, revoke bool) seededSession {
 	r.t.Helper()
+
 	created := r.now.Add(-ago).Add(-session.DefaultPolicy().IdleTTL)
 	if revoke {
 		created = r.now.Add(-ago).Add(-hour)
 	}
+
 	f := r.factory(created)
 	user := r.user(created)
 	sess := f.Session(testutil.SessionSpec{User: user})
 	root, _ := f.RefreshToken(testutil.RefreshSpec{Session: sess})
+
 	r.do(func(ctx context.Context, s port.Stores) error {
 		if err := s.Sessions.Create(ctx, sess); err != nil {
 			return err
 		}
+
 		if err := s.Tokens.Create(ctx, root); err != nil {
 			return err
 		}
+
 		if err := s.Audit.Record(ctx, port.AuditEvent{Type: port.AuditLoginSucceeded, Result: port.AuditSuccess, UserID: user.ID(), SessionID: sess.ID(), At: r.now.Add(-hour)}); err != nil {
 			return err
 		}
+
 		if revoke {
 			sess.Revoke(r.now.Add(-ago))
 			return s.Sessions.Save(ctx, sess)
 		}
+
 		return nil
 	})
+
 	return seededSession{id: sess.ID(), user: user, token: root.ID().String()}
 }
 
@@ -143,10 +161,12 @@ func (r *retention) auditAgo(ago time.Duration) {
 
 func (r *retention) exists(table, id string) bool {
 	r.t.Helper()
+
 	var n int
 	if err := r.db.QueryRow(fmt.Sprintf(`SELECT count(*) FROM %s WHERE id = $1`, table), id).Scan(&n); err != nil {
 		r.t.Fatal(err)
 	}
+
 	return n == 1
 }
 
@@ -154,10 +174,12 @@ func (r *retention) rows(table string) int { return count(r.t, r.db, table) }
 
 func (r *retention) sweep(p postgres.CleanupPolicy) postgres.CleanupResult {
 	r.t.Helper()
+
 	res, err := r.store.Cleanup(context.Background(), r.now, p)
 	if err != nil {
 		r.t.Fatal(err)
 	}
+
 	return res
 }
 
@@ -178,10 +200,12 @@ func TestCleanupDeletesOnlyWhatRetentionNoLongerKeeps(t *testing.T) {
 	add("expired 25h ago", r.flowExpiredAgo(25*hour), true)
 	add("expired 23h ago", r.flowExpiredAgo(23*hour), false)
 	add("still open", r.flowExpiredAgo(-5*time.Minute), false)
+
 	leased := r.flowExpiredAgo(30 * hour)
 	if _, err := r.db.Exec(`UPDATE outbox SET lease_until = $1 WHERE flow_id = $2`, r.now.Add(time.Minute), leased.String()); err != nil {
 		t.Fatal(err)
 	}
+
 	add("expired 30h ago with a live lease", leased, false)
 
 	rec := map[string]struct {
@@ -211,18 +235,22 @@ func TestCleanupDeletesOnlyWhatRetentionNoLongerKeeps(t *testing.T) {
 			t.Errorf("flow %s: exists = %v, want %v", name, got, !f.gone)
 		}
 	}
+
 	if res.Flows != 1 {
 		t.Errorf("flows deleted = %d, want 1", res.Flows)
 	}
+
 	var mails int
 	if err := r.db.QueryRow(`SELECT count(*) FROM outbox`).Scan(&mails); err != nil || mails != 3 {
 		t.Errorf("%d mails left (%v), want the 3 of the kept flows: the others went by cascade", mails, err)
 	}
+
 	for name, c := range rec {
 		if got := r.exists("recognized_clients", c.id.String()); got == c.gone {
 			t.Errorf("recognized client %s: exists = %v, want %v", name, got, !c.gone)
 		}
 	}
+
 	for name, c := range map[string]struct {
 		s    seededSession
 		gone bool
@@ -233,10 +261,12 @@ func TestCleanupDeletesOnlyWhatRetentionNoLongerKeeps(t *testing.T) {
 		if got := r.exists("sessions", c.s.id.String()); got == c.gone {
 			t.Errorf("session %s: exists = %v, want %v", name, got, !c.gone)
 		}
+
 		if got := r.exists("refresh_tokens", c.s.token); got == c.gone {
 			t.Errorf("token of the session %s: exists = %v, want %v (it goes with its session)", name, got, !c.gone)
 		}
 	}
+
 	if res.Sessions != 2 || res.RecognizedClients != 2 || res.AuditEvents != 1 {
 		t.Errorf("result = %+v", res)
 	}
@@ -246,12 +276,15 @@ func TestCleanupDeletesOnlyWhatRetentionNoLongerKeeps(t *testing.T) {
 	if err := r.db.QueryRow(`SELECT count(*) FILTER (WHERE session_id IS NOT NULL), count(*) FILTER (WHERE session_id IS NULL AND event = 'login.succeeded') FROM audit_events`).Scan(&withSession, &orphaned); err != nil {
 		t.Fatal(err)
 	}
+
 	if withSession != 3 || orphaned != 2 {
 		t.Errorf("audit rows with a session = %d, orphaned logins = %d; want 3 and 2", withSession, orphaned)
 	}
+
 	if n := r.rows("audit_events"); n != 6 {
 		t.Errorf("%d audit events, want 6 (5 logins and the 89-day reuse event)", n)
 	}
+
 	if n := r.rows("users"); n != 10 {
 		t.Errorf("%d users, want all 10: cleanup never deletes users", n)
 	}
@@ -267,6 +300,7 @@ func TestCleanupWorksInBoundedBatches(t *testing.T) {
 	for i := 0; i < 25; i++ {
 		r.flowExpiredAgo(48 * hour)
 	}
+
 	p := postgres.DefaultCleanupPolicy()
 	p.BatchSize, p.MaxBatches = 10, 2
 
@@ -274,6 +308,7 @@ func TestCleanupWorksInBoundedBatches(t *testing.T) {
 	if first.Flows != 20 || !first.More || r.rows("auth_flows") != 5 {
 		t.Fatalf("first sweep = %+v, %d flows left; want 20 deleted and More", first, r.rows("auth_flows"))
 	}
+
 	second := r.sweep(p)
 	if second.Flows != 5 || second.More || r.rows("auth_flows") != 0 {
 		t.Fatalf("second sweep = %+v, %d flows left", second, r.rows("auth_flows"))
@@ -282,30 +317,39 @@ func TestCleanupWorksInBoundedBatches(t *testing.T) {
 
 func TestConcurrentSweepsDeleteEachRowOnce(t *testing.T) {
 	r := newRetention(t)
+
 	const flows = 100
 	for i := 0; i < flows; i++ {
 		r.flowExpiredAgo(48 * hour)
 	}
+
 	p := postgres.DefaultCleanupPolicy()
 	p.BatchSize = 7
 
-	var mu sync.Mutex
-	var wg sync.WaitGroup
-	var total int64
+	var (
+		mu    sync.Mutex
+		wg    sync.WaitGroup
+		total int64
+	)
+
 	for i := 0; i < 4; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+
 			res, err := r.store.Cleanup(context.Background(), r.now, p)
 			if err != nil {
 				t.Errorf("Cleanup: %v", err)
 			}
+
 			mu.Lock()
 			total += res.Flows
 			mu.Unlock()
 		}()
 	}
+
 	wg.Wait()
+
 	if total != flows || r.rows("auth_flows") != 0 || r.rows("outbox") != 0 {
 		t.Errorf("deleted %d of %d flows, %d left, %d mails left", total, flows, r.rows("auth_flows"), r.rows("outbox"))
 	}
@@ -314,11 +358,14 @@ func TestConcurrentSweepsDeleteEachRowOnce(t *testing.T) {
 func TestCleanupStopsWhenItsContextEnds(t *testing.T) {
 	r := newRetention(t)
 	r.flowExpiredAgo(48 * hour)
+
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
+
 	if _, err := r.store.Cleanup(ctx, r.now, postgres.DefaultCleanupPolicy()); err == nil {
 		t.Error("a cancelled sweep reported success")
 	}
+
 	if r.rows("auth_flows") != 1 {
 		t.Error("a cancelled sweep deleted a row")
 	}
@@ -326,6 +373,7 @@ func TestCleanupStopsWhenItsContextEnds(t *testing.T) {
 
 func TestCleanupRefusesAnImpossiblePolicy(t *testing.T) {
 	r := newRetention(t)
+
 	for name, mod := range map[string]func(*postgres.CleanupPolicy){
 		"no batch":           func(p *postgres.CleanupPolicy) { p.BatchSize = 0 },
 		"no batch budget":    func(p *postgres.CleanupPolicy) { p.MaxBatches = 0 },
@@ -335,6 +383,7 @@ func TestCleanupRefusesAnImpossiblePolicy(t *testing.T) {
 	} {
 		p := postgres.DefaultCleanupPolicy()
 		mod(&p)
+
 		if _, err := r.store.Cleanup(context.Background(), r.now, p); err == nil {
 			t.Errorf("%s accepted", name)
 		}
@@ -349,24 +398,30 @@ func TestCleanupDeletesExpiredChallengesAndTickets(t *testing.T) {
 
 	challengeExpiredAgo := func(ago time.Duration, consume bool) passkey.ID {
 		created := r.now.Add(-ago).Add(-passkey.ChallengeTTL)
+
 		c := r.factory(created).Challenge(testutil.ChallengeSpec{Purpose: passkey.ChallengeLogin})
 		if consume {
 			if err := c.Consume(created.Add(time.Second), passkey.ChallengeLogin); err != nil {
 				t.Fatal(err)
 			}
 		}
+
 		r.do(func(ctx context.Context, s port.Stores) error { return s.Challenges.Create(ctx, c) })
+
 		return c.ID()
 	}
 	ticketExpiredAgo := func(ago time.Duration, use bool) passkey.ID {
 		created := r.now.Add(-ago).Add(-passkey.EnrollTicketTTL)
+
 		tk := r.factory(created).Ticket(testutil.TicketSpec{User: user})
 		if use {
 			if err := tk.Use(created.Add(time.Second), passkey.Presented{Kind: passkey.TicketEnroll, Binding: testutil.BindingHash(testutil.DefaultBindingSecret)}); err != nil {
 				t.Fatal(err)
 			}
 		}
+
 		r.do(func(ctx context.Context, s port.Stores) error { return s.Tickets.Create(ctx, tk) })
+
 		return tk.ID()
 	}
 
@@ -392,10 +447,12 @@ func TestCleanupDeletesExpiredChallengesAndTickets(t *testing.T) {
 	}
 	f := r.factory(r.now.Add(-100 * day))
 	cred := f.Credential(testutil.CredentialSpec{User: user})
+
 	r.do(func(ctx context.Context, s port.Stores) error {
 		if err := s.Credentials.Create(ctx, cred); err != nil {
 			return err
 		}
+
 		return s.Recovery.Replace(ctx, user.ID(), []*passkey.RecoveryCode{f.RecoveryCode(user, "old-code")})
 	})
 
@@ -406,17 +463,21 @@ func TestCleanupDeletesExpiredChallengesAndTickets(t *testing.T) {
 			t.Errorf("challenge %s: exists = %v, want %v", name, got, !c.gone)
 		}
 	}
+
 	for name, c := range tickets {
 		if got := r.exists("auth_tickets", c.id.String()); got == c.gone {
 			t.Errorf("ticket %s: exists = %v, want %v", name, got, !c.gone)
 		}
 	}
+
 	if res.Challenges != 2 || res.Tickets != 2 {
 		t.Errorf("result = %+v, want 2 challenges and 2 tickets", res)
 	}
+
 	if r.rows("passkey_credentials") != 1 || r.rows("recovery_codes") != 1 || r.rows("users") != 1 {
 		t.Error("a sweep touched credentials, recovery codes or users")
 	}
+
 	if again := r.sweep(postgres.DefaultCleanupPolicy()); again.Total() != 0 {
 		t.Errorf("second sweep = %+v", again)
 	}
@@ -424,29 +485,39 @@ func TestCleanupDeletesExpiredChallengesAndTickets(t *testing.T) {
 
 func (r *retention) auditEvent(e port.AuditEvent, ago time.Duration) {
 	r.t.Helper()
+
 	e.At = r.now.Add(-ago)
 	if e.Result == "" {
 		e.Result = port.AuditSuccess
 	}
+
 	r.do(func(ctx context.Context, s port.Stores) error { return s.Audit.Record(ctx, e) })
 }
 
 func (r *retention) auditEvents() map[string]int {
 	r.t.Helper()
+
 	rows, err := r.db.Query(`SELECT event || coalesce('/' || (fields ->> 'reason'), '') AS kind, count(*) FROM audit_events GROUP BY kind`)
 	if err != nil {
 		r.t.Fatal(err)
 	}
+
 	defer func() { _ = rows.Close() }()
+
 	out := map[string]int{}
+
 	for rows.Next() {
-		var kind string
-		var n int
+		var (
+			kind string
+			n    int
+		)
 		if err := rows.Scan(&kind, &n); err != nil {
 			r.t.Fatal(err)
 		}
+
 		out[kind] = n
 	}
+
 	return out
 }
 
@@ -458,6 +529,7 @@ func TestLastingAuditEventsOutliveTheOrdinaryOnes(t *testing.T) {
 		{Type: port.AuditRefreshReuse, Result: port.AuditDenied}, {Type: port.AuditSessionRevoked}, {Type: port.AuditAllSessionsRevoked},
 		{Type: port.AuditPasskeyRefused, Result: port.AuditDenied, Fields: map[string]string{"reason": "ceremony_failed"}},
 	}
+
 	lasting := []port.AuditEvent{
 		{Type: port.AuditPasskeyEnrolled}, {Type: port.AuditPasskeyDeleted}, {Type: port.AuditRecoveryCodeUsed},
 		{Type: port.AuditRecoveryRenewed}, {Type: port.AuditEmailChanged}, {Type: port.AuditAccountDeleted},
@@ -466,6 +538,7 @@ func TestLastingAuditEventsOutliveTheOrdinaryOnes(t *testing.T) {
 	for _, e := range append(append([]port.AuditEvent{}, ordinary...), lasting...) {
 		r.auditEvent(e, 120*day) // past the ordinary retention, inside the lasting one
 	}
+
 	for _, e := range lasting {
 		r.auditEvent(e, 30*day)
 	}
@@ -474,15 +547,18 @@ func TestLastingAuditEventsOutliveTheOrdinaryOnes(t *testing.T) {
 	if res.AuditEvents != int64(len(ordinary)) {
 		t.Errorf("deleted %d audit events, want the %d ordinary ones", res.AuditEvents, len(ordinary))
 	}
+
 	left := r.auditEvents()
 	if len(left) != len(lasting) {
 		t.Errorf("kinds left = %v, want only the %d lasting kinds", left, len(lasting))
 	}
+
 	for _, e := range lasting {
 		kind := string(e.Type)
 		if reason := e.Fields["reason"]; reason != "" {
 			kind += "/" + reason
 		}
+
 		if left[kind] != 2 {
 			t.Errorf("%s left %d times, want 2 (the 120-day and the 30-day one)", kind, left[kind])
 		}
@@ -491,10 +567,12 @@ func TestLastingAuditEventsOutliveTheOrdinaryOnes(t *testing.T) {
 	// A year and a day after the event the lasting ones go too, and only the old ones.
 	r.now = r.now.Add(246 * day) // the 120-day events are 366 days old now; the 30-day ones are 276
 	r.f.Clock.Set(r.now)
+
 	res = r.sweep(postgres.DefaultCleanupPolicy())
 	if res.AuditEvents != int64(len(lasting)) {
 		t.Errorf("second sweep deleted %d, want the %d events that passed a year", res.AuditEvents, len(lasting))
 	}
+
 	if r.rows("audit_events") != len(lasting) {
 		t.Errorf("%d audit events left, want the %d recent lasting ones", r.rows("audit_events"), len(lasting))
 	}
@@ -507,9 +585,11 @@ func TestLastingAuditEventsDoNotBlockTheSweepOfOrdinaryOnes(t *testing.T) {
 	for i := 0; i < 12; i++ {
 		r.auditEvent(port.AuditEvent{Type: port.AuditEmailChanged}, 200*day+time.Duration(i)*time.Minute)
 	}
+
 	for i := 0; i < 5; i++ {
 		r.auditEvent(port.AuditEvent{Type: port.AuditLoginSucceeded}, 100*day+time.Duration(i)*time.Minute)
 	}
+
 	p := postgres.DefaultCleanupPolicy()
 	p.BatchSize, p.MaxBatches = 2, 10
 
@@ -517,6 +597,7 @@ func TestLastingAuditEventsDoNotBlockTheSweepOfOrdinaryOnes(t *testing.T) {
 	if res.AuditEvents != 5 || res.More {
 		t.Errorf("deleted %d (more=%v), want the 5 ordinary events behind the 12 lasting ones", res.AuditEvents, res.More)
 	}
+
 	if left := r.auditEvents(); left["email.changed"] != 12 || left["login.succeeded"] != 0 {
 		t.Errorf("left = %v", left)
 	}
@@ -548,11 +629,14 @@ func TestCleanupDeletesInvitationsOnlyLongAfterTheyExpired(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		created := r.now.Add(expiresIn).Add(-identity.MinInvitationTTL)
+
 		inv, err := identity.NewInvitation(email, created, identity.MinInvitationTTL)
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		r.do(func(ctx context.Context, s port.Stores) error { return s.Invitations.Save(ctx, inv) })
 	}
 	seed("live@example.test", 24*time.Hour)       // still valid
@@ -564,6 +648,7 @@ func TestCleanupDeletesInvitationsOnlyLongAfterTheyExpired(t *testing.T) {
 	if res.Invitations != 2 {
 		t.Errorf("deleted %d invitations, want the 2 long expired ones", res.Invitations)
 	}
+
 	var left int
 	if err := r.db.QueryRow(`SELECT count(*) FROM invitations WHERE email IN ('live@example.test', 'just-expired@example.test')`).Scan(&left); err != nil || left != 2 || r.rows("invitations") != 2 {
 		t.Errorf("%d of the two kept invitations remain, %d in all, %v", left, r.rows("invitations"), err)
@@ -597,6 +682,7 @@ func TestCleanupDeletesTheMailOfOldInvitations(t *testing.T) {
 func TestCleanupDeletesOldNewDeviceMailAndAFinishedJobKeepsNoAddress(t *testing.T) {
 	r := newRetention(t)
 	insertUser(t, r.db, userID, "owner@example.test")
+
 	queue := func(age time.Duration) {
 		created := r.now.Add(-age)
 		if _, err := r.db.Exec(`INSERT INTO outbox (id, flow_id, generation, quota_class, kind, available_at, created_at, user_id, device_name, client_ip, event_at)
@@ -618,8 +704,10 @@ func TestCleanupDeletesOldNewDeviceMailAndAFinishedJobKeepsNoAddress(t *testing.
 		if err != nil {
 			return err
 		}
+
 		return s.Outbox.Complete(ctx, claimed.ID)
 	})
+
 	var kept int
 	if err := r.db.QueryRow(`SELECT count(*) FROM outbox WHERE client_ip IS NOT NULL`).Scan(&kept); err != nil || kept != 0 {
 		t.Errorf("%d jobs keep a client address after the mail went out, %v", kept, err)
@@ -651,11 +739,13 @@ func TestCleanupDeletesTheAdminAPIsShortLivedRows(t *testing.T) {
 	if res.OperatorRows != 2+2+2 {
 		t.Errorf("deleted %d admin rows, want 6", res.OperatorRows)
 	}
+
 	for table, want := range map[string]int{"operator_sessions": 2, "operator_enrollments": 2, "operator_challenges": 1} {
 		if got := r.rows(table); got != want {
 			t.Errorf("%s keeps %d rows, want %d", table, got, want)
 		}
 	}
+
 	if r.rows("operators") != 1 {
 		t.Error("the sweep removed an operator")
 	}
@@ -668,6 +758,7 @@ func TestOperatorCloneRefusalsOutliveOrdinaryAuditEvents(t *testing.T) {
 	old := r.now.Add(-100 * day) // past the ordinary 90 days, inside the long 365
 	record := func(e port.AuditEvent) {
 		e.At, e.OperatorID = old, op.ID()
+
 		r.do(func(ctx context.Context, s port.Stores) error { return s.Audit.Record(ctx, e) })
 	}
 	record(port.AuditEvent{Type: port.AuditOperatorLogin, Result: port.AuditSuccess})
@@ -678,30 +769,40 @@ func TestOperatorCloneRefusalsOutliveOrdinaryAuditEvents(t *testing.T) {
 	record(port.AuditEvent{Type: port.AuditOperatorChanged, Result: port.AuditSuccess, Fields: map[string]string{"operation": "create"}})
 
 	r.sweep(postgres.DefaultCleanupPolicy())
+
 	var kept []string
+
 	rows, err := r.db.Query(`SELECT event || '/' || result FROM audit_events ORDER BY event, result`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
+
 	for rows.Next() {
 		var s string
 		if err := rows.Scan(&s); err != nil {
 			t.Fatal(err)
 		}
+
 		kept = append(kept, s)
+	}
+
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
 	}
 	// An ordinary login (success or refusal) is gone; the long ones stay: acts, enrollments, changes and the copied key.
 	want := []string{"admin.action/success", "operator.changed/success", "operator.enrolled/success", "operator.login/denied"}
 	if len(kept) != len(want) {
 		t.Fatalf("kept %v, want %v", kept, want)
 	}
+
 	for i := range want {
 		if kept[i] != want[i] {
 			t.Errorf("kept %v, want %v", kept, want)
 			break
 		}
 	}
+
 	var denied int
 	if err := r.db.QueryRow(`SELECT count(*) FROM audit_events WHERE event = 'operator.login' AND fields ->> 'reason' = $1`, port.CloneSuspectedReason).Scan(&denied); err != nil || denied != 1 {
 		t.Errorf("the clone refusal: %d, %v", denied, err)
@@ -715,6 +816,7 @@ func TestCleanupDeletesDeviceRequestsAnHourAfterTheyExpired(t *testing.T) {
 		req := r.factory(r.now.Add(-age)).DeviceRequest(testutil.DeviceSpec{})
 		r.do(func(ctx context.Context, s port.Stores) error { return s.Devices.Create(ctx, req) })
 	}
+
 	res := r.sweep(postgres.DefaultCleanupPolicy())
 	if res.DeviceRequests != 2 || r.rows("device_requests") != 2 {
 		t.Errorf("deleted %d device requests, %d left; want 2 and 2", res.DeviceRequests, r.rows("device_requests"))

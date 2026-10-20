@@ -16,6 +16,7 @@ func (h requestIDHandler) Handle(ctx context.Context, r slog.Record) error {
 	if id := requestID(ctx); id != "" {
 		r.AddAttrs(slog.String("request_id", id))
 	}
+
 	return h.Handler.Handle(ctx, r)
 }
 

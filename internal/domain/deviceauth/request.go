@@ -8,9 +8,9 @@ import (
 	"regexp"
 	"time"
 
-	"airlance.org/auth/internal/domain/identity"
-	"airlance.org/auth/internal/domain/passkey"
-	"airlance.org/auth/internal/domain/session"
+	"go.airlance.org/auth/internal/domain/identity"
+	"go.airlance.org/auth/internal/domain/passkey"
+	"go.airlance.org/auth/internal/domain/session"
 )
 
 // Limits of a request.
@@ -51,6 +51,7 @@ func ParseRequestID(s string) (RequestID, error) {
 	if err != nil || len(raw) != requestIDBytes || base64.RawURLEncoding.EncodeToString(raw) != s {
 		return RequestID{}, errors.New("invalid device request id")
 	}
+
 	return RequestID{value: s}, nil
 }
 
@@ -81,6 +82,7 @@ func (s State) valid() bool {
 	case StatePending, StateApproved, StateDenied, StateRedeemed:
 		return true
 	}
+
 	return false
 }
 
@@ -125,6 +127,7 @@ func New(p NewParams, now time.Time) (*Request, error) {
 	if err := r.validate(); err != nil {
 		return nil, fmt.Errorf("new device request: %w", err)
 	}
+
 	return r, nil
 }
 
@@ -147,16 +150,20 @@ func (r *Request) validate() error {
 	case r.createdAt.IsZero() || !r.expiresAt.After(r.createdAt):
 		return errors.New("invalid lifetime")
 	}
+
 	approved := r.state == StateApproved || r.state == StateRedeemed
 	if approved && (r.userID.IsZero() || r.decidedAt.IsZero()) {
 		return errors.New("an approved request needs its approver and time")
 	}
+
 	if !approved && !r.userID.IsZero() {
 		return errors.New("only an approved request has an approver")
 	}
+
 	if (r.state == StateRedeemed) != !r.redeemedAt.IsZero() {
 		return errors.New("a request is redeemed exactly when it has a redemption time")
 	}
+
 	return nil
 }
 
@@ -175,15 +182,19 @@ func (r *Request) Approve(now time.Time, userID identity.UserID, sessionID sessi
 	case r.state != StatePending:
 		return ErrNotPending
 	}
+
 	if subtle.ConstantTimeCompare([]byte(typedCode), []byte(r.code)) != 1 {
 		r.attempts++
 		if r.attempts >= MaxAttempts {
 			r.state, r.decidedAt = StateDenied, now
 			return ErrAttemptsExhausted
 		}
+
 		return ErrWrongCode
 	}
+
 	r.state, r.userID, r.sessionID, r.decidedAt = StateApproved, userID, sessionID, now
+
 	return nil
 }
 
@@ -195,7 +206,9 @@ func (r *Request) Deny(now time.Time) error {
 	case r.state != StatePending:
 		return ErrNotPending
 	}
+
 	r.state, r.decidedAt = StateDenied, now
+
 	return nil
 }
 
@@ -205,13 +218,16 @@ func (r *Request) Redeem(now time.Time, pollHash passkey.SecretHash, binding ide
 	if pollHash.IsZero() || r.pollHash != pollHash || !r.binding.Equal(binding) {
 		return ErrMismatch
 	}
+
 	switch {
 	case !r.Live(now):
 		return ErrExpired
 	case r.state != StateApproved:
 		return ErrNotApproved
 	}
+
 	r.state, r.redeemedAt = StateRedeemed, now
+
 	return nil
 }
 
@@ -278,6 +294,7 @@ func Restore(rec Record) (*Request, error) {
 	if err := r.validate(); err != nil {
 		return nil, fmt.Errorf("restore device request: %w", err)
 	}
+
 	return r, nil
 }
 
