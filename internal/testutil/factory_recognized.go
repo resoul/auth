@@ -10,6 +10,8 @@ type RecognizedSpec struct {
 	User *identity.User
 	// BindingSecret defaults to DefaultBindingSecret.
 	BindingSecret string
+	// Email defaults to the email of User; a client may prove another address of the same user, such as a new one.
+	Email identity.Email
 }
 
 // RecognizedClient builds a record verified at the factory clock time.
@@ -30,7 +32,12 @@ func (f *Factory) RecognizedClient(spec RecognizedSpec) *identity.RecognizedClie
 		f.t.Fatalf("build recognized client id: %v", err)
 	}
 
-	c, err := identity.NewRecognizedClient(id, spec.User.ID(), spec.User.Email(), BindingHash(secret), f.Clock.Now())
+	email := spec.Email
+	if email.IsZero() {
+		email = spec.User.Email()
+	}
+
+	c, err := identity.NewRecognizedClient(id, spec.User.ID(), email, BindingHash(secret), f.Clock.Now())
 	if err != nil {
 		f.t.Fatalf("build recognized client: %v", err)
 	}

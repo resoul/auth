@@ -12,8 +12,6 @@ import (
 	"go.airlance.org/auth/internal/config"
 )
 
-// newOIDCCommand manages the clients of the OpenID Provider. It is run on the server by the operator and talks to the
-// database directly: there is no registration API.
 func newOIDCCommand() *cobra.Command {
 	oidc := &cobra.Command{
 		Use:   "oidc",
@@ -99,7 +97,6 @@ func newOIDCCommand() *cobra.Command {
 	return oidc
 }
 
-// newOIDCResourceCommand manages the APIs that access tokens are issued for, and what each application may ask of them.
 func newOIDCResourceCommand() *cobra.Command {
 	resource := &cobra.Command{
 		Use:   "resource",
@@ -195,6 +192,7 @@ func newOIDCResourceCommand() *cobra.Command {
 			},
 		}
 	}
+
 	resource.AddCommand(register, setScopes, allow, deny, rotateSecret,
 		simple("list", "List the APIs and what applications may ask of them", bootstrap.OIDCResourceList, cobra.NoArgs),
 		simple("disable ID", "Stop issuing tokens for an API and end every grant that holds it", bootstrap.OIDCResourceDisable, cobra.ExactArgs(1)),

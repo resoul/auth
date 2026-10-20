@@ -1,10 +1,11 @@
--- One record per (user, binding). Registering again renews it, revoked or not,
--- because the email was just proven again.
+-- One record per (user, binding). Registering again renews it, revoked or not, because the email was just proven
+-- again, and moves it to that email: after a change of address the client proved the new one.
 -- name: RegisterRecognizedClient :one
 INSERT INTO recognized_clients (id, user_id, email, binding_hash, verified_at, expires_at)
 VALUES ($1, $2, $3, $4, $5, $6)
 ON CONFLICT (user_id, binding_hash) DO UPDATE
-SET verified_at = EXCLUDED.verified_at,
+SET email       = EXCLUDED.email,
+    verified_at = EXCLUDED.verified_at,
     expires_at  = EXCLUDED.expires_at,
     revoked_at  = NULL
 RETURNING id, user_id, email, binding_hash, verified_at, expires_at, revoked_at;

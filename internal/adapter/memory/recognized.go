@@ -43,7 +43,7 @@ func (r *recognized) Register(_ context.Context, candidate *identity.RecognizedC
 		return candidate, nil
 	}
 
-	existing.Renew(candidate.VerifiedAt())
+	existing.Renew(candidate.Email(), candidate.VerifiedAt())
 	r.tx.recognized[key] = existing.Record()
 
 	return existing, nil

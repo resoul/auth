@@ -648,6 +648,51 @@ func recognizedContract(t *testing.T, newUoW NewUnitOfWork) {
 		}
 	})
 
+	t.Run("registering the pair again with a new address moves the record to it", func(t *testing.T) {
+		for name, revokeFirst := range map[string]bool{"revoked by the change": true, "still active": false} {
+			t.Run(name, func(t *testing.T) {
+				fx := setup(t)
+				first := register(t, fx, "device-a", contractNow)
+				changedAt := contractNow.Add(time.Hour)
+
+				if revokeFirst {
+					revoke(t, fx, "device-a", changedAt)
+				}
+
+				moved, err := identity.ParseEmail("moved@example.test")
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				later := changedAt.Add(time.Minute)
+				fx.f.Clock.Set(later)
+				candidate := fx.f.RecognizedClient(RecognizedSpec{User: fx.user, BindingSecret: "device-a", Email: moved})
+
+				var stored *identity.RecognizedClient
+
+				mustDo(t, fx.uow, func(ctx context.Context, s port.Stores) error {
+					var err error
+
+					stored, err = s.Recognized.Register(ctx, candidate)
+
+					return err
+				})
+
+				if stored.ID() != first.ID() || stored.Email() != moved {
+					t.Errorf("Register = id %s email %s, want id %s email %s", stored.ID(), stored.Email(), first.ID(), moved)
+				}
+
+				if got, err := findActive(t, fx, moved, "device-a", later); err != nil || got.ID() != first.ID() {
+					t.Errorf("FindActive(new address) = %+v, %v", got, err)
+				}
+
+				if got, err := findActive(t, fx, fx.user.Email(), "device-a", later); !errors.Is(err, port.ErrNotFound) {
+					t.Errorf("FindActive(old address) = %+v, %v; want ErrNotFound", got, err)
+				}
+			})
+		}
+	})
+
 	t.Run("registering the same pair again keeps one record", func(t *testing.T) {
 		fx := setup(t)
 		first := register(t, fx, "device-a", contractNow)
