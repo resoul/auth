@@ -108,6 +108,7 @@ func check(path string, fix bool) (int, error) {
 	}
 
 	found := 0
+
 	var breaks []int
 
 	for _, decl := range file.Decls {
