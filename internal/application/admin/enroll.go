@@ -190,7 +190,9 @@ func (a *Auth) FinishEnroll(ctx context.Context, cmd FinishEnrollCommand) (Finis
 			return nil
 		}
 
-		op, err := st.Operators.Get(ctx, enrollment.OperatorID())
+		// The operator is held while its keys are counted and the new one is stored: two enrollments of one operator, each
+		// with its own code, run one after the other, and the second counts the first one's key.
+		op, err := st.Operators.GetForUpdate(ctx, enrollment.OperatorID())
 		if err != nil {
 			return fmt.Errorf("load operator: %w", err)
 		}

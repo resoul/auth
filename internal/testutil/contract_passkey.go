@@ -1,6 +1,7 @@
 package testutil
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"reflect"
@@ -106,6 +107,33 @@ func credentialContract(t *testing.T, newUoW NewUnitOfWork) {
 		if !errors.Is(err, port.ErrCredentialConflict) {
 			t.Errorf("duplicate credential ID = %v, want ErrCredentialConflict", err)
 		}
+	})
+
+	t.Run("a refused duplicate leaves the transaction usable", func(t *testing.T) {
+		uow, f := newUoW(t), NewFactory(t, contractNow)
+		alice, bob := seedUser(t, uow, f, ""), seedUser(t, uow, f, "")
+		mustDo(t, uow, func(ctx context.Context, s port.Stores) error {
+			return s.Credentials.Create(ctx, f.Credential(CredentialSpec{User: alice, CredentialID: []byte("shared")}))
+		})
+
+		later := f.Credential(CredentialSpec{User: bob})
+
+		// A use case refuses the registration and records that in the same transaction, which must still commit.
+		mustDo(t, uow, func(ctx context.Context, s port.Stores) error {
+			if err := s.Credentials.Create(ctx, f.Credential(CredentialSpec{User: bob, CredentialID: []byte("shared")})); !errors.Is(err, port.ErrCredentialConflict) {
+				t.Errorf("duplicate credential ID = %v, want ErrCredentialConflict", err)
+			}
+
+			return s.Credentials.Create(ctx, later)
+		})
+		mustDo(t, uow, func(ctx context.Context, s port.Stores) error {
+			list, err := s.Credentials.ListByUser(ctx, bob.ID())
+			if err != nil || len(list) != 1 || !bytes.Equal(list[0].CredentialID(), later.CredentialID()) {
+				t.Errorf("keys of bob = %+v, %v; want only the one stored after the refusal", list, err)
+			}
+
+			return nil
+		})
 	})
 
 	t.Run("a use is saved, a rolled back use is not", func(t *testing.T) {

@@ -201,6 +201,18 @@ func (q *Queries) GetAuthTicketForUpdate(ctx context.Context, id uuid.UUID) (Aut
 	return i, err
 }
 
+const getAuthTicketOwner = `-- name: GetAuthTicketOwner :one
+SELECT user_id FROM auth_tickets WHERE id = $1
+`
+
+// The owner of a ticket, read without a lock: the user row is locked first, then the ticket row.
+func (q *Queries) GetAuthTicketOwner(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, getAuthTicketOwner, id)
+	var user_id uuid.UUID
+	err := row.Scan(&user_id)
+	return user_id, err
+}
+
 const getPasskeyChallengeForUpdate = `-- name: GetPasskeyChallengeForUpdate :one
 SELECT id, purpose, user_id, ticket_id, session_id, operation, data, created_at, expires_at, consumed_at
 FROM passkey_challenges

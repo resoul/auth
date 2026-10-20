@@ -291,6 +291,11 @@ func (u *FinishStepUp) Execute(ctx context.Context, cmd FinishStepUpCommand) (Fi
 // StepUpTicket loads the ticket a protected request presents and checks it is the actor's, for
 // this session and this operation. It does not use it up: the caller does that once the
 // operation is going to happen. ok is false when the request must run a step-up first.
+//
+// It takes the actor's user row exclusively before the ticket, as the first lock of the transaction: a protected
+// operation changes what the user signs in with, and the changes of one user run one after the other. Loading the
+// ticket alone would take the user shared, and two operations of one user that each held it shared would wait for
+// each other to take it exclusively.
 func StepUpTicket(ctx context.Context, st port.Stores, tickets port.TicketSecrets, secret string, actor appsession.Actor,
 	op dpasskey.Operation, now time.Time) (ticket *dpasskey.Ticket, ok bool, err error) {
 	hash, err := tickets.HashTicketSecret(secret)
@@ -300,6 +305,12 @@ func StepUpTicket(ctx context.Context, st port.Stores, tickets port.TicketSecret
 
 	if err != nil {
 		return nil, false, fmt.Errorf("step-up ticket: %w", err)
+	}
+
+	if _, err := st.Users.GetForUpdate(ctx, actor.UserID); errors.Is(err, port.ErrNotFound) {
+		return nil, false, nil
+	} else if err != nil {
+		return nil, false, fmt.Errorf("lock user: %w", err)
 	}
 
 	ticket, err = st.Tickets.GetByHashForUpdate(ctx, hash)

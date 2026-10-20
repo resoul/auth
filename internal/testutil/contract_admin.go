@@ -365,6 +365,11 @@ func operatorContract(t *testing.T, newUoW NewUnitOfWork) {
 				t.Errorf("Get = %+v, %v", got, err)
 			}
 
+			locked, err := s.Operators.GetForUpdate(ctx, first.ID())
+			if err != nil || locked.Record() != first.Record() {
+				t.Errorf("GetForUpdate = %+v, %v", locked, err)
+			}
+
 			byEmail, err := s.Operators.FindByEmail(ctx, second.Email())
 			if err != nil || byEmail.Record() != second.Record() {
 				t.Errorf("FindByEmail = %+v, %v", byEmail, err)
@@ -378,6 +383,10 @@ func operatorContract(t *testing.T, newUoW NewUnitOfWork) {
 			ghost := f.Operator(OperatorSpec{})
 			if _, err := s.Operators.Get(ctx, ghost.ID()); !errors.Is(err, port.ErrNotFound) {
 				t.Errorf("Get of an unknown operator = %v", err)
+			}
+
+			if _, err := s.Operators.GetForUpdate(ctx, ghost.ID()); !errors.Is(err, port.ErrNotFound) {
+				t.Errorf("GetForUpdate of an unknown operator = %v", err)
 			}
 
 			if _, err := s.Operators.FindByEmail(ctx, ghost.Email()); !errors.Is(err, port.ErrNotFound) {
@@ -567,6 +576,24 @@ func operatorCredentialContract(t *testing.T, newUoW NewUnitOfWork) {
 		if !errors.Is(err, port.ErrCredentialConflict) {
 			t.Errorf("a repeated credential ID = %v, want ErrCredentialConflict", err)
 		}
+
+		// A refused enrollment commits what it spent: the duplicate leaves the transaction usable.
+		later := f.OperatorCredential(a, nil)
+
+		mustDo(t, uow, func(ctx context.Context, s port.Stores) error {
+			if err := s.Operators.CreateCredential(ctx, f.OperatorCredential(b, keyA.CredentialID())); !errors.Is(err, port.ErrCredentialConflict) {
+				t.Errorf("a repeated credential ID = %v, want ErrCredentialConflict", err)
+			}
+
+			return s.Operators.CreateCredential(ctx, later)
+		})
+		mustDo(t, uow, func(ctx context.Context, s port.Stores) error {
+			if list, err := s.Operators.ListCredentials(ctx, a.ID()); err != nil || len(list) != 2 {
+				t.Errorf("keys of a = %d, %v; want the first and the one stored after the refusal", len(list), err)
+			}
+
+			return nil
+		})
 	})
 
 	t.Run("a user's key is not an operator's key", func(t *testing.T) {

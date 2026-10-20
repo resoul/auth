@@ -87,13 +87,6 @@ func (u *BeginEnroll) Execute(ctx context.Context, cmd BeginEnrollCommand) (Cere
 	var result CeremonyResult
 
 	err = u.UnitOfWork.Do(ctx, func(ctx context.Context, st port.Stores) error {
-		if found, err := lockTicketOwner(ctx, st, hash, false); err != nil {
-			return err
-		} else if !found {
-			result = CeremonyResult{Outcome: OutcomeDenied, Reason: ReasonBadTicket}
-			return nil
-		}
-
 		ticket, err := st.Tickets.GetByHashForUpdate(ctx, hash)
 		if errors.Is(err, port.ErrNotFound) {
 			result = CeremonyResult{Outcome: OutcomeDenied, Reason: ReasonBadTicket}
@@ -163,12 +156,13 @@ func (u *BeginEnroll) Execute(ctx context.Context, cmd BeginEnrollCommand) (Cere
 	return result, nil
 }
 
-// lockTicketOwner locks the user a presented ticket belongs to, before the ticket itself. A recovery holds its user and
-// spends every other ticket of that user (session.RevokeEverything), so a registration that took its ticket first and
-// the user second would hold what the recovery waits for while waiting for the recovery. With the user first, two
-// registrations of one user queue on it, and the second finds its ticket spent. The ticket is read without a lock only
-// to learn whose it is; the caller locks and checks it next. found is false when no ticket or user is there.
-func lockTicketOwner(ctx context.Context, st port.Stores, hash dpasskey.SecretHash, exclusive bool) (bool, error) {
+// lockTicketOwner locks the user a presented ticket belongs to exclusively, before the ticket itself. Finishing a
+// registration changes the user's keys, and a recovery spends every other ticket of the user (RevokeEverything):
+// loading the ticket takes the user shared, and two registrations that each held it shared would wait for each
+// other to take it exclusively. With the user taken exclusively first they queue, and the second finds its ticket
+// spent. The ticket is read without a lock only to learn whose it is; the caller locks and checks it next. found is
+// false when no ticket or user is there.
+func lockTicketOwner(ctx context.Context, st port.Stores, hash dpasskey.SecretHash) (bool, error) {
 	peek, err := st.Tickets.GetByHash(ctx, hash)
 	if errors.Is(err, port.ErrNotFound) {
 		return false, nil
@@ -178,12 +172,7 @@ func lockTicketOwner(ctx context.Context, st port.Stores, hash dpasskey.SecretHa
 		return false, fmt.Errorf("find ticket: %w", err)
 	}
 
-	lock := st.Users.GetForShare
-	if exclusive {
-		lock = st.Users.GetForUpdate
-	}
-
-	if _, err := lock(ctx, peek.UserID()); errors.Is(err, port.ErrNotFound) {
+	if _, err := st.Users.GetForUpdate(ctx, peek.UserID()); errors.Is(err, port.ErrNotFound) {
 		return false, nil
 	} else if err != nil {
 		return false, fmt.Errorf("lock user: %w", err)
@@ -335,7 +324,7 @@ func (u *FinishEnroll) Execute(ctx context.Context, cmd FinishEnrollCommand) (Fi
 	var result FinishEnrollResult
 
 	err = u.UnitOfWork.Do(ctx, func(ctx context.Context, st port.Stores) error {
-		if found, err := lockTicketOwner(ctx, st, hash, true); err != nil {
+		if found, err := lockTicketOwner(ctx, st, hash); err != nil {
 			return err
 		} else if !found {
 			result, _ = denied(ReasonBadTicket)

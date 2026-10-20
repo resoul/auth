@@ -220,7 +220,9 @@ func (u *FinishAddPasskey) Execute(ctx context.Context, cmd FinishAddCommand) (F
 			return fmt.Errorf("store challenge: %w", err)
 		}
 
-		user, err := st.Users.Get(ctx, cmd.Actor.UserID)
+		// The user is held exclusively (StepUpTicket took it) while the keys are counted and the new one is stored: two
+		// additions of one user run one after the other, and the second counts the first one's key.
+		user, err := st.Users.GetForUpdate(ctx, cmd.Actor.UserID)
 		if err != nil {
 			return fmt.Errorf("load user: %w", err)
 		}

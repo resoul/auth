@@ -507,3 +507,60 @@ func TestEndingASignInWaitsForAGrantBeingOpenedOnIt(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestATicketUseAndARevocationQueueOnTheUser(t *testing.T) {
+	store := testutil.PostgresStore(t)
+	f := testutil.NewFactory(t, time.Now())
+	user := f.User(testutil.UserSpec{})
+	ticket := f.Ticket(testutil.TicketSpec{User: user, Secret: "held"})
+
+	if err := store.Do(context.Background(), func(ctx context.Context, st port.Stores) error {
+		if _, _, err := st.Users.Ensure(ctx, user); err != nil {
+			return err
+		}
+
+		return st.Tickets.Create(ctx, ticket)
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// A sign-in with the ticket: locks the ticket, then wants the user. A recovery: holds the user, then spends every
+	// ticket. Loading the ticket takes the user first, so the recovery waits at the user and never holds what the
+	// sign-in waits for.
+	holding := make(chan struct{})
+	release, open := gate(t)
+	signIn := inTx(store, func(ctx context.Context, st port.Stores) error {
+		if _, err := st.Tickets.GetByHashForUpdate(ctx, testutil.SecretHash("held")); err != nil {
+			return err
+		}
+
+		close(holding)
+		<-release
+
+		_, err := st.Users.GetForShare(ctx, user.ID())
+
+		return err
+	})
+
+	<-holding
+
+	recovery := inTx(store, func(ctx context.Context, st port.Stores) error {
+		if _, err := st.Users.GetForUpdate(ctx, user.ID()); err != nil {
+			return err
+		}
+
+		return st.Tickets.RevokeAllForUser(ctx, user.ID(), ticket.SessionID(), time.Now())
+	})
+
+	time.Sleep(quiet) // the recovery is now waiting for the user
+
+	open()
+
+	if err := within(t, "the sign-in", signIn, 5*time.Second); err != nil {
+		t.Errorf("the sign-in = %v", err)
+	}
+
+	if err := within(t, "the recovery", recovery, 5*time.Second); err != nil {
+		t.Errorf("the recovery = %v", err)
+	}
+}

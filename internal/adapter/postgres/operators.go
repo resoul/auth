@@ -63,6 +63,24 @@ func (r *operators) Get(ctx context.Context, id operator.ID) (*operator.Operator
 	return operatorFromRow(row)
 }
 
+func (r *operators) GetForUpdate(ctx context.Context, id operator.ID) (*operator.Operator, error) {
+	u, err := operatorUUID(id)
+	if err != nil {
+		return nil, fmt.Errorf("get operator: %w", err)
+	}
+
+	row, err := r.q.GetOperatorForUpdate(ctx, u)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, port.ErrNotFound
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("get operator: %w", err)
+	}
+
+	return operatorFromRow(row)
+}
+
 func (r *operators) FindByEmail(ctx context.Context, email identity.Email) (*operator.Operator, error) {
 	row, err := r.q.GetOperatorByEmail(ctx, email.String())
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -245,19 +263,17 @@ func (r *operators) CreateCredential(ctx context.Context, c *passkey.Credential)
 		transports = []string{}
 	}
 
-	err = r.q.CreateOperatorCredential(ctx, sqlc.CreateOperatorCredentialParams{
+	n, err := r.q.CreateOperatorCredential(ctx, sqlc.CreateOperatorCredentialParams{
 		ID: id, OperatorID: owner, CredentialID: rec.CredentialID, PublicKey: rec.PublicKey, Aaguid: rec.AAGUID,
 		Transports: transports, SignCount: int64(rec.SignCount), BackupEligible: rec.BackupEligible,
 		BackupState: rec.BackupState, Name: rec.Name, CreatedAt: dbTime(rec.CreatedAt), LastUsedAt: dbTimePtr(rec.LastUsedAt),
 	})
-
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgErr.Code == pgUniqueViolation && pgErr.ConstraintName == "operator_credentials_credential_id_unique" {
-		return port.ErrCredentialConflict
-	}
-
 	if err != nil {
 		return fmt.Errorf("create operator credential: %w", err)
+	}
+
+	if n == 0 {
+		return port.ErrCredentialConflict
 	}
 
 	return nil
