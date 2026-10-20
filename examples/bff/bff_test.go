@@ -3,6 +3,7 @@ package bff_test
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
@@ -223,8 +224,18 @@ func TestSignInKeepsEverythingButACookieOnTheServer(t *testing.T) {
 	if sess == nil || !sess.HttpOnly || !sess.Secure || sess.Path != "/" || sess.Domain != "" || sess.SameSite != http.SameSiteLaxMode || sess.MaxAge <= 0 {
 		t.Fatalf("session cookie = %+v", sess)
 	}
-	// The cookie is an opaque identifier. It carries no token, and the store does not hold it.
-	for _, secret := range []string{"access-", "refresh-", "eyJ"} {
+	// The cookie is an opaque identifier: 256 random bits, with no room for a token, and none of the codes and tokens
+	// the provider handed out. A short pattern such as the start of a JWT would turn up in random bits now and then.
+	if raw, err := base64.RawURLEncoding.DecodeString(sess.Value); err != nil || len(raw) != 32 {
+		t.Errorf("the cookie is not 256 random bits: %q", sess.Value)
+	}
+
+	issued := w.prov.issued()
+	if len(issued) == 0 {
+		t.Fatal("the provider handed out nothing to look for")
+	}
+
+	for _, secret := range issued {
 		if strings.Contains(sess.Value, secret) {
 			t.Errorf("the cookie carries %q", secret)
 		}
@@ -561,7 +572,7 @@ func TestNothingThatCanBePresentedIsStoredOrLogged(t *testing.T) {
 	_ = key
 
 	logs := w.logs.String()
-	for _, secret := range []string{clientSecret, "access-", "refresh-", "code-", "eyJ", b.cookies["x"].String()} {
+	for _, secret := range append([]string{clientSecret, "access-", "refresh-", "code-", b.cookies["x"].String()}, w.prov.issued()...) {
 		if secret != "" && strings.Contains(logs, secret) {
 			t.Errorf("the log holds %q:\n%s", secret, logs)
 		}

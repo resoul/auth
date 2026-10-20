@@ -11,8 +11,6 @@ import (
 	"testing"
 )
 
-// client is a caller of the real server. As a browser tab it keeps cookies by hand: the
-// standard jar would not send Secure cookies over the plain loopback HTTP of a test.
 type client struct {
 	t       *testing.T
 	base    string
@@ -35,7 +33,6 @@ func (r reply) str(key string) string {
 	return v
 }
 
-// list returns a field that is a list of strings.
 func (r reply) list(key string) []string {
 	items, _ := r.Body[key].([]any)
 
@@ -49,7 +46,6 @@ func (r reply) list(key string) []string {
 	return out
 }
 
-// options returns the "options" field of a ceremony reply as the JSON a browser would receive.
 func (r reply) options() []byte {
 	data, err := json.Marshal(r.Body["options"])
 	if err != nil {
@@ -116,7 +112,6 @@ func (c *client) do(method, path string, body any, headers map[string]string) re
 	return out
 }
 
-// browser calls carry the fetch metadata a real page sends from its own origin.
 func (c *client) browser(method, path string, body any, token string) reply {
 	c.t.Helper()
 

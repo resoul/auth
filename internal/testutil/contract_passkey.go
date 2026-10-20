@@ -14,8 +14,6 @@ import (
 	"go.airlance.org/auth/internal/domain/session"
 )
 
-// passkeyContract checks the repositories of the strong factor: credentials, challenges,
-// tickets and recovery codes.
 func passkeyContract(t *testing.T, newUoW NewUnitOfWork) {
 	t.Run("credentials", func(t *testing.T) { credentialContract(t, newUoW) })
 	t.Run("challenges", func(t *testing.T) { challengeContract(t, newUoW) })
@@ -33,7 +31,6 @@ func credentialContract(t *testing.T, newUoW NewUnitOfWork) {
 		other := f.Credential(CredentialSpec{User: bob})
 
 		mustDo(t, uow, func(ctx context.Context, s port.Stores) error {
-			// Stored out of order: the listing orders by registration time.
 			for _, c := range []*passkey.Credential{second, other, first} {
 				if err := s.Credentials.Create(ctx, c); err != nil {
 					return err
@@ -118,7 +115,6 @@ func credentialContract(t *testing.T, newUoW NewUnitOfWork) {
 
 		later := f.Credential(CredentialSpec{User: bob})
 
-		// A use case refuses the registration and records that in the same transaction, which must still commit.
 		mustDo(t, uow, func(ctx context.Context, s port.Stores) error {
 			if err := s.Credentials.Create(ctx, f.Credential(CredentialSpec{User: bob, CredentialID: []byte("shared")})); !errors.Is(err, port.ErrCredentialConflict) {
 				t.Errorf("duplicate credential ID = %v, want ErrCredentialConflict", err)
@@ -255,8 +251,6 @@ func credentialContract(t *testing.T, newUoW NewUnitOfWork) {
 			return s.Credentials.Create(ctx, a2)
 		})
 
-		// The first transaction deletes a key and stays open. The second starts meanwhile: if
-		// it did not queue behind the first, it would also count two keys and delete the other.
 		deleted := make(chan struct{})
 
 		first := make(chan error, 1)
@@ -585,7 +579,6 @@ func ticketContract(t *testing.T, newUoW NewUnitOfWork) {
 			t.Errorf("a ticket of another user consumed at %v, want live", got)
 		}
 
-		// Without a kept session nothing live stays; an expired ticket is left as it is.
 		fresh := f.Ticket(TicketSpec{User: alice})
 		late := contractNow.Add(passkey.StepUpTicketTTL + time.Minute)
 

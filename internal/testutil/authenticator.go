@@ -13,31 +13,19 @@ import (
 	"github.com/fxamacker/cbor/v2"
 )
 
-// SoftAuthenticator is a software WebAuthn authenticator with one ES256 credential. It
-// builds the JSON a browser would send after navigator.credentials.create and .get, so
-// tests run the real ceremonies without a browser. The exported fields are the knobs of
-// negative tests: change one and the next response is wrong in exactly that way.
 type SoftAuthenticator struct {
-	t   testing.TB
-	key *ecdsa.PrivateKey
-	// CredentialID is the ID the authenticator registers under.
-	CredentialID []byte
-	// RPID and Origin are what the authenticator believes it talks to.
-	RPID   string
-	Origin string
-	// UserHandle is learned at registration from the options.
-	UserHandle []byte
-	// SignCount is the counter reported by the next assertion; Assert increments it first.
-	// Set Synced to report zero, as synced passkeys do.
-	SignCount uint32
-	Synced    bool
-	// SkipUserVerification clears the UV flag, as an authenticator that could not verify the user.
-	SkipUserVerification bool
-	// BackupEligible and BackupState are the BE and BS flags.
+	t                           testing.TB
+	key                         *ecdsa.PrivateKey
+	CredentialID                []byte
+	RPID                        string
+	Origin                      string
+	UserHandle                  []byte
+	SignCount                   uint32
+	Synced                      bool
+	SkipUserVerification        bool
 	BackupEligible, BackupState bool
 }
 
-// NewSoftAuthenticator returns an authenticator for a relying party.
 func NewSoftAuthenticator(t testing.TB, rpID, origin string) *SoftAuthenticator {
 	t.Helper()
 
@@ -71,7 +59,6 @@ type requestOptions struct {
 	} `json:"publicKey"`
 }
 
-// Register answers the registration options with an attestation of format none.
 func (a *SoftAuthenticator) Register(options []byte) []byte {
 	a.t.Helper()
 
@@ -121,7 +108,6 @@ func (a *SoftAuthenticator) Register(options []byte) []byte {
 	})
 }
 
-// Assert answers the request options with a signed assertion.
 func (a *SoftAuthenticator) Assert(options []byte) []byte {
 	a.t.Helper()
 

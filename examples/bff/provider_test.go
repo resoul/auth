@@ -89,7 +89,8 @@ type provider struct {
 	revoked       []string
 	issParam      bool
 	onExchange    func(sid string)
-	fixedSID      string // when set, every sign-in carries it: the provider's session survived
+	fixedSID      string   // when set, every sign-in carries it: the provider's session survived
+	presentable   []string // every code and token handed out, which must never reach the browser or the log
 }
 
 type codeInfo struct {
@@ -179,6 +180,23 @@ func (p *provider) random(prefix string) string {
 	return prefix + strconv.Itoa(p.n) + "-" + base64.RawURLEncoding.EncodeToString(raw)
 }
 
+// secret is random for a code or token: something that can be presented, so it is remembered for the leak checks.
+// The caller holds mu.
+func (p *provider) secret(prefix string) string {
+	v := p.random(prefix)
+	p.presentable = append(p.presentable, v)
+
+	return v
+}
+
+// issued returns every code and token the provider has handed out.
+func (p *provider) issued() []string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	return append([]string(nil), p.presentable...)
+}
+
 // issue makes the code a provider would put in the address of the browser's return.
 func (p *provider) issue(authorizeURL string) (code string) {
 	u, err := url.Parse(authorizeURL)
@@ -191,7 +209,7 @@ func (p *provider) issue(authorizeURL string) (code string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	code = p.random("code-")
+	code = p.secret("code-")
 	p.codes[code] = &codeInfo{challenge: q.Get("code_challenge"), redirect: q.Get("redirect_uri"), nonce: q.Get("nonce")}
 
 	return code
@@ -237,9 +255,12 @@ func (p *provider) idToken(nonce, sid string) string {
 		nonce = p.nonceFor
 	}
 
-	return p.sign("JWT", "", map[string]any{
+	v := p.sign("JWT", "", map[string]any{
 		"iss": p.srv.URL, "sub": p.subject, "aud": aud, "exp": exp.Unix(), "iat": now.Unix(), "nonce": nonce, "sid": sid, "auth_time": now.Unix(),
 	}, nil)
+	p.presentable = append(p.presentable, v)
+
+	return v
 }
 
 // logoutToken is the notice of a sign-in that ended, with every field the test may spoil.
@@ -298,9 +319,9 @@ func (p *provider) token(w http.ResponseWriter, r *http.Request) {
 		}
 
 		info.used = true
-		g := &grant{sub: p.subject, sid: p.newSID(), token: p.random("refresh-"), used: map[string]bool{}}
+		g := &grant{sub: p.subject, sid: p.newSID(), token: p.secret("refresh-"), used: map[string]bool{}}
 		p.grants[g.token] = g
-		access := p.random("access-")
+		access := p.secret("access-")
 		p.access[access] = ""
 
 		hook := p.onExchange
@@ -323,7 +344,7 @@ func (p *provider) token(w http.ResponseWriter, r *http.Request) {
 			// The provider acts and the answer is lost on the way back.
 			if g := p.grants[r.PostForm.Get("refresh_token")]; g != nil && !g.used[g.token] && g.token == r.PostForm.Get("refresh_token") {
 				g.used[g.token] = true
-				g.token = p.random("refresh-")
+				g.token = p.secret("refresh-")
 				p.grants[g.token] = g
 			}
 
@@ -343,7 +364,7 @@ func (p *provider) token(w http.ResponseWriter, r *http.Request) {
 		if p.refreshLost != 0 {
 			if g := p.grants[r.PostForm.Get("refresh_token")]; g != nil && !g.used[g.token] && g.token == r.PostForm.Get("refresh_token") {
 				g.used[g.token] = true
-				g.token = p.random("refresh-")
+				g.token = p.secret("refresh-")
 				p.grants[g.token] = g
 			}
 
@@ -381,9 +402,9 @@ func (p *provider) token(w http.ResponseWriter, r *http.Request) {
 		}
 
 		g.used[presented] = true
-		g.token = p.random("refresh-")
+		g.token = p.secret("refresh-")
 		p.grants[g.token] = g
-		access := p.random("access-")
+		access := p.secret("access-")
 		p.access[access] = resource
 		p.refreshes = append(p.refreshes, resource)
 

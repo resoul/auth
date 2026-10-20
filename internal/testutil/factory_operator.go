@@ -8,13 +8,10 @@ import (
 	"go.airlance.org/auth/internal/domain/passkey"
 )
 
-// OperatorSpec overrides the fields a scenario cares about.
 type OperatorSpec struct {
-	// Email defaults to a unique address under example.test.
 	Email string
 }
 
-// Operator builds an operator created at the factory clock time.
 func (f *Factory) Operator(spec OperatorSpec) *operator.Operator {
 	f.t.Helper()
 
@@ -41,7 +38,6 @@ func (f *Factory) Operator(spec OperatorSpec) *operator.Operator {
 	return o
 }
 
-// OperatorCredential builds a key of an operator: a credential whose owner is the operator's Owner.
 func (f *Factory) OperatorCredential(o *operator.Operator, credentialID []byte) *passkey.Credential {
 	f.t.Helper()
 
@@ -65,7 +61,6 @@ func (f *Factory) OperatorCredential(o *operator.Operator, credentialID []byte) 
 	return c
 }
 
-// Enrollment builds an enrollment code of an operator and returns it with the secret whose hash it keeps.
 func (f *Factory) Enrollment(o *operator.Operator, secret string) *operator.Enrollment {
 	f.t.Helper()
 
@@ -86,7 +81,6 @@ func (f *Factory) Enrollment(o *operator.Operator, secret string) *operator.Enro
 	return e
 }
 
-// OperatorSession builds a session of an operator whose cookie secret is secret.
 func (f *Factory) OperatorSession(o *operator.Operator, secret string) *operator.Session {
 	f.t.Helper()
 

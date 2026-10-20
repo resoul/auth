@@ -13,15 +13,11 @@ import (
 	"testing"
 )
 
-// SigningKeyPEM is a freshly generated ES256 key in the two file formats the
-// keyring accepts.
 type SigningKeyPEM struct {
-	// Private is PKCS#8 ("PRIVATE KEY"); Public is PKIX ("PUBLIC KEY").
 	Private []byte
 	Public  []byte
 }
 
-// NewSigningKeyPEM generates a P-256 key pair.
 func NewSigningKeyPEM(t testing.TB) SigningKeyPEM {
 	t.Helper()
 
@@ -52,7 +48,6 @@ func pemOf(t testing.TB, key *ecdsa.PrivateKey) SigningKeyPEM {
 	}
 }
 
-// WriteFile writes content under a fresh temporary directory and returns the path.
 func WriteFile(t testing.TB, name string, content []byte) string {
 	t.Helper()
 
@@ -69,8 +64,6 @@ var (
 	rsaPEM  SigningKeyPEM
 )
 
-// NewRSAKeyPEM returns an RSA-2048 key pair in the two file formats the OIDC keyring accepts. Generating one takes
-// a moment, so a test process makes it once and every test shares it: nothing in a test depends on the key being new.
 func NewRSAKeyPEM(t testing.TB) SigningKeyPEM {
 	t.Helper()
 	rsaOnce.Do(func() {

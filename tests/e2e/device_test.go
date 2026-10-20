@@ -10,7 +10,6 @@ import (
 	"time"
 )
 
-// stepUpFor runs the passkey proof of the native phone for one operation and returns the token.
 func stepUpFor(t *testing.T, s *stack, c *client, me nativeSession, email, operation string) string {
 	t.Helper()
 
@@ -32,7 +31,7 @@ func TestAPageSignsInWithTheApprovalOfAPhoneOnTheRealService(t *testing.T) {
 	phoneClient := newClient(s)
 	email := uniqueEmail(t, "owner")
 	phone := nativeSignIn(t, s, phoneClient, email, "")
-	page := newClient(s) // a browser tab with no session
+	page := newClient(s)
 
 	started := page.browser(http.MethodPost, "/v1/auth/device/start", map[string]string{"device_name": "Office laptop"}, "")
 	want(t, started, http.StatusOK, "")
@@ -61,12 +60,11 @@ func TestAPageSignsInWithTheApprovalOfAPhoneOnTheRealService(t *testing.T) {
 	if got := status(page); got != "pending" {
 		t.Fatalf("state = %s", got)
 	}
-	// Another browser holding only the identifier, as a scanner of the QR code does, is refused.
+
 	if got := status(newClient(s)); got != "refused" {
 		t.Errorf("the QR code alone read the status: %s", got)
 	}
 
-	// The phone looks, types a wrong code, then the right one with a fresh proof.
 	phoneAuth := map[string]string{"Authorization": "Bearer " + phone.access}
 	view := phoneClient.do(http.MethodGet, "/v1/native/device/requests/"+id, nil, phoneAuth)
 	want(t, view, http.StatusOK, "")
@@ -112,13 +110,10 @@ func TestAPageSignsInWithTheApprovalOfAPhoneOnTheRealService(t *testing.T) {
 
 	s.secret(page.cookies["__Secure-px_refresh"].Value)
 	want(t, page.browser(http.MethodGet, "/v1/me", nil, access), http.StatusOK, "")
-	// The page refreshes on its own and the phone is not involved any more.
 	want(t, page.browser(http.MethodPost, "/v1/token/refresh", nil, ""), http.StatusOK, "")
 	want(t, phoneClient.do(http.MethodGet, "/v1/native/me", nil, phoneAuth), http.StatusOK, "")
 	want(t, page.browser(http.MethodPost, "/v1/auth/device/redeem", map[string]string{"request_id": id}, ""), http.StatusBadRequest, "invalid_proof")
 
-	// The owner is told about the new device, once, with its label and the address it came from; the first sign-in
-	// of the account, the phone's, told nothing. Nothing in the notice opens anything.
 	notice := waitForNotices(t, email, 1)
 	for _, fragment := range []string{"Office laptop", "If it was not you"} {
 		if !strings.Contains(notice, fragment) {
@@ -138,7 +133,6 @@ func TestAPageSignsInWithTheApprovalOfAPhoneOnTheRealService(t *testing.T) {
 		t.Errorf("%d notices", n)
 	}
 
-	// Two sessions of one user, the audit says how the second opened, and the approval is kept for a year.
 	if n := s.count("sessions", "revoked_at IS NULL"); n != 2 {
 		t.Errorf("%d live sessions, want 2", n)
 	}
@@ -198,7 +192,6 @@ func TestANativeAppSignsInTheSameWayAndAPhoneCanRefuse(t *testing.T) {
 
 	want(t, call("status", id, secret, "wrong-binding"), http.StatusBadRequest, "invalid_proof")
 
-	// Approve, then redeem with the secret and the binding.
 	proof := stepUpFor(t, s, phoneClient, phone, email, "approve_device")
 
 	headers := map[string]string{"Authorization": "Bearer " + phone.access, "X-Step-Up": proof}
@@ -213,7 +206,6 @@ func TestANativeAppSignsInTheSameWayAndAPhoneCanRefuse(t *testing.T) {
 	want(t, tv.native(http.MethodGet, "/v1/native/me", nil, signed.str("access_token")), http.StatusOK, "")
 	want(t, tv.native(http.MethodPost, "/v1/native/token/refresh", map[string]string{"refresh_token": signed.str("refresh_token")}, ""), http.StatusOK, "")
 
-	// A request the phone refuses stays refused; so does one whose code was guessed three times.
 	id2, code2, secret2, binding2 := start()
 	if r := phoneClient.do(http.MethodPost, "/v1/native/device/requests/"+id2+"/deny", nil, phoneAuth); r.Status != http.StatusNoContent {
 		t.Fatalf("deny = %d %s", r.Status, r.Raw)
@@ -319,7 +311,6 @@ func TestAnExpiredRequestAndTheStartQuotaOnTheRealService(t *testing.T) {
 
 	want(t, tv.native(http.MethodPost, "/v1/native/auth/device/redeem", map[string]string{"request_id": id, "poll_secret": secret, "client_binding": binding}, ""), http.StatusBadRequest, "invalid_proof")
 
-	// Thirty starts an hour per address.
 	var limited bool
 	for i := 0; i < 40 && !limited; i++ {
 		limited = tv.native(http.MethodPost, "/v1/native/auth/device/start", map[string]string{}, "").Status == http.StatusTooManyRequests

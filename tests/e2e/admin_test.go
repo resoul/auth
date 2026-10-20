@@ -14,7 +14,6 @@ import (
 	"go.airlance.org/auth/internal/testutil"
 )
 
-// The relying party of the admin page of the e2e service: it differs from the users'.
 const (
 	adminRPID     = "admin.e2e.test"
 	adminOrigin   = "https://admin.e2e.test"
@@ -23,7 +22,6 @@ const (
 	operatorEmail = "ops@e2e.example.test"
 )
 
-// adminStack is the service with the admin listener on.
 func adminStack(t *testing.T, extra ...string) (*stack, string) {
 	t.Helper()
 	addr := freeAddr(t)
@@ -44,7 +42,6 @@ func operatorCmd(t *testing.T, s *stack, args ...string) (string, error) {
 	return string(out), err
 }
 
-// adminPage is a browser tab of the admin page: it sends the page's origin and, once signed in, the CSRF token.
 type adminPage struct {
 	*client
 	csrf string
@@ -65,7 +62,6 @@ func (p *adminPage) call(method, path string, body any) reply {
 	return p.do(method, adminAPI+path, body, headers)
 }
 
-// enroll registers a key with the code the command printed.
 func (p *adminPage) enroll(code string) *testutil.SoftAuthenticator {
 	p.t.Helper()
 	key := testutil.NewSoftAuthenticator(p.t, adminRPID, adminOrigin)
@@ -75,6 +71,7 @@ func (p *adminPage) enroll(code string) *testutil.SoftAuthenticator {
 	done := p.call(http.MethodPost, "/enroll/finish", map[string]any{
 		"challenge_id": begun.str("challenge_id"), "response": json.RawMessage(key.Register(begun.options())), "name": "e2e key",
 	})
+
 	if done.Status != http.StatusNoContent {
 		p.t.Fatalf("enroll/finish = %d %s", done.Status, done.Raw)
 	}
@@ -82,7 +79,6 @@ func (p *adminPage) enroll(code string) *testutil.SoftAuthenticator {
 	return key
 }
 
-// login signs in with the key and remembers the CSRF token.
 func (p *adminPage) login(key *testutil.SoftAuthenticator) reply {
 	p.t.Helper()
 	begun := p.call(http.MethodPost, "/login/begin", nil)
@@ -106,7 +102,6 @@ func (p *adminPage) sessionSecret() string {
 	return ""
 }
 
-// operator creates an operator with the command, enrolls a key and signs in.
 func signInOperator(t *testing.T, s *stack, addr string) (*adminPage, *testutil.SoftAuthenticator) {
 	t.Helper()
 
@@ -149,7 +144,6 @@ func TestAnOperatorEnrollsASecurityKeySignsInAndTheAdminAPIStaysOffThePublicPort
 		t.Errorf("session cookie = %+v", cookie)
 	}
 
-	// The public listener knows nothing of the admin API, and the admin listener nothing of the public one.
 	public := newClient(s)
 	if r := public.do(http.MethodGet, adminAPI+"/session", nil, nil); r.Status != http.StatusNotFound {
 		t.Errorf("the public port answers the admin API: %d %s", r.Status, r.Raw)
@@ -159,7 +153,6 @@ func TestAnOperatorEnrollsASecurityKeySignsInAndTheAdminAPIStaysOffThePublicPort
 		t.Errorf("the admin port answers the public API: %d", r.Status)
 	}
 
-	// The admin listener serves the page (or says it was not built) and never confuses an unknown API path with it.
 	pageReply := page.do(http.MethodGet, "/admin/", nil, nil)
 	if pageReply.Status != http.StatusOK && pageReply.Status != http.StatusServiceUnavailable {
 		t.Errorf("/admin/ = %d", pageReply.Status)
@@ -173,7 +166,6 @@ func TestAnOperatorEnrollsASecurityKeySignsInAndTheAdminAPIStaysOffThePublicPort
 		t.Errorf("an unknown API path = %d %s", r.Status, r.Raw)
 	}
 
-	// An operator's key is no user's key, and a user's passkey is no operator's.
 	if out, err := operatorCmd(t, s, "list"); err != nil || !strings.Contains(out, operatorEmail) || !strings.Contains(out, "1 keys") {
 		t.Errorf("operator list: %v\n%s", err, out)
 	}
@@ -210,7 +202,6 @@ func TestBlockingAUserEndsTheirSessionsAndStopsTheirMail(t *testing.T) {
 	other := nativeSignIn(t, s, newClient(s), bystander, "")
 	want(t, c.native(http.MethodGet, "/v1/native/me", nil, me.access), http.StatusOK, "")
 
-	// The operator finds the user by the start of the address and sees the card.
 	list := page.call(http.MethodGet, "/users?query="+victim[:8], nil)
 	want(t, list, http.StatusOK, "")
 
@@ -241,12 +232,10 @@ func TestBlockingAUserEndsTheirSessionsAndStopsTheirMail(t *testing.T) {
 		t.Fatalf("block = %d %s", r.Status, r.Raw)
 	}
 
-	// Everything they had open is closed at once; a bystander is untouched.
 	want(t, c.native(http.MethodGet, "/v1/native/me", nil, me.access), http.StatusUnauthorized, "unauthenticated")
 	want(t, c.native(http.MethodPost, "/v1/native/token/refresh", map[string]string{"refresh_token": me.refresh}, ""), http.StatusUnauthorized, "invalid_refresh")
 	want(t, newClient(s).native(http.MethodGet, "/v1/native/me", nil, other.access), http.StatusOK, "")
 
-	// No new code is mailed, yet the answer is an ordinary start, so a client cannot tell who is blocked.
 	before := len(mailIDs(t, victim))
 	started := c.native(http.MethodPost, "/v1/native/auth/email/start", map[string]string{"email": victim}, "")
 	want(t, started, http.StatusAccepted, "")
@@ -255,7 +244,7 @@ func TestBlockingAUserEndsTheirSessionsAndStopsTheirMail(t *testing.T) {
 		t.Errorf("the answer to a blocked address is not an ordinary start: %s", started.Raw)
 	}
 
-	time.Sleep(3 * time.Second) // the worker polls every second
+	time.Sleep(3 * time.Second)
 
 	if n := len(mailIDs(t, victim)); n != before {
 		t.Errorf("a blocked address got %d new mails", n-before)
@@ -263,7 +252,6 @@ func TestBlockingAUserEndsTheirSessionsAndStopsTheirMail(t *testing.T) {
 
 	s.secret(started.str("client_binding"))
 
-	// Even a code mailed earlier cannot open a session: the passkey step refuses.
 	begun := c.native(http.MethodPost, "/v1/native/auth/passkey/login/options", nil, "")
 	want(t, begun, http.StatusOK, "")
 
@@ -278,7 +266,6 @@ func TestBlockingAUserEndsTheirSessionsAndStopsTheirMail(t *testing.T) {
 		t.Errorf("%d live sessions of a blocked user", n)
 	}
 
-	// The refusals are in the operator's metrics and the act is in the audit log, naming who did it.
 	if body := scrapeMetrics(t, s); !strings.Contains(body, `airlance_auth_denied_total{operation="start",reason="blocked"} 1`) ||
 		!strings.Contains(body, `reason="blocked"`) {
 		t.Errorf("the scrape lacks the blocked refusals:\n%s", body)
@@ -297,7 +284,6 @@ func TestBlockingAUserEndsTheirSessionsAndStopsTheirMail(t *testing.T) {
 		t.Errorf("entry = %v", entry)
 	}
 
-	// Unblocked, the same user signs in again; the old sessions stay closed.
 	if r := page.call(http.MethodPost, "/users/"+id+"/unblock", nil); r.Status != http.StatusNoContent {
 		t.Fatalf("unblock = %d %s", r.Status, r.Raw)
 	}
@@ -338,7 +324,6 @@ func TestDeletingAUserNeedsAFreshSignInAndTheAddress(t *testing.T) {
 
 	want(t, newClient(s).native(http.MethodGet, "/v1/native/me", nil, me.access), http.StatusUnauthorized, "unauthenticated")
 
-	// The act stays in the log, with who did it and without whom.
 	audit := page.call(http.MethodGet, "/audit?type=admin.action", nil)
 
 	entries, _ := audit.Body["entries"].([]any)
@@ -350,7 +335,6 @@ func TestDeletingAUserNeedsAFreshSignInAndTheAddress(t *testing.T) {
 		t.Errorf("entry = %v", entry)
 	}
 
-	// Old sign-ins cannot delete: back-date the session in the database, as time would.
 	other := uniqueEmail(t, "late")
 
 	late := nativeSignIn(t, s, newClient(s), other, "")
@@ -401,7 +385,6 @@ func TestInvitationsFromTheAdminPageReachTheGuest(t *testing.T) {
 		t.Errorf("list = %s", list.Raw)
 	}
 
-	// The guest registers, which spends the invitation; inviting a member is a conflict.
 	nativeSignIn(t, s, newClient(s), guest, "")
 
 	if r := page.call(http.MethodPost, "/invitations", map[string]any{"email": guest}); r.Status != http.StatusConflict || r.str("error") != "already_registered" {
@@ -443,7 +426,6 @@ func TestDisablingAnOperatorClosesTheirSessionAtOnceAndEnrollmentBringsThemBack(
 		t.Fatalf("enable: %v\n%s", err, out)
 	}
 
-	// Every key lost: only the server brings the operator back, with a new code and a new key.
 	out, err := operatorCmd(t, s, "enroll", operatorEmail)
 	if err != nil {
 		t.Fatalf("enroll: %v\n%s", err, out)
@@ -468,8 +450,7 @@ func TestDisablingAnOperatorClosesTheirSessionAtOnceAndEnrollmentBringsThemBack(
 	if out, err := operatorCmd(t, s, "enroll", "nobody@e2e.example.test"); err == nil || !strings.Contains(out, "no operator") {
 		t.Errorf("enrolling an unknown operator: %v\n%s", err, out)
 	}
-	// The command line leaves its own trail.
-	// create, disable, enable and enroll: a refused command leaves nothing.
+
 	if n := s.count("audit_events", "event = 'operator.changed'"); n != 4 {
 		t.Errorf("%d operator.changed events, want 4", n)
 	}
@@ -478,7 +459,7 @@ func TestDisablingAnOperatorClosesTheirSessionAtOnceAndEnrollmentBringsThemBack(
 }
 
 func TestTheAdminListenerIsOffUnlessConfigured(t *testing.T) {
-	s := newStack(t) // no admin settings
+	s := newStack(t)
 	if out, err := operatorCmd(t, s, "list"); err != nil || !strings.Contains(out, "admin API is off") {
 		t.Errorf("operator list without the admin API: %v\n%s", err, out)
 	}

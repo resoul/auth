@@ -11,15 +11,12 @@ import (
 	"time"
 )
 
-// SMTPMessage is one message a FakeSMTP accepted.
 type SMTPMessage struct {
 	From string
 	To   []string
 	Data string
 }
 
-// FakeSMTP is a tiny in-process SMTP server for tests: no TLS, no authentication, and
-// scriptable replies so that temporary and permanent refusals can be provoked.
 type FakeSMTP struct {
 	ln       net.Listener
 	script   smtpScript
@@ -29,14 +26,11 @@ type FakeSMTP struct {
 	done     chan struct{}
 }
 
-// smtpScript holds the scripted replies; an empty reply means success.
 type smtpScript struct {
 	greeting, mail, rcpt, data string
 	hang                       bool
 }
 
-// Reply scripts the answer to a command: "greeting", "mail", "rcpt" or "data" (the
-// answer after the message content). Pass a full SMTP line such as "550 no such user".
 func (s *FakeSMTP) Reply(command, line string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -55,7 +49,6 @@ func (s *FakeSMTP) Reply(command, line string) {
 	}
 }
 
-// Hang makes the server accept connections and stay silent.
 func (s *FakeSMTP) Hang() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -70,7 +63,6 @@ func (s *FakeSMTP) scripted() smtpScript {
 	return s.script
 }
 
-// NewFakeSMTP starts a server on a free loopback port and stops it with the test.
 func NewFakeSMTP(t testing.TB) *FakeSMTP {
 	t.Helper()
 
@@ -91,13 +83,11 @@ func NewFakeSMTP(t testing.TB) *FakeSMTP {
 	return s
 }
 
-// Addr returns the host and port to connect to.
 func (s *FakeSMTP) Addr() (string, int) {
 	addr := s.ln.Addr().(*net.TCPAddr)
 	return addr.IP.String(), addr.Port
 }
 
-// Messages returns the messages accepted so far.
 func (s *FakeSMTP) Messages() []SMTPMessage {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -105,7 +95,6 @@ func (s *FakeSMTP) Messages() []SMTPMessage {
 	return append([]SMTPMessage(nil), s.messages...)
 }
 
-// Connections returns how many clients connected.
 func (s *FakeSMTP) Connections() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -231,7 +220,6 @@ func (s *FakeSMTP) handle(conn net.Conn) {
 	}
 }
 
-// addressOf extracts the address from "MAIL FROM:<a@b> SIZE=10".
 func addressOf(line string) string {
 	start, end := strings.Index(line, "<"), strings.Index(line, ">")
 	if start < 0 || end < start {

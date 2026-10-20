@@ -10,22 +10,14 @@ import (
 	"go.airlance.org/auth/internal/domain/token"
 )
 
-// SessionSpec describes a session. User is required: the link is explicit and no
-// user is created implicitly.
 type SessionSpec struct {
-	User *identity.User
-	// BindingSecret defaults to DefaultBindingSecret.
+	User          *identity.User
 	BindingSecret string
-	// DeviceName defaults to "test device".
-	DeviceName string
-	// AMR defaults to ["otp"].
-	AMR []string
-	// Policy defaults to session.DefaultPolicy().
-	Policy *session.Policy
+	DeviceName    string
+	AMR           []string
+	Policy        *session.Policy
 }
 
-// Session starts a session at the factory clock time. Every call makes a new
-// session, so one user gets independent device sessions.
 func (f *Factory) Session(spec SessionSpec) *session.Session {
 	f.t.Helper()
 
@@ -70,14 +62,11 @@ func (f *Factory) Session(spec SessionSpec) *session.Session {
 	return s
 }
 
-// RefreshSpec describes the first refresh token of a session. Session is required.
 type RefreshSpec struct {
 	Session *session.Session
-	// Policy defaults to session.DefaultPolicy().
-	Policy *session.Policy
+	Policy  *session.Policy
 }
 
-// hashOfSecret hashes a secret like the refresh secrets adapter does.
 func hashOfSecret(secret string) token.Hash {
 	raw, err := base64.RawURLEncoding.DecodeString(secret)
 	if err != nil {
@@ -94,8 +83,6 @@ func hashOfSecret(secret string) token.Hash {
 	return h
 }
 
-// RefreshToken builds the root token of a new family for spec.Session and returns
-// it with its secret, which a client would hold.
 func (f *Factory) RefreshToken(spec RefreshSpec) (*token.RefreshToken, string) {
 	f.t.Helper()
 
@@ -129,7 +116,6 @@ func (f *Factory) RefreshToken(spec RefreshSpec) (*token.RefreshToken, string) {
 	return t, secret
 }
 
-// RefreshSecret returns a fresh, distinct, well-formed refresh secret.
 func (f *Factory) RefreshSecret() string {
 	raw := make([]byte, 32)
 	copy(raw, fmt.Sprintf("refresh-secret-%016x", f.IDs.n.Add(1)))
@@ -137,7 +123,6 @@ func (f *Factory) RefreshSecret() string {
 	return base64.RawURLEncoding.EncodeToString(raw)
 }
 
-// TokenHash returns the stored hash of a secret.
 func TokenHash(secret string) token.Hash {
 	return hashOfSecret(secret)
 }

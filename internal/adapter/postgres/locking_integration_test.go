@@ -4,14 +4,17 @@ package postgres_test
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"go.airlance.org/auth/internal/application/port"
+	appsession "go.airlance.org/auth/internal/application/session"
 	"go.airlance.org/auth/internal/domain/identity"
 	"go.airlance.org/auth/internal/domain/oidc"
+	dsession "go.airlance.org/auth/internal/domain/session"
 	"go.airlance.org/auth/internal/testutil"
 )
 
@@ -562,5 +565,139 @@ func TestATicketUseAndARevocationQueueOnTheUser(t *testing.T) {
 
 	if err := within(t, "the recovery", recovery, 5*time.Second); err != nil {
 		t.Errorf("the recovery = %v", err)
+	}
+}
+
+// pausingUnit stops a transaction right after the first row it locks, a user or a session, whichever comes first. It
+// holds a use case at the point where its lock order matters without knowing which order the use case takes.
+type pausingUnit struct {
+	port.UnitOfWork
+	pause func()
+}
+
+func (u pausingUnit) Do(ctx context.Context, fn func(ctx context.Context, st port.Stores) error) error {
+	return u.UnitOfWork.Do(ctx, func(ctx context.Context, st port.Stores) error {
+		st.Users = pausingUsers{UserRepository: st.Users, pause: u.pause}
+		st.Sessions = pausingSessions{SessionRepository: st.Sessions, pause: u.pause}
+
+		return fn(ctx, st)
+	})
+}
+
+type pausingUsers struct {
+	port.UserRepository
+	pause func()
+}
+
+func (r pausingUsers) GetForUpdate(ctx context.Context, id identity.UserID) (*identity.User, error) {
+	u, err := r.UserRepository.GetForUpdate(ctx, id)
+	r.pause()
+
+	return u, err
+}
+
+type pausingSessions struct {
+	port.SessionRepository
+	pause func()
+}
+
+func (r pausingSessions) GetForUpdate(ctx context.Context, id dsession.ID) (*dsession.Session, error) {
+	s, err := r.SessionRepository.GetForUpdate(ctx, id)
+	r.pause()
+
+	return s, err
+}
+
+func TestTwoSignOutsEverywhereQueueOnTheUser(t *testing.T) {
+	store := testutil.PostgresStore(t)
+	f := testutil.NewFactory(t, time.Now())
+	user := f.User(testutil.UserSpec{})
+	laptop := f.Session(testutil.SessionSpec{User: user})
+	phone := f.Session(testutil.SessionSpec{User: user, BindingSecret: "other-device"})
+
+	if err := store.Do(context.Background(), func(ctx context.Context, st port.Stores) error {
+		if _, _, err := st.Users.Ensure(ctx, user); err != nil {
+			return err
+		}
+
+		if err := st.Sessions.Create(ctx, laptop); err != nil {
+			return err
+		}
+
+		return st.Sessions.Create(ctx, phone)
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	signOut := func(uow port.UnitOfWork, sess *dsession.Session) <-chan error {
+		done := make(chan error, 1)
+
+		go func() {
+			u, err := appsession.NewSignOut(appsession.RevokeDeps{UnitOfWork: uow, Clock: testutil.NewFakeClock(time.Now())})
+			if err != nil {
+				done <- err
+				return
+			}
+
+			res, err := u.Execute(context.Background(), appsession.SignOutCommand{
+				Actor: appsession.Actor{UserID: user.ID(), SessionID: sess.ID()}, Scope: appsession.ScopeAll,
+			})
+			if err == nil && res.Outcome != appsession.OutcomeOK {
+				err = fmt.Errorf("outcome %v", res.Outcome)
+			}
+
+			done <- err
+		}()
+
+		return done
+	}
+
+	// The phone signs out everywhere and stops after its first lock. If that lock were its own session, the laptop
+	// would take its own session and the user, then wait for the phone's session while the phone waited for the user:
+	// the database would abort one of them (SQLSTATE 40P01).
+	holding := make(chan struct{})
+	release, open := gate(t)
+
+	var once sync.Once
+
+	phoneOut := signOut(pausingUnit{UnitOfWork: store, pause: func() {
+		once.Do(func() {
+			close(holding)
+			<-release
+		})
+	}}, phone)
+
+	<-holding
+
+	laptopOut := signOut(store, laptop)
+	select {
+	case err := <-laptopOut:
+		t.Fatalf("the laptop signed out everywhere (%v) while the phone was doing the same", err)
+	case <-time.After(quiet):
+	}
+
+	open()
+
+	if err := within(t, "the phone's sign-out", phoneOut, 5*time.Second); err != nil {
+		t.Errorf("the phone's sign-out = %v", err)
+	}
+
+	if err := within(t, "the laptop's sign-out", laptopOut, 5*time.Second); err != nil {
+		t.Errorf("the laptop's sign-out = %v", err)
+	}
+
+	active := -1
+
+	if err := store.Do(context.Background(), func(ctx context.Context, st port.Stores) error {
+		list, err := st.Sessions.ListActive(ctx, user.ID(), time.Now(), 10)
+		active = len(list)
+
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if active != 0 {
+		t.Errorf("%d sessions are active after two sign-outs everywhere, want none", active)
 	}
 }

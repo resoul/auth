@@ -13,15 +13,10 @@ import (
 	"go.airlance.org/auth/internal/domain/identity"
 )
 
-// NewUnitOfWork returns an empty, isolated UnitOfWork for one subtest. Adapters
-// pass their own constructor, so memory and PostgreSQL face the same contract.
 type NewUnitOfWork func(t *testing.T) port.UnitOfWork
 
 var errContractRollback = errors.New("contract rollback")
 
-// RunStoreContract checks the repository ports of an adapter: flows, users,
-// recognized clients, sessions and refresh tokens, including rollback, token
-// invariants and concurrent registration.
 func RunStoreContract(t *testing.T, newUoW NewUnitOfWork) {
 	t.Helper()
 	t.Run("flows", func(t *testing.T) { flowContract(t, newUoW) })
@@ -390,12 +385,12 @@ func userContract(t *testing.T, newUoW NewUnitOfWork) {
 			if got.Email() != next || !got.EmailVerifiedAt().Equal(later) || !got.UpdatedAt().Equal(later) || !got.CreatedAt().Equal(contractNow) {
 				t.Errorf("stored user = %+v", got.Record())
 			}
-			// The old address belongs to nobody now: a new user can have it.
+
 			_, created, err := s.Users.Ensure(ctx, f.User(UserSpec{Email: "old@example.test"}))
 			if err != nil || !created {
 				t.Errorf("Ensure of the freed address = created %v, %v", created, err)
 			}
-			// And the new one is the account's: Ensure finds it.
+
 			same, created, err := s.Users.Ensure(ctx, f.User(UserSpec{Email: "new@example.test"}))
 			if err != nil || created || same.ID() != user.ID() {
 				t.Errorf("Ensure of the new address = %v, created %v, %v; want the moved account", same, created, err)
@@ -422,7 +417,7 @@ func userContract(t *testing.T, newUoW NewUnitOfWork) {
 			if err := s.Users.ChangeEmail(ctx, moved); !errors.Is(err, port.ErrEmailTaken) {
 				t.Errorf("ChangeEmail = %v, want ErrEmailTaken", err)
 			}
-			// The refusal does not poison the transaction: the caller can still read and write.
+
 			if got, err := s.Users.Get(ctx, mover.ID()); err != nil || got.Email() != mover.Email() {
 				t.Errorf("Get after the refusal = %v, %v; want the unchanged user", got, err)
 			}
@@ -562,6 +557,7 @@ func recognizedContract(t *testing.T, newUoW NewUnitOfWork) {
 
 		return fixture{uow, f, user}
 	}
+
 	register := func(t *testing.T, fx fixture, secret string, at time.Time) *identity.RecognizedClient {
 		t.Helper()
 		fx.f.Clock.Set(at)
@@ -579,6 +575,7 @@ func recognizedContract(t *testing.T, newUoW NewUnitOfWork) {
 
 		return stored
 	}
+
 	findActive := func(t *testing.T, fx fixture, email identity.Email, secret string, at time.Time) (*identity.RecognizedClient, error) {
 		t.Helper()
 
@@ -594,6 +591,7 @@ func recognizedContract(t *testing.T, newUoW NewUnitOfWork) {
 
 		return found, err
 	}
+
 	extend := func(t *testing.T, fx fixture, secret string, at time.Time) error {
 		t.Helper()
 
@@ -601,6 +599,7 @@ func recognizedContract(t *testing.T, newUoW NewUnitOfWork) {
 			return s.Recognized.Extend(ctx, fx.user.ID(), BindingHash(secret), at)
 		})
 	}
+
 	revoke := func(t *testing.T, fx fixture, secret string, at time.Time) {
 		t.Helper()
 		mustDo(t, fx.uow, func(ctx context.Context, s port.Stores) error {

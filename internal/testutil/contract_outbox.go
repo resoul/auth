@@ -26,7 +26,6 @@ func newOutboxFixture(t *testing.T, newUoW NewUnitOfWork) outboxFixture {
 	return outboxFixture{uow: uow, f: f, user: seedUser(t, uow, f, "")}
 }
 
-// enqueue stores a flow of the class and queues its first mail, due at the given time.
 func (fx outboxFixture) enqueue(t *testing.T, class authflow.QuotaClass, due time.Time) port.MailJob {
 	t.Helper()
 
@@ -138,7 +137,7 @@ func outboxContract(t *testing.T, newUoW NewUnitOfWork) {
 		}
 
 		job := port.MailJob{Kind: port.JobInvitation, Recipient: guest, QuotaClass: authflow.QuotaUnknown, AvailableAt: contractNow}
-		// The same address may be invited again: nothing identifies the job but its own row.
+
 		mustDo(t, fx.uow, func(ctx context.Context, s port.Stores) error {
 			if err := s.Outbox.Enqueue(ctx, job); err != nil {
 				return err
@@ -171,7 +170,7 @@ func outboxContract(t *testing.T, newUoW NewUnitOfWork) {
 			got.ClientIP != ip || !got.EventAt.Equal(contractNow) || !got.Recipient.IsZero() {
 			t.Fatalf("claim = %+v, %v; want the new device job as queued", got, err)
 		}
-		// An unknown address is kept as unknown.
+
 		job.ClientIP = netip.Addr{}
 
 		mustDo(t, fx.uow, func(ctx context.Context, s port.Stores) error { return s.Outbox.Enqueue(ctx, job) })
@@ -179,7 +178,7 @@ func outboxContract(t *testing.T, newUoW NewUnitOfWork) {
 		if second, err := fx.claim(t, contractNow.Add(time.Minute), lease); err != nil || second.ClientIP.IsValid() {
 			t.Fatalf("claim = %+v, %v; want an unknown address", second, err)
 		}
-		// The notices of a deleted user are deleted with them.
+
 		mustDo(t, fx.uow, func(ctx context.Context, s port.Stores) error { return s.Outbox.Enqueue(ctx, job) })
 		mustDo(t, fx.uow, func(ctx context.Context, s port.Stores) error { return s.Users.Delete(ctx, fx.user.ID()) })
 
@@ -434,9 +433,9 @@ func outboxContract(t *testing.T, newUoW NewUnitOfWork) {
 		fx.enqueue(t, authflow.QuotaUnknown, contractNow)
 		fx.enqueue(t, authflow.QuotaUnknown, contractNow.Add(20*time.Second))
 		fx.enqueue(t, authflow.QuotaRecognized, contractNow.Add(10*time.Second))
-		fx.enqueue(t, authflow.QuotaUnknown, contractNow.Add(time.Hour)) // not due: counts as queued, adds no wait
+		fx.enqueue(t, authflow.QuotaUnknown, contractNow.Add(time.Hour))
 		fx.enqueue(t, authflow.QuotaUnknown, contractNow)
-		// One of the two oldest unknown jobs is sent; the other keeps the wait at a minute.
+
 		claimed, err := fx.claim(t, contractNow, lease)
 		if err != nil {
 			t.Fatal(err)
