@@ -47,22 +47,34 @@ func (o *Operator) Disable(now time.Time) error {
 }
 
 // Enable lifts a disable.
-func (o *Operator) Enable() { o.disabledAt = time.Time{} }
+func (o *Operator) Enable() {
+	o.disabledAt = time.Time{}
+}
 
 // Disabled reports whether the operator is barred.
-func (o *Operator) Disabled() bool { return !o.disabledAt.IsZero() }
+func (o *Operator) Disabled() bool {
+	return !o.disabledAt.IsZero()
+}
 
 // ID returns the identifier.
-func (o *Operator) ID() ID { return o.id }
+func (o *Operator) ID() ID {
+	return o.id
+}
 
 // Email returns the label address.
-func (o *Operator) Email() identity.Email { return o.email }
+func (o *Operator) Email() identity.Email {
+	return o.email
+}
 
 // CreatedAt returns the creation time.
-func (o *Operator) CreatedAt() time.Time { return o.createdAt }
+func (o *Operator) CreatedAt() time.Time {
+	return o.createdAt
+}
 
 // DisabledAt returns when the operator was disabled, or the zero time.
-func (o *Operator) DisabledAt() time.Time { return o.disabledAt }
+func (o *Operator) DisabledAt() time.Time {
+	return o.disabledAt
+}
 
 // Record is the stored form of an operator.
 type Record struct {

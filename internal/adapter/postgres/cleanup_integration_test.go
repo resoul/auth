@@ -170,7 +170,9 @@ func (r *retention) exists(table, id string) bool {
 	return n == 1
 }
 
-func (r *retention) rows(table string) int { return count(r.t, r.db, table) }
+func (r *retention) rows(table string) int {
+	return count(r.t, r.db, table)
+}
 
 func (r *retention) sweep(p postgres.CleanupPolicy) postgres.CleanupResult {
 	r.t.Helper()

@@ -50,7 +50,12 @@ func newReceiver(t *testing.T, status int) *receiver {
 	return r
 }
 
-func (r *receiver) set(status int) { r.mu.Lock(); r.status = status; r.mu.Unlock() }
+func (r *receiver) set(status int) {
+	r.mu.Lock()
+	r.status = status
+	r.mu.Unlock()
+}
+
 func (r *receiver) got() (hits int, tokens []string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -163,7 +168,9 @@ func TestALogoutNoticeIsDeliveredWithAProperLogoutToken(t *testing.T) {
 	}
 }
 
-func (e *env) userInfoAudience() string { return issuer + "/oauth2/userinfo" }
+func (e *env) userInfoAudience() string {
+	return issuer + "/oauth2/userinfo"
+}
 
 func TestANoticeThatFailsIsRetriedWithTheSameIdentifier(t *testing.T) {
 	e := newEnv(t)

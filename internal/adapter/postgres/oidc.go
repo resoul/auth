@@ -27,7 +27,9 @@ var (
 	_ port.OIDCLogoutRepository  = (*oidcLogout)(nil)
 )
 
-func hashFrom(b []byte) (oidc.SecretHash, error) { return oidc.SecretHashFrom(b) }
+func hashFrom(b []byte) (oidc.SecretHash, error) {
+	return oidc.SecretHashFrom(b)
+}
 
 // lockGrant takes the locks of a grant in the one order every statement uses: the user (shared, so any number of
 // issuers run together and a revoke-all, which takes it exclusively, waits for them), then the grant. Whatever is
@@ -94,7 +96,9 @@ func deref(s pgtype.Text) string {
 }
 
 // text is a nullable text column: empty is NULL.
-func text(s string) pgtype.Text { return pgtype.Text{String: s, Valid: s != ""} }
+func text(s string) pgtype.Text {
+	return pgtype.Text{String: s, Valid: s != ""}
+}
 
 func (r *oidcClients) Create(ctx context.Context, c *oidc.Client, secretID string, secret oidc.SecretHash) error {
 	err := r.q.CreateOIDCClient(ctx, sqlc.CreateOIDCClientParams{
@@ -207,7 +211,9 @@ func (r *oidcClients) SecretValid(ctx context.Context, id string, secret oidc.Se
 	return ok, nil
 }
 
-func ptr[T any](v T) *T { return &v }
+func ptr[T any](v T) *T {
+	return &v
+}
 
 // nonNil turns a nil list into an empty one: the column is NOT NULL, and an unset list is an empty one.
 func nonNil(s []string) []string {

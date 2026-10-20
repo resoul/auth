@@ -40,7 +40,9 @@ func (d Deps) validate(name string) error {
 }
 
 // UserInfoAudience is the audience of the access tokens this provider issues: its own UserInfo endpoint.
-func (d Deps) UserInfoAudience() string { return d.Issuer + "/oauth2/userinfo" }
+func (d Deps) UserInfoAudience() string {
+	return d.Issuer + "/oauth2/userinfo"
+}
 
 // OAuth 2.0 and OpenID Connect error codes.
 const (
@@ -67,7 +69,9 @@ type Failure struct {
 	Description string
 }
 
-func fail(code, description string) *Failure { return &Failure{Code: code, Description: description} }
+func fail(code, description string) *Failure {
+	return &Failure{Code: code, Description: description}
+}
 
 // redirectTo builds the URL a browser is sent back to: the registered redirect URI with the response parameters
 // added to its query. An empty state is left out. iss identifies the provider (RFC 9207).
@@ -91,4 +95,6 @@ func redirectTo(redirectURI string, params map[string]string) string {
 }
 
 // scopeString joins scopes into the form of the scope parameter.
-func scopeString(scopes []string) string { return strings.Join(scopes, " ") }
+func scopeString(scopes []string) string {
+	return strings.Join(scopes, " ")
+}

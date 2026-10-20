@@ -11,13 +11,10 @@ import (
 
 var _ port.FlowIDGenerator = Random{}
 
-// Random draws secrets from a random source. The zero value uses crypto/rand.
 type Random struct {
-	// Source overrides crypto/rand in tests of this package only.
 	Source io.Reader
 }
 
-// NewFlowID returns 16 random bytes encoded as a flow identifier.
 func (r Random) NewFlowID() (authflow.FlowID, error) {
 	source := r.Source
 	if source == nil {

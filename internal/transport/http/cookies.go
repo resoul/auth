@@ -70,7 +70,9 @@ func (c *cookieWriter) Write(b []byte) (int, error) {
 	return c.ResponseWriter.Write(b)
 }
 
-func (c *cookieWriter) Unwrap() http.ResponseWriter { return c.ResponseWriter }
+func (c *cookieWriter) Unwrap() http.ResponseWriter {
+	return c.ResponseWriter
+}
 
 // requestCookie returns the value of the named request cookie, or "".
 func requestCookie(ctx context.Context, name string) string {

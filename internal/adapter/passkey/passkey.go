@@ -81,10 +81,21 @@ type user struct {
 	credentials []webauthn.Credential
 }
 
-func (u user) WebAuthnID() []byte                         { return u.id }
-func (u user) WebAuthnName() string                       { return u.name }
-func (u user) WebAuthnDisplayName() string                { return u.name }
-func (u user) WebAuthnCredentials() []webauthn.Credential { return u.credentials }
+func (u user) WebAuthnID() []byte {
+	return u.id
+}
+
+func (u user) WebAuthnName() string {
+	return u.name
+}
+
+func (u user) WebAuthnDisplayName() string {
+	return u.name
+}
+
+func (u user) WebAuthnCredentials() []webauthn.Credential {
+	return u.credentials
+}
 
 func subjectUser(s port.Subject) user {
 	u := user{id: dpasskey.UserHandle(s.ID), name: s.Email.String()}

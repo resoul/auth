@@ -344,7 +344,9 @@ func appsessionByID(ctx context.Context, st port.Stores, id string) (*dsession.S
 	return st.Sessions.Get(ctx, sid)
 }
 
-func discardLogger() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
+func discardLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
 
 // recordedMetrics remembers what the use cases counted.
 type recordedMetrics struct {

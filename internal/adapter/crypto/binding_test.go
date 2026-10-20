@@ -62,7 +62,7 @@ func TestHashBindingRejectsMalformedSecrets(t *testing.T) {
 		"std alphabet":       strings.Repeat("+", 43),
 		"whitespace":         " " + valid[1:],
 		"newline":            valid + "\n",
-		"non-canonical tail": valid[:42] + "B", // spare bits of the last char must be zero
+		"non-canonical tail": valid[:42] + "B",
 	} {
 		t.Run(name, func(t *testing.T) {
 			if _, err := (crypto.Binding{}).HashBinding(in); !errors.Is(err, port.ErrInvalidBindingSecret) {

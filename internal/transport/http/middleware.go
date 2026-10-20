@@ -85,14 +85,20 @@ func (s *statusRecorder) WriteHeader(code int) {
 }
 
 // Unwrap lets http.ResponseController reach the underlying writer.
-func (s *statusRecorder) Unwrap() http.ResponseWriter { return s.ResponseWriter }
+func (s *statusRecorder) Unwrap() http.ResponseWriter {
+	return s.ResponseWriter
+}
 
 // WithRequestID, RequestID and LogRequests are the middleware the admin listener shares with this one,
 // so both listeners number and log requests the same way.
-func WithRequestID(next http.Handler) http.Handler { return withRequestID(next) }
+func WithRequestID(next http.Handler) http.Handler {
+	return withRequestID(next)
+}
 
 // RequestID returns the ID WithRequestID gave the request.
-func RequestID(ctx context.Context) string { return requestID(ctx) }
+func RequestID(ctx context.Context) string {
+	return requestID(ctx)
+}
 
 // LogRequests writes one line per request with the matched route pattern and records it.
 func LogRequests(logger *slog.Logger, requests port.RequestMetrics, mux *http.ServeMux) http.Handler {

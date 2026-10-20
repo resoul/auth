@@ -13,19 +13,14 @@ import (
 
 var _ port.RecoveryCodes = Recovery{}
 
-// recoveryCodeBytes random bytes encode to exactly passkey.RecoveryCodeLength base32
-// characters: 80 bits, which makes a plain SHA-256 hash safe to store.
 const recoveryCodeBytes = 10
 
 var recoveryEncoding = base32.StdEncoding.WithPadding(base32.NoPadding)
 
-// Recovery issues recovery codes. The zero value uses crypto/rand.
 type Recovery struct {
-	// Source overrides crypto/rand in tests of this package only.
 	Source io.Reader
 }
 
-// NewRecoveryCodes creates passkey.RecoveryCodeCount distinct canonical codes with their hashes.
 func (r Recovery) NewRecoveryCodes() ([]port.IssuedRecoveryCode, error) {
 	source := r.Source
 	if source == nil {
@@ -59,7 +54,6 @@ func (r Recovery) NewRecoveryCodes() ([]port.IssuedRecoveryCode, error) {
 	return out, nil
 }
 
-// HashRecoveryCode normalizes typed input and hashes the canonical code.
 func (Recovery) HashRecoveryCode(typed string) (passkey.SecretHash, error) {
 	code, ok := passkey.NormalizeRecoveryCode(typed)
 	if !ok {

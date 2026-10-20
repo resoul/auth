@@ -55,7 +55,9 @@ func waitForSweeps(t *testing.T, f *fakeSweeper, n int) {
 	}
 }
 
-func quiet() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
+func quiet() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
 
 func TestSweepRunsAtStartAndEveryInterval(t *testing.T) {
 	f := &fakeSweeper{}

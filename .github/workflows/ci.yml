@@ -1,0 +1,105 @@
+# The checks of .gitlab-ci.yml on GitHub Actions, plus the Kubernetes manifest check of `make ci`. Every job runs a
+# Makefile target, so a failure here reproduces locally with the same command.
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push to the same branch or pull request makes the running checks pointless.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  GOTOOLCHAIN: local
+
+jobs:
+  check:
+    name: Check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      # Formatting, lint (with one-line function bodies), vet, unit tests with the race detector, tidy go.mod,
+      # generated code up to date, the script tests and govulncheck.
+      - run: make check generate-check test-scripts vuln
+
+  integration:
+    name: Integration and end-to-end
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:18.6-alpine
+        # These credentials belong only to the throwaway CI service; they match the Makefile default DATABASE_URL.
+        env:
+          POSTGRES_USER: airlance_auth
+          POSTGRES_PASSWORD: airlance_auth
+          POSTGRES_DB: airlance_auth
+        ports: ["127.0.0.1:5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U airlance_auth -d airlance_auth"
+          --health-interval 2s --health-timeout 3s --health-retries 30
+      mailpit:
+        image: axllent/mailpit:v1.31.3
+        ports: ["127.0.0.1:1025:1025", "127.0.0.1:8025:8025"]
+        options: >-
+          --health-cmd "/mailpit readyz"
+          --health-interval 2s --health-timeout 3s --health-retries 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      # The tests reach both services at their local defaults (127.0.0.1:5432, :1025 and :8025).
+      - run: make test-int
+      - run: make test-e2e
+
+  secrets:
+    name: Secrets
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # The scan reads the whole history: a secret that was committed and then deleted is still leaked.
+          fetch-depth: 0
+      - run: make secrets
+
+  browser:
+    name: Browser example
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - run: make test-browser
+
+  alerts:
+    name: Alert rules
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - run: make test-alerts
+
+  kubernetes:
+    name: Kubernetes manifests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      # kubectl is preinstalled on the runner; kubeconform runs in Docker.
+      - run: make kube-check

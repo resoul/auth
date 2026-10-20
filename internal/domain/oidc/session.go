@@ -48,7 +48,9 @@ type Grant struct {
 }
 
 // Active reports whether the grant is live: not revoked and within its time.
-func (g *Grant) Active(now time.Time) bool { return g.RevokedAt.IsZero() && now.Before(g.ExpiresAt) }
+func (g *Grant) Active(now time.Time) bool {
+	return g.RevokedAt.IsZero() && now.Before(g.ExpiresAt)
+}
 
 // GrantExpiry returns when a new grant ends: after the absolute refresh time, and never after the OP session.
 func GrantExpiry(now time.Time, p Policy, session *OPSession) time.Time {

@@ -27,9 +27,18 @@ type noClients struct{}
 func (noClients) Create(context.Context, *oidc.Client, string, oidc.SecretHash) error {
 	return errNoOIDC
 }
-func (noClients) Get(context.Context, string) (*oidc.Client, error)          { return nil, errNoOIDC }
-func (noClients) List(context.Context) ([]*oidc.Client, error)               { return nil, errNoOIDC }
-func (noClients) SetStatus(context.Context, string, string, time.Time) error { return errNoOIDC }
+func (noClients) Get(context.Context, string) (*oidc.Client, error) {
+	return nil, errNoOIDC
+}
+
+func (noClients) List(context.Context) ([]*oidc.Client, error) {
+	return nil, errNoOIDC
+}
+
+func (noClients) SetStatus(context.Context, string, string, time.Time) error {
+	return errNoOIDC
+}
+
 func (noClients) RotateSecret(context.Context, string, string, oidc.SecretHash, time.Time, time.Duration) error {
 	return errNoOIDC
 }
@@ -42,68 +51,126 @@ func (noClients) SecretValid(context.Context, string, oidc.SecretHash, time.Time
 
 type noRequests struct{}
 
-func (noRequests) Create(context.Context, *oidc.AuthorizationRequest) error { return errNoOIDC }
+func (noRequests) Create(context.Context, *oidc.AuthorizationRequest) error {
+	return errNoOIDC
+}
+
 func (noRequests) GetForUpdate(context.Context, oidc.SecretHash) (*oidc.AuthorizationRequest, error) {
 	return nil, errNoOIDC
 }
-func (noRequests) Complete(context.Context, oidc.SecretHash, time.Time) error { return errNoOIDC }
+func (noRequests) Complete(context.Context, oidc.SecretHash, time.Time) error {
+	return errNoOIDC
+}
 
 type noSessions struct{}
 
-func (noSessions) Create(context.Context, *oidc.OPSession) error { return errNoOIDC }
+func (noSessions) Create(context.Context, *oidc.OPSession) error {
+	return errNoOIDC
+}
+
 func (noSessions) GetBySecret(context.Context, oidc.SecretHash) (*oidc.OPSession, error) {
 	return nil, errNoOIDC
 }
-func (noSessions) Get(context.Context, string) (*oidc.OPSession, error) { return nil, errNoOIDC }
-func (noSessions) Touch(context.Context, string, time.Time) error       { return errNoOIDC }
+func (noSessions) Get(context.Context, string) (*oidc.OPSession, error) {
+	return nil, errNoOIDC
+}
+
+func (noSessions) Touch(context.Context, string, time.Time) error {
+	return errNoOIDC
+}
 
 // RevokeAllForUser and End have nothing to revoke: no OP session exists here.
-func (noSessions) RevokeAllForUser(context.Context, identity.UserID, time.Time) error { return nil }
-func (noSessions) End(context.Context, string, time.Time) error                       { return nil }
+func (noSessions) RevokeAllForUser(context.Context, identity.UserID, time.Time) error {
+	return nil
+}
+
+func (noSessions) End(context.Context, string, time.Time) error {
+	return nil
+}
+
 func (noSessions) RevokeOthersForUser(context.Context, identity.UserID, string, time.Time) error {
 	return nil
 }
 
 type noGrants struct{}
 
-func (noGrants) FindLive(context.Context, string, string) (*oidc.Grant, error) { return nil, errNoOIDC }
-func (noGrants) Create(context.Context, *oidc.Grant) error                     { return errNoOIDC }
-func (noGrants) Get(context.Context, string) (*oidc.Grant, error)              { return nil, errNoOIDC }
-func (noGrants) Touch(context.Context, string, time.Time) error                { return errNoOIDC }
-func (noGrants) Revoke(context.Context, string, time.Time) error               { return errNoOIDC }
-func (noGrants) RevokeAllForClient(context.Context, string, time.Time) error   { return errNoOIDC }
+func (noGrants) FindLive(context.Context, string, string) (*oidc.Grant, error) {
+	return nil, errNoOIDC
+}
+
+func (noGrants) Create(context.Context, *oidc.Grant) error {
+	return errNoOIDC
+}
+
+func (noGrants) Get(context.Context, string) (*oidc.Grant, error) {
+	return nil, errNoOIDC
+}
+
+func (noGrants) Touch(context.Context, string, time.Time) error {
+	return errNoOIDC
+}
+
+func (noGrants) Revoke(context.Context, string, time.Time) error {
+	return errNoOIDC
+}
+
+func (noGrants) RevokeAllForClient(context.Context, string, time.Time) error {
+	return errNoOIDC
+}
 
 type noCodes struct{}
 
-func (noCodes) Create(context.Context, *oidc.AuthorizationCode) error { return errNoOIDC }
+func (noCodes) Create(context.Context, *oidc.AuthorizationCode) error {
+	return errNoOIDC
+}
+
 func (noCodes) GetByHashForUpdate(context.Context, oidc.SecretHash) (*oidc.AuthorizationCode, *oidc.Grant, error) {
 	return nil, nil, errNoOIDC
 }
-func (noCodes) Consume(context.Context, *oidc.AuthorizationCode) error { return errNoOIDC }
+func (noCodes) Consume(context.Context, *oidc.AuthorizationCode) error {
+	return errNoOIDC
+}
 
 type noRefresh struct{}
 
-func (noRefresh) Create(context.Context, *oidc.RefreshToken) error { return errNoOIDC }
+func (noRefresh) Create(context.Context, *oidc.RefreshToken) error {
+	return errNoOIDC
+}
+
 func (noRefresh) GetByHashForUpdate(context.Context, oidc.SecretHash) (*oidc.RefreshToken, *oidc.Grant, error) {
 	return nil, nil, errNoOIDC
 }
-func (noRefresh) MarkUsed(context.Context, *oidc.RefreshToken) error { return errNoOIDC }
+func (noRefresh) MarkUsed(context.Context, *oidc.RefreshToken) error {
+	return errNoOIDC
+}
 
 type noLogout struct{}
 
 func (noLogout) Claim(context.Context, time.Time, time.Time) (*port.ClaimedLogout, error) {
 	return nil, port.ErrNotFound
 }
-func (noLogout) Complete(context.Context, string) error                 { return errNoOIDC }
-func (noLogout) Retry(context.Context, string, time.Time, string) error { return errNoOIDC }
-func (noLogout) Abandon(context.Context, string, string) error          { return errNoOIDC }
+func (noLogout) Complete(context.Context, string) error {
+	return errNoOIDC
+}
+
+func (noLogout) Retry(context.Context, string, time.Time, string) error {
+	return errNoOIDC
+}
+
+func (noLogout) Abandon(context.Context, string, string) error {
+	return errNoOIDC
+}
+
 func (noLogout) Enqueue(context.Context, string, string, identity.UserID, string, time.Time, time.Time) error {
 	return errNoOIDC
 }
 
 type noResources struct{}
 
-func (noResources) Create(context.Context, *oidc.Resource) error { return errNoOIDC }
+func (noResources) Create(context.Context, *oidc.Resource) error {
+	return errNoOIDC
+}
+
 func (noResources) Get(context.Context, string) (*oidc.Resource, error) {
 	return nil, errNoOIDC
 }
@@ -116,16 +183,28 @@ func (noResources) ByURIsForShare(context.Context, []string) ([]*oidc.Resource, 
 func (noResources) ByIDsForShare(context.Context, []string) ([]*oidc.Resource, error) {
 	return nil, errNoOIDC
 }
-func (noResources) List(context.Context) ([]*oidc.Resource, error)               { return nil, errNoOIDC }
-func (noResources) SetStatus(context.Context, string, string, time.Time) error   { return errNoOIDC }
-func (noResources) SetScopes(context.Context, string, []string, time.Time) error { return errNoOIDC }
+func (noResources) List(context.Context) ([]*oidc.Resource, error) {
+	return nil, errNoOIDC
+}
+
+func (noResources) SetStatus(context.Context, string, string, time.Time) error {
+	return errNoOIDC
+}
+
+func (noResources) SetScopes(context.Context, string, []string, time.Time) error {
+	return errNoOIDC
+}
+
 func (noResources) RotateSecret(context.Context, string, string, oidc.SecretHash, time.Time, time.Duration) error {
 	return errNoOIDC
 }
 func (noResources) SecretValid(context.Context, string, oidc.SecretHash, time.Time) (bool, error) {
 	return false, errNoOIDC
 }
-func (noResources) AudienceTaken(context.Context, string) (bool, error) { return false, errNoOIDC }
+func (noResources) AudienceTaken(context.Context, string) (bool, error) {
+	return false, errNoOIDC
+}
+
 func (noResources) ClientScopes(context.Context, string, []string) (map[string][]string, error) {
 	return nil, errNoOIDC
 }

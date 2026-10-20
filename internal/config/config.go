@@ -161,7 +161,9 @@ type HTTPConfig struct {
 }
 
 // Enabled reports whether the API is configured.
-func (c HTTPConfig) Enabled() bool { return c.Addr != "" }
+func (c HTTPConfig) Enabled() bool {
+	return c.Addr != ""
+}
 
 // AdminConfig holds the admin API listener and the relying party of operators' passkeys.
 type AdminConfig struct {
@@ -171,7 +173,9 @@ type AdminConfig struct {
 }
 
 // Enabled reports whether the admin API is configured.
-func (c AdminConfig) Enabled() bool { return c.Addr != "" }
+func (c AdminConfig) Enabled() bool {
+	return c.Addr != ""
+}
 
 // WebAuthnConfig holds the relying party of passkeys.
 type WebAuthnConfig struct {
@@ -186,7 +190,9 @@ type MetricsConfig struct {
 }
 
 // Enabled reports whether the metrics listener is configured.
-func (c MetricsConfig) Enabled() bool { return c.Addr != "" }
+func (c MetricsConfig) Enabled() bool {
+	return c.Addr != ""
+}
 
 // SMTPConfig holds the mail delivery settings. When Host is set the service also needs
 // the database and the OTP keys, because the worker reads flows and derives codes.
@@ -201,7 +207,9 @@ type SMTPConfig struct {
 }
 
 // Enabled reports whether the mail worker is configured.
-func (c SMTPConfig) Enabled() bool { return c.Host != "" }
+func (c SMTPConfig) Enabled() bool {
+	return c.Host != ""
+}
 
 // JWTConfig holds the claims every access token carries and its lifetime.
 type JWTConfig struct {
@@ -219,7 +227,9 @@ type OIDCConfig struct {
 }
 
 // Enabled reports whether the OpenID Provider is on.
-func (c OIDCConfig) Enabled() bool { return c.Issuer != "" }
+func (c OIDCConfig) Enabled() bool {
+	return c.Issuer != ""
+}
 
 // DatabaseConfig holds the database connection settings.
 type DatabaseConfig struct {

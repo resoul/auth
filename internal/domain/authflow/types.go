@@ -34,10 +34,14 @@ func NewFlowID(random [flowIDBytes]byte) FlowID {
 }
 
 // String returns the textual form used in storage, requests and OTP derivation.
-func (id FlowID) String() string { return id.value }
+func (id FlowID) String() string {
+	return id.value
+}
 
 // IsZero reports whether id is the invalid zero value.
-func (id FlowID) IsZero() bool { return id.value == "" }
+func (id FlowID) IsZero() bool {
+	return id.value == ""
+}
 
 // Purpose tells what a flow proves. Purposes are not interchangeable.
 type Purpose string
@@ -87,7 +91,9 @@ const (
 	QuotaRecognized QuotaClass = "recognized"
 )
 
-func (c QuotaClass) valid() bool { return c == QuotaUnknown || c == QuotaRecognized }
+func (c QuotaClass) valid() bool {
+	return c == QuotaUnknown || c == QuotaRecognized
+}
 
 // Policy holds the flow limits. DefaultPolicy has the initial values.
 type Policy struct {

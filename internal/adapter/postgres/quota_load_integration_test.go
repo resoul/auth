@@ -25,7 +25,9 @@ import (
 
 type fixedQuotaClock struct{}
 
-func (fixedQuotaClock) Now() time.Time { return t0 }
+func (fixedQuotaClock) Now() time.Time {
+	return t0
+}
 
 type quotaLoadCase struct {
 	name  string

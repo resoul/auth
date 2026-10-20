@@ -22,6 +22,12 @@ FROM auth_tickets
 WHERE secret_hash = $1
 FOR UPDATE;
 
+-- Reads a ticket without locking it, to learn whose it is before taking locks in order.
+-- name: GetAuthTicketByHash :one
+SELECT id, kind, user_id, session_id, operation, binding_hash, secret_hash, created_at, expires_at, consumed_at
+FROM auth_tickets
+WHERE secret_hash = $1;
+
 -- name: GetAuthTicketForUpdate :one
 SELECT id, kind, user_id, session_id, operation, binding_hash, secret_hash, created_at, expires_at, consumed_at
 FROM auth_tickets
@@ -30,6 +36,15 @@ FOR UPDATE;
 
 -- name: UpdateAuthTicket :execrows
 UPDATE auth_tickets SET consumed_at = $2 WHERE id = $1;
+
+-- Ends every live ticket of a user by spending it, except the step-up tickets of keep_session (NULL keeps none).
+-- name: RevokeUserAuthTickets :execrows
+UPDATE auth_tickets
+SET consumed_at = @now
+WHERE user_id = @user_id
+  AND consumed_at IS NULL
+  AND expires_at > @now
+  AND (sqlc.narg(keep_session)::uuid IS NULL OR session_id IS DISTINCT FROM sqlc.narg(keep_session)::uuid);
 
 -- name: DeleteRecoveryCodes :exec
 DELETE FROM recovery_codes WHERE user_id = $1;

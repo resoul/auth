@@ -68,4 +68,6 @@ func denial(err error) (Outcome, Reason, bool) {
 
 // changedFlow reports whether a denial changed the flow and the flow must be
 // saved: only expiry does.
-func changedFlow(err error) bool { return errors.Is(err, authflow.ErrExpired) }
+func changedFlow(err error) bool {
+	return errors.Is(err, authflow.ErrExpired)
+}

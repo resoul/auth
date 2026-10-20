@@ -119,10 +119,14 @@ func ParseMailJobID(s string) (MailJobID, error) {
 }
 
 // String returns the canonical text form.
-func (id MailJobID) String() string { return id.value }
+func (id MailJobID) String() string {
+	return id.value
+}
 
 // IsZero reports whether id is the invalid zero value.
-func (id MailJobID) IsZero() bool { return id.value == "" }
+func (id MailJobID) IsZero() bool {
+	return id.value == ""
+}
 
 // ClaimedMail is a job leased to one worker. Attempts counts this claim, so the
 // first delivery attempt has Attempts 1 and a crashed worker's job comes back with
@@ -150,7 +154,9 @@ type MailReason string
 var mailReasonFormat = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
 
 // Valid reports whether r is a safe code.
-func (r MailReason) Valid() bool { return mailReasonFormat.MatchString(string(r)) }
+func (r MailReason) Valid() bool {
+	return mailReasonFormat.MatchString(string(r))
+}
 
 // QueueStats describes the jobs waiting to be sent, per quota class.
 type QueueStats struct {

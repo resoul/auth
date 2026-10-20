@@ -64,7 +64,9 @@ var lastingTypes = []AuditType{
 }
 
 // LastingAuditTypes returns the event types kept for the long audit retention.
-func LastingAuditTypes() []AuditType { return append([]AuditType(nil), lastingTypes...) }
+func LastingAuditTypes() []AuditType {
+	return append([]AuditType(nil), lastingTypes...)
+}
 
 // CloneSuspectedReason is the reason of the refusal that marks a key whose signature counter did not
 // grow; that refusal is kept for the long retention too, though the other refusals are not.
@@ -126,7 +128,9 @@ var auditTypes = []AuditType{
 }
 
 // Valid reports whether t is one of the event types.
-func (t AuditType) Valid() bool { return slices.Contains(auditTypes, t) }
+func (t AuditType) Valid() bool {
+	return slices.Contains(auditTypes, t)
+}
 
 // Validate rejects an event outside the closed sets or with a field that could hold
 // personal data.

@@ -26,7 +26,6 @@ func TestDeviceRequestIDsAreValidAndDistinct(t *testing.T) {
 }
 
 func TestPairingCodesHaveSixDigitsIncludingLeadingZeros(t *testing.T) {
-	// A source of zeros gives the smallest code: six zeros, not "0".
 	code, err := crypto.Device{Source: bytes.NewReader(make([]byte, 64))}.NewPairingCode()
 	if err != nil || code != "000000" {
 		t.Fatalf("code = %q, %v", code, err)

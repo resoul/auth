@@ -193,7 +193,9 @@ func (e *env) again(l laptop, name string) laptop {
 	return laptop{res: res, binding: l.binding}
 }
 
-func (l laptop) id() string { return l.res.RequestID.String() }
+func (l laptop) id() string {
+	return l.res.RequestID.String()
+}
 
 func (e *env) approve(p phone, l laptop, code, stepUp string) deviceauth.Result {
 	e.t.Helper()

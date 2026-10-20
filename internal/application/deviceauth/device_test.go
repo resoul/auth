@@ -20,7 +20,9 @@ import (
 	"go.airlance.org/auth/internal/testutil"
 )
 
-func netipAddr(s string) netip.Addr { return netip.MustParseAddr(s) }
+func netipAddr(s string) netip.Addr {
+	return netip.MustParseAddr(s)
+}
 
 func TestADeviceSignsInWithTheApprovalOfAnother(t *testing.T) {
 	e := newEnv(t)
@@ -700,4 +702,6 @@ func TestAnApprovalThatCannotBeAuditedChangesNothing(t *testing.T) {
 
 type failingAudit struct{ port.AuditLog }
 
-func (failingAudit) Record(context.Context, port.AuditEvent) error { return errBoom }
+func (failingAudit) Record(context.Context, port.AuditEvent) error {
+	return errBoom
+}

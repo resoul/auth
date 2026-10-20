@@ -15,7 +15,6 @@ import (
 	"go.airlance.org/auth/internal/testutil"
 )
 
-// Vectors were produced by an independent implementation of the derivation formula.
 var (
 	vectorKey   = seq(0, 32)                     // 000102…1f
 	vectorSalt  = seq(16, 16)                    // 101112…1f

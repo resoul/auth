@@ -15,6 +15,8 @@ OAPI_CONFIG := api/openapi/oapi-codegen.yaml
 OAPI_SPEC   := api/openapi/auth.yaml
 OAPI_OUTPUT := internal/transport/http/openapi/openapi.gen.go
 COMPOSE := docker compose -f deploy/compose.yaml
+# Function bodies on their own lines; gofmt keeps one-line bodies and golangci-lint has no rule against them.
+FUNCSTYLE := go run ./tools/funcstyle -exclude '^(internal/transport/http/openapi/openapi\.gen\.go|internal/adapter/postgres/sqlc/)'
 # Local database from deploy/compose.yaml; its credentials are for that throwaway container only.
 DATABASE_URL ?= postgres://airlance_auth:airlance_auth@127.0.0.1:5432/airlance_auth?sslmode=disable
 
@@ -59,12 +61,14 @@ generate-check: $(SQLC) $(OAPI) ## Fail if generated code is out of date
 		diff -u $(OAPI_OUTPUT) "$$tmp/openapi.normalized.go"
 
 fmt: $(LINT) ## Format Go code
+	$(FUNCSTYLE) -fix .
 	$(LINT) fmt ./...
 
 fmt-check: $(LINT) ## Fail if Go code is not formatted
 	$(LINT) fmt --diff ./...
 
-lint: $(LINT) ## Static checks including import boundaries
+lint: $(LINT) ## Static checks including import boundaries and one-line function bodies
+	$(FUNCSTYLE) .
 	$(LINT) run ./...
 
 vet:

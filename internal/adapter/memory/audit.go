@@ -24,7 +24,9 @@ func (a *audit) Record(_ context.Context, e port.AuditEvent) error {
 }
 
 // entryID orders entries recorded at the same instant by their position in the log.
-func entryID(position int) string { return fmt.Sprintf("%012d", position) }
+func entryID(position int) string {
+	return fmt.Sprintf("%012d", position)
+}
 
 func (a *audit) List(_ context.Context, q port.AuditQuery) ([]port.AuditEntry, error) {
 	var out []port.AuditEntry

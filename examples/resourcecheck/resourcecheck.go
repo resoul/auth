@@ -119,7 +119,9 @@ type Claims struct {
 
 // HasScope reports whether the token carries the scope. Scopes are compared as whole elements, case included:
 // messages:send:any is not messages:send.
-func (c Claims) HasScope(scope string) bool { return slices.Contains(c.Scope, scope) }
+func (c Claims) HasScope(scope string) bool {
+	return slices.Contains(c.Scope, scope)
+}
 
 // Verifier verifies the access tokens of one API against the issuer's key set.
 type Verifier struct {
@@ -202,7 +204,9 @@ func isLoopback(host string) bool {
 	return ip != nil && ip.IsLoopback()
 }
 
-func invalid(reason string) error { return fmt.Errorf("%w: %s", ErrInvalidToken, reason) }
+func invalid(reason string) error {
+	return fmt.Errorf("%w: %s", ErrInvalidToken, reason)
+}
 
 // Discover reads the issuer's discovery document and returns where its key set is. The document must name the issuer it was
 // fetched from, and the key set must be on the same host, so a document cannot send the service to someone else's keys.

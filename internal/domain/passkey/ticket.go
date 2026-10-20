@@ -33,10 +33,14 @@ func NewSecretHash(hash []byte) (SecretHash, error) {
 }
 
 // Bytes returns a copy of the hash.
-func (h SecretHash) Bytes() []byte { return append([]byte(nil), h.value[:]...) }
+func (h SecretHash) Bytes() []byte {
+	return append([]byte(nil), h.value[:]...)
+}
 
 // IsZero reports whether h is the invalid zero value.
-func (h SecretHash) IsZero() bool { return !h.set }
+func (h SecretHash) IsZero() bool {
+	return !h.set
+}
 
 // Lifetimes of a ticket.
 const (
@@ -276,25 +280,41 @@ func (t *Ticket) Record() TicketRecord {
 }
 
 // ID returns the row identifier.
-func (t *Ticket) ID() ID { return t.id }
+func (t *Ticket) ID() ID {
+	return t.id
+}
 
 // Kind returns what the ticket allows.
-func (t *Ticket) Kind() TicketKind { return t.kind }
+func (t *Ticket) Kind() TicketKind {
+	return t.kind
+}
 
 // UserID returns the User the ticket is for.
-func (t *Ticket) UserID() identity.UserID { return t.userID }
+func (t *Ticket) UserID() identity.UserID {
+	return t.userID
+}
 
 // SessionID returns the session of a step-up ticket, or the zero value.
-func (t *Ticket) SessionID() session.ID { return t.sessionID }
+func (t *Ticket) SessionID() session.ID {
+	return t.sessionID
+}
 
 // Operation returns the operation of a step-up ticket, or "".
-func (t *Ticket) Operation() Operation { return t.operation }
+func (t *Ticket) Operation() Operation {
+	return t.operation
+}
 
 // Binding returns the client binding of an enroll or second-factor ticket.
-func (t *Ticket) Binding() identity.BindingHash { return t.binding }
+func (t *Ticket) Binding() identity.BindingHash {
+	return t.binding
+}
 
 // ExpiresAt returns when the ticket stops being accepted.
-func (t *Ticket) ExpiresAt() time.Time { return t.expiresAt }
+func (t *Ticket) ExpiresAt() time.Time {
+	return t.expiresAt
+}
 
 // ConsumedAt returns when the ticket was used, or the zero time.
-func (t *Ticket) ConsumedAt() time.Time { return t.consumedAt }
+func (t *Ticket) ConsumedAt() time.Time {
+	return t.consumedAt
+}

@@ -16,7 +16,9 @@ type FakeClock struct {
 }
 
 // NewFakeClock returns a clock fixed at now.
-func NewFakeClock(now time.Time) *FakeClock { return &FakeClock{now: now} }
+func NewFakeClock(now time.Time) *FakeClock {
+	return &FakeClock{now: now}
+}
 
 // Now returns the current fake time.
 func (c *FakeClock) Now() time.Time {

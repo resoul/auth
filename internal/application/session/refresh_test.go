@@ -537,4 +537,6 @@ func TestARolledBackReuseIsNotCounted(t *testing.T) {
 
 type failingAudit struct{}
 
-func (failingAudit) Record(context.Context, port.AuditEvent) error { return errBoom }
+func (failingAudit) Record(context.Context, port.AuditEvent) error {
+	return errBoom
+}

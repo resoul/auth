@@ -149,7 +149,9 @@ func (b *browser) navigate(rawURL string) (*http.Response, string) {
 }
 
 // page returns a page of the provider's own origin that shares this browser's cookies.
-func (b *browser) page() *page { return &page{t: b.t, base: b.base, cookies: b.cookies} }
+func (b *browser) page() *page {
+	return &page{t: b.t, base: b.base, cookies: b.cookies}
+}
 
 // app is a client application: its own state, nonce and verifier for one sign-in.
 type app struct {

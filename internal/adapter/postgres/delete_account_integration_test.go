@@ -162,7 +162,9 @@ func TestConcurrentAccountDeletionCommitsOnceOnPostgres(t *testing.T) {
 
 type failingDeletionAudit struct{ port.AuditLog }
 
-func (f failingDeletionAudit) Record(context.Context, port.AuditEvent) error { return errBoom }
+func (f failingDeletionAudit) Record(context.Context, port.AuditEvent) error {
+	return errBoom
+}
 
 func TestAccountDeletionRollsBackOnPostgres(t *testing.T) {
 	e := newChangeEnv(t)

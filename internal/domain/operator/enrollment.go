@@ -69,22 +69,34 @@ func (e *Enrollment) Consume(now time.Time) error {
 }
 
 // ID returns the row identifier.
-func (e *Enrollment) ID() passkey.ID { return e.id }
+func (e *Enrollment) ID() passkey.ID {
+	return e.id
+}
 
 // OperatorID returns the operator the code belongs to.
-func (e *Enrollment) OperatorID() ID { return e.operatorID }
+func (e *Enrollment) OperatorID() ID {
+	return e.operatorID
+}
 
 // CodeHash returns the stored hash of the code.
-func (e *Enrollment) CodeHash() passkey.SecretHash { return e.codeHash }
+func (e *Enrollment) CodeHash() passkey.SecretHash {
+	return e.codeHash
+}
 
 // CreatedAt returns the issue time.
-func (e *Enrollment) CreatedAt() time.Time { return e.createdAt }
+func (e *Enrollment) CreatedAt() time.Time {
+	return e.createdAt
+}
 
 // ExpiresAt returns when the code stops working.
-func (e *Enrollment) ExpiresAt() time.Time { return e.expiresAt }
+func (e *Enrollment) ExpiresAt() time.Time {
+	return e.expiresAt
+}
 
 // ConsumedAt returns when the code was spent, or the zero time.
-func (e *Enrollment) ConsumedAt() time.Time { return e.consumedAt }
+func (e *Enrollment) ConsumedAt() time.Time {
+	return e.consumedAt
+}
 
 // EnrollmentRecord is the stored form of an enrollment.
 type EnrollmentRecord struct {

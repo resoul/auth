@@ -123,7 +123,9 @@ func TestDeleteAccountRequiresItsFreshProofAndActiveSession(t *testing.T) {
 
 type failingDeleteAudit struct{ port.AuditLog }
 
-func (f failingDeleteAudit) Record(context.Context, port.AuditEvent) error { return errBoom }
+func (f failingDeleteAudit) Record(context.Context, port.AuditEvent) error {
+	return errBoom
+}
 
 func TestDeleteAccountRollsBackProofWhenAuditFails(t *testing.T) {
 	e := newEnv(t)

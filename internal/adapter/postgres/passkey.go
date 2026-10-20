@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -386,6 +387,19 @@ func (r *tickets) GetByHashForUpdate(ctx context.Context, hash passkey.SecretHas
 	return ticketFromRow(row)
 }
 
+func (r *tickets) GetByHash(ctx context.Context, hash passkey.SecretHash) (*passkey.Ticket, error) {
+	row, err := r.q.GetAuthTicketByHash(ctx, hash.Bytes())
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, port.ErrNotFound
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("get ticket: %w", err)
+	}
+
+	return ticketFromRow(row)
+}
+
 func (r *tickets) GetForUpdate(ctx context.Context, id passkey.ID) (*passkey.Ticket, error) {
 	u, err := toUUID(id.String())
 	if err != nil {
@@ -417,6 +431,32 @@ func (r *tickets) Save(ctx context.Context, t *passkey.Ticket) error {
 
 	if n == 0 {
 		return port.ErrNotFound
+	}
+
+	return nil
+}
+
+func (r *tickets) RevokeAllForUser(ctx context.Context, userID identity.UserID, keep session.ID, now time.Time) error {
+	user, err := userUUID(userID)
+	if err != nil {
+		return fmt.Errorf("revoke tickets: %w", err)
+	}
+
+	var keepSession *uuid.UUID
+
+	if !keep.IsZero() {
+		s, err := toUUID(keep.String())
+		if err != nil {
+			return fmt.Errorf("revoke tickets: %w", err)
+		}
+
+		keepSession = &s
+	}
+
+	if _, err := r.q.RevokeUserAuthTickets(ctx, sqlc.RevokeUserAuthTicketsParams{
+		Now: dbTimePtr(now), UserID: user, KeepSession: keepSession,
+	}); err != nil {
+		return fmt.Errorf("revoke tickets: %w", err)
 	}
 
 	return nil

@@ -16,7 +16,9 @@ var (
 	policy = authflow.DefaultPolicy()
 )
 
-func binding() identity.BindingHash { return testutil.BindingHash(testutil.DefaultBindingSecret) }
+func binding() identity.BindingHash {
+	return testutil.BindingHash(testutil.DefaultBindingSecret)
+}
 
 func TestStartCreatesPendingGenerationOne(t *testing.T) {
 	f := testutil.NewFactory(t, start)

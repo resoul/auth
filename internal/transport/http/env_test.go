@@ -64,7 +64,9 @@ func (f *faults) Do(ctx context.Context, fn func(ctx context.Context, s port.Sto
 
 type failingOutbox struct{ port.Outbox }
 
-func (failingOutbox) Enqueue(context.Context, port.MailJob) error { return errBoom }
+func (failingOutbox) Enqueue(context.Context, port.MailJob) error {
+	return errBoom
+}
 
 // env is the real handler over the real use cases, crypto and JWT adapters, with the
 // in-memory store and a fake clock.

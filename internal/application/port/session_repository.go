@@ -45,4 +45,6 @@ type SessionHistory struct {
 
 // NewClient reports whether a sign-in comes from a client the user has not used before: the account has a
 // history, and the binding is not in it. The first sign-in of an account is not news to its owner.
-func (h SessionHistory) NewClient() bool { return h.Any && !h.ThisBinding }
+func (h SessionHistory) NewClient() bool {
+	return h.Any && !h.ThisBinding
+}

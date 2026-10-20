@@ -106,7 +106,9 @@ type browser struct {
 	cookies map[string]*http.Cookie
 }
 
-func (w *world) browser() *browser { return &browser{w: w, cookies: map[string]*http.Cookie{}} }
+func (w *world) browser() *browser {
+	return &browser{w: w, cookies: map[string]*http.Cookie{}}
+}
 
 func (b *browser) do(method, target string, hdr map[string]string, body string) *httptest.ResponseRecorder {
 	b.w.t.Helper()
@@ -361,7 +363,9 @@ func TestOnlyALocalPlaceIsReturnedTo(t *testing.T) {
 	}
 }
 
-func (b *browser) callProxy(path string) *httptest.ResponseRecorder { return b.get("/api/" + path) }
+func (b *browser) callProxy(path string) *httptest.ResponseRecorder {
+	return b.get("/api/" + path)
+}
 
 func (w *world) tokensSeen() []string {
 	w.apiMu.Lock()

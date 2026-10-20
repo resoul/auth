@@ -557,7 +557,9 @@ func TestIssueFailureRollsBackUserSessionAndTokens(t *testing.T) {
 
 type failingTokenCreate struct{ port.RefreshTokenRepository }
 
-func (failingTokenCreate) Create(context.Context, *token.RefreshToken) error { return errBoom }
+func (failingTokenCreate) Create(context.Context, *token.RefreshToken) error {
+	return errBoom
+}
 
 // hookSessions runs a callback right after the session is locked, to interleave
 // another request at the exact point where the lock matters.

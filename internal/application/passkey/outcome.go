@@ -144,7 +144,9 @@ func (d SessionDeps) SignIn(ctx context.Context, st port.Stores, now time.Time, 
 }
 
 // Validate checks the dependencies, for the packages that build a SessionDeps of their own.
-func (d SessionDeps) Validate(name string) error { return d.validate(name) }
+func (d SessionDeps) Validate(name string) error {
+	return d.validate(name)
+}
 
 // refuse records a refused strong-factor attempt. It is best effort for the user: a refusal
 // without a known user is not recorded, because audit rows name no one then.

@@ -128,7 +128,7 @@ func TestAnIDTokenIsNotAnAccessToken(t *testing.T) {
 	if _, err := f.tokens.VerifyOIDCAccess(id.Value, userInfoAu); !errors.Is(err, port.ErrInvalidOIDCToken) {
 		t.Errorf("an ID token passed for an access token: %v", err)
 	}
-	// And the ID token carries what a client checks.
+
 	parsed, _ := josejwt.ParseSigned(id.Value, []jose.SignatureAlgorithm{jose.RS256})
 
 	var claims map[string]any
@@ -139,7 +139,7 @@ func TestAnIDTokenIsNotAnAccessToken(t *testing.T) {
 	if claims["aud"] != "panels-web" || claims["nonce"] != "n" || claims["email_verified"] != true || claims["iss"] != oidcIssuer {
 		t.Errorf("claims = %v", claims)
 	}
-	// Without the email scope there is no email at all.
+
 	plain, _ := f.tokens.SignIDToken(port.IDTokenClaims{Subject: f.user, ClientID: "panels-web", Nonce: "n", AuthTime: oidcNow, AMR: []string{"passkey"}, SessionID: "s"})
 	parsed, _ = josejwt.ParseSigned(plain.Value, []jose.SignatureAlgorithm{jose.RS256})
 	claims = nil
@@ -183,13 +183,10 @@ func TestOIDCAccessVerificationRefusals(t *testing.T) {
 	}
 	body, _ := base64.RawURLEncoding.DecodeString(parts[1])
 
-	// A token signed by a key the provider does not publish.
 	otherRing, _ := jwt.LoadRSARing("oidc-a", map[string]string{"oidc-a": testutil.WriteFile(t, "b.pem", rsaKey(t))})
 	foreign, _ := jwt.NewOIDCTokens(otherRing, f.clock, oidcIssuer, time.Minute, 5*time.Minute, 30*time.Second)
 	foreignToken, _, _ := foreign.SignOIDCAccessToken(f.accessClaims())
 
-	// A token of another issuer, of another audience, and one made with the HMAC algorithm keyed by the public key
-	// (the classic confusion): none may pass.
 	wrongIssuer, _ := jwt.NewOIDCTokens(f.ring, f.clock, "https://other.example.test", time.Minute, 5*time.Minute, 30*time.Second)
 	issuerToken, _, _ := wrongIssuer.SignOIDCAccessToken(f.accessClaims())
 	audience := f.accessClaims()
@@ -238,7 +235,6 @@ func TestOIDCAccessVerificationRefusals(t *testing.T) {
 		t.Errorf("the genuine token was refused: %v", err)
 	}
 
-	// Time: valid inside the lifetime and the leeway, refused outside.
 	f.clock.Advance(5*time.Minute + 20*time.Second)
 
 	if _, err := f.tokens.VerifyOIDCAccess(good, userInfoAu); err != nil {
@@ -276,7 +272,7 @@ func TestOIDCKeyringRefusals(t *testing.T) {
 	if _, err := jwt.LoadRSARing("a", nil); err == nil {
 		t.Error("an empty ring was accepted")
 	}
-	// A retired key may be public only: it verifies what it signed and signs nothing.
+
 	ring, err := jwt.LoadRSARing("a", map[string]string{"a": write("a.pem", pem.Private), "old": write("old.pem", pem.Public)})
 	if err != nil {
 		t.Fatal(err)
@@ -303,7 +299,6 @@ func TestOIDCKeyringRefusals(t *testing.T) {
 	}
 }
 
-// rsaKey makes a second RSA private key file content, distinct from the shared one, for a "foreign signer".
 func rsaKey(t *testing.T) []byte {
 	t.Helper()
 
@@ -358,7 +353,7 @@ func TestALogoutTokenIsOnlyEverALogoutToken(t *testing.T) {
 	if !token.ExpiresAt.Equal(oidcNow.Add(2 * time.Minute)) {
 		t.Errorf("expires at %v, want two minutes after issue", token.ExpiresAt)
 	}
-	// It is neither of the other kinds.
+
 	if _, err := f.tokens.VerifyOIDCAccess(token.Value, userInfoAu); !errors.Is(err, port.ErrInvalidOIDCToken) {
 		t.Errorf("as an access token: %v", err)
 	}
@@ -431,7 +426,7 @@ func TestAServiceTokenIsNeverAUsersAndAUsersIsNeverAServices(t *testing.T) {
 	if err != nil || got.ClientID != "billing-worker" || strings.Join(got.Scope, " ") != "messages:send" || got.JTI != claims.JTI || got.Audience != "platform-api" {
 		t.Fatalf("service claims = %+v, %v", got, err)
 	}
-	// The claims of a sign-in are not in it, and the subject is the client.
+
 	payload := decodePayload(t, svc.Value)
 	for _, k := range []string{"sid", "grant_id", "auth_time"} {
 		if _, ok := payload[k]; ok {
@@ -442,11 +437,11 @@ func TestAServiceTokenIsNeverAUsersAndAUsersIsNeverAServices(t *testing.T) {
 	if payload["sub"] != "billing-worker" || payload["client_id"] != "billing-worker" || payload["aud"] != "platform-api" {
 		t.Errorf("payload = %v", payload)
 	}
-	// The user-token verifier refuses it, so UserInfo and the revocation endpoint never take it for a person's.
+
 	if _, err := f.tokens.VerifyOIDCAccess(svc.Value, "platform-api"); !errors.Is(err, port.ErrInvalidOIDCToken) {
 		t.Errorf("a user verifier took a service token: %v", err)
 	}
-	// And the service verifier refuses a user's.
+
 	user, _, err := f.tokens.SignOIDCAccessToken(port.OIDCAccessClaims{
 		Subject: f.user, ClientID: "panels-web", Audience: "platform-api", Scope: []string{"messages:send"},
 		SessionID: "0190a000-0000-7000-8000-000000000001", GrantID: "0190a000-0000-7000-8000-000000000002", AuthTime: oidcNow,
@@ -458,7 +453,7 @@ func TestAServiceTokenIsNeverAUsersAndAUsersIsNeverAServices(t *testing.T) {
 	if _, err := f.tokens.VerifyServiceAccess(user.Value, "platform-api"); !errors.Is(err, port.ErrInvalidOIDCToken) {
 		t.Errorf("a service verifier took a user's token: %v", err)
 	}
-	// Audience and time are checked as for any access token.
+
 	if _, err := f.tokens.VerifyServiceAccess(svc.Value, "video-api"); !errors.Is(err, port.ErrInvalidOIDCToken) {
 		t.Errorf("another audience: %v", err)
 	}

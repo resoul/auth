@@ -13,18 +13,14 @@ import (
 
 var _ port.AccessSigner = (*Signer)(nil)
 
-// tokenType is the typ header (RFC 9068). Verifiers require it, so other kinds of
-// JWT signed with the same keys cannot pass as access tokens.
 const tokenType = "at+jwt"
 
-// privateClaims are the claims beyond the registered ones.
 type privateClaims struct {
 	SessionID string               `json:"sid"`
 	AuthTime  *josejwt.NumericDate `json:"auth_time"`
 	AMR       []string             `json:"amr"`
 }
 
-// Signer issues ES256 access tokens with the ring's active key.
 type Signer struct {
 	signer   jose.Signer
 	clock    port.Clock
@@ -33,7 +29,6 @@ type Signer struct {
 	ttl      time.Duration
 }
 
-// NewSigner builds a Signer. The issuer, the audience and a positive ttl are required.
 func NewSigner(ring *Ring, clock port.Clock, issuer, audience string, ttl time.Duration) (*Signer, error) {
 	if ring == nil || ring.private == nil || clock == nil {
 		return nil, errors.New("new signer: a keyring with a private key and a clock are required")
@@ -54,7 +49,6 @@ func NewSigner(ring *Ring, clock port.Clock, issuer, audience string, ttl time.D
 	return &Signer{signer: signer, clock: clock, issuer: issuer, audience: audience, ttl: ttl}, nil
 }
 
-// SignAccess issues a token for the claims, valid from now for the configured ttl.
 func (s *Signer) SignAccess(c port.AccessClaims) (port.AccessToken, error) {
 	if c.UserID.IsZero() || c.SessionID.IsZero() || c.AuthTime.IsZero() || len(c.AMR) == 0 {
 		return port.AccessToken{}, errors.New("sign access: user, session, auth time and methods are required")
@@ -73,6 +67,6 @@ func (s *Signer) SignAccess(c port.AccessClaims) (port.AccessToken, error) {
 	if err != nil {
 		return port.AccessToken{}, fmt.Errorf("sign access: %w", err)
 	}
-	// NumericDate.Time returns the server's local zone; the port promises UTC.
+
 	return port.AccessToken{Value: value, ExpiresAt: expiry.Time().UTC()}, nil
 }

@@ -10,6 +10,7 @@ import (
 
 	"go.airlance.org/auth/internal/application/port"
 	"go.airlance.org/auth/internal/domain/passkey"
+	"go.airlance.org/auth/internal/domain/session"
 )
 
 // passkeyContract checks the repositories of the strong factor: credentials, challenges,
@@ -481,6 +482,99 @@ func ticketContract(t *testing.T, newUoW NewUnitOfWork) {
 
 		if won != 1 {
 			t.Errorf("%d redemptions won, want 1", won)
+		}
+	})
+
+	t.Run("revoking spends the live tickets of one user, except the step-up tickets of the kept session", func(t *testing.T) {
+		uow, f := newUoW(t), NewFactory(t, contractNow)
+		alice := seedUser(t, uow, f, "")
+		bob := seedUser(t, uow, f, "bob@example.test")
+		kept, _ := seedSession(t, uow, f, alice)
+		other, _ := seedSession(t, uow, f, alice)
+
+		enroll := f.Ticket(TicketSpec{User: alice})
+		recovery := f.Ticket(TicketSpec{User: alice, Kind: passkey.TicketRecoveryEnroll})
+		keptStepUp := f.Ticket(TicketSpec{User: alice, Kind: passkey.TicketStepUp, Session: kept.ID(), Operation: passkey.OperationAddPasskey})
+		otherStepUp := f.Ticket(TicketSpec{User: alice, Kind: passkey.TicketStepUp, Session: other.ID(), Operation: passkey.OperationAddPasskey})
+		spent := f.Ticket(TicketSpec{User: alice})
+		bobs := f.Ticket(TicketSpec{User: bob})
+
+		spentAt := contractNow.Add(time.Second)
+		revokedAt := contractNow.Add(2 * time.Second)
+
+		mustDo(t, uow, func(ctx context.Context, s port.Stores) error {
+			for _, tk := range []*passkey.Ticket{enroll, recovery, keptStepUp, otherStepUp, spent, bobs} {
+				if err := s.Tickets.Create(ctx, tk); err != nil {
+					return err
+				}
+			}
+
+			if err := spent.Use(spentAt, passkey.Presented{Kind: passkey.TicketEnroll, Binding: BindingHash(DefaultBindingSecret)}); err != nil {
+				return err
+			}
+
+			if err := s.Tickets.Save(ctx, spent); err != nil {
+				return err
+			}
+
+			return s.Tickets.RevokeAllForUser(ctx, alice.ID(), kept.ID(), revokedAt)
+		})
+
+		consumedAt := func(tk *passkey.Ticket) time.Time {
+			t.Helper()
+
+			var at time.Time
+
+			mustDo(t, uow, func(ctx context.Context, s port.Stores) error {
+				got, err := s.Tickets.GetForUpdate(ctx, tk.ID())
+				if err != nil {
+					return err
+				}
+
+				at = got.ConsumedAt()
+
+				return nil
+			})
+
+			return at
+		}
+
+		for name, tk := range map[string]*passkey.Ticket{"enroll": enroll, "recovery": recovery, "step-up of another session": otherStepUp} {
+			if got := consumedAt(tk); !got.Equal(revokedAt) {
+				t.Errorf("%s ticket consumed at %v, want %v", name, got, revokedAt)
+			}
+		}
+
+		if got := consumedAt(keptStepUp); !got.IsZero() {
+			t.Errorf("step-up ticket of the kept session consumed at %v, want live", got)
+		}
+
+		if got := consumedAt(spent); !got.Equal(spentAt) {
+			t.Errorf("a spent ticket was rewritten: consumed at %v, want %v", got, spentAt)
+		}
+
+		if got := consumedAt(bobs); !got.IsZero() {
+			t.Errorf("a ticket of another user consumed at %v, want live", got)
+		}
+
+		// Without a kept session nothing live stays; an expired ticket is left as it is.
+		fresh := f.Ticket(TicketSpec{User: alice})
+		late := contractNow.Add(passkey.StepUpTicketTTL + time.Minute)
+
+		mustDo(t, uow, func(ctx context.Context, s port.Stores) error {
+			if err := s.Tickets.Create(ctx, fresh); err != nil {
+				return err
+			}
+
+			return s.Tickets.RevokeAllForUser(ctx, alice.ID(), session.ID{}, late)
+		})
+
+		if got := consumedAt(fresh); !got.Equal(late) {
+			t.Errorf("live ticket consumed at %v, want %v", got, late)
+		}
+
+		if got := consumedAt(keptStepUp); !got.IsZero() {
+			t.Errorf("an expired ticket was rewritten: consumed at %v", got)
 		}
 	})
 }

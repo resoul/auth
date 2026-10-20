@@ -15,7 +15,7 @@ default:
   interruptible: true
 
 .go-job:
-  image: golang:1.27.1-bookworm
+  image: golang:1.27.2-bookworm
   timeout: 30m
   rules:
     - when: on_success
@@ -25,7 +25,7 @@ default:
     GOMODCACHE: "$CI_PROJECT_DIR/.cache/go-mod"
   cache:
     key:
-      prefix: go-1.27.1
+      prefix: go-1.27.2
       files:
         - go.sum
     paths:

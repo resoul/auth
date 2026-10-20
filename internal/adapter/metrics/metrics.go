@@ -153,7 +153,9 @@ type labelSet struct {
 	seen map[string]bool
 }
 
-func newLabelSet(max int) *labelSet { return &labelSet{max: max, seen: map[string]bool{}} }
+func newLabelSet(max int) *labelSet {
+	return &labelSet{max: max, seen: map[string]bool{}}
+}
 
 func (l *labelSet) admit(value string, valid func(string) bool) string {
 	if !valid(value) {
@@ -264,7 +266,9 @@ func (r *Registry) MailProcessed(class authflow.QuotaClass, outcome port.MailOut
 }
 
 // RefreshReuseDetected implements port.Metrics.
-func (r *Registry) RefreshReuseDetected() { r.reuse.Inc() }
+func (r *Registry) RefreshReuseDetected() {
+	r.reuse.Inc()
+}
 
 // QueueStatsFunc reads the current state of the mail queue.
 type QueueStatsFunc func(ctx context.Context, now time.Time) (port.QueueStats, error)

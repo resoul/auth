@@ -132,7 +132,6 @@ func TestLoadRingErrorsAndFormattingDoNotLeakKeyMaterial(t *testing.T) {
 	key := testutil.NewSigningKeyPEM(t)
 	body := strings.TrimSpace(strings.NewReplacer("-----BEGIN PRIVATE KEY-----", "", "-----END PRIVATE KEY-----", "", "\n", "").Replace(string(key.Private)))
 
-	// A key that parses as PEM but not as a key: the error must not echo it.
 	corrupt := pemBlock("PRIVATE KEY", []byte(body))
 
 	_, err := jwt.LoadRing("k", map[string]string{"k": testutil.WriteFile(t, "k.pem", corrupt)})
@@ -156,7 +155,7 @@ func TestJWKSPublishesPublicKeysOnly(t *testing.T) {
 	a, b := testutil.NewSigningKeyPEM(t), testutil.NewSigningKeyPEM(t)
 
 	ring, err := jwt.LoadRing("sign-b", map[string]string{
-		"sign-a": testutil.WriteFile(t, "a.pem", a.Private), // even a kept private key is never published
+		"sign-a": testutil.WriteFile(t, "a.pem", a.Private),
 		"sign-b": testutil.WriteFile(t, "b.pem", b.Private),
 	})
 	if err != nil {
@@ -235,7 +234,6 @@ func keyOf(t *testing.T, jwks []byte) string {
 	return string(doc.Keys[0])
 }
 
-// dOf returns the private scalar of the PEM key as base64url, to prove ParseJWKS refuses it.
 func dOf(t *testing.T, key testutil.SigningKeyPEM) string {
 	t.Helper()
 
@@ -253,8 +251,6 @@ func dOf(t *testing.T, key testutil.SigningKeyPEM) string {
 
 	return base64.RawURLEncoding.EncodeToString(scalar)
 }
-
-// ---- restart and rotation ----
 
 func ringFrom(t *testing.T, active string, files map[string][]byte) *jwt.Ring {
 	t.Helper()
@@ -297,7 +293,6 @@ func TestRestartPublishesTheSameRingAndKeepsTokensValid(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// "Restart": load the same files again into a fresh process state.
 	restarted := ringFrom(t, "sign-a", map[string][]byte{"sign-a": w.pem.Private})
 
 	secondJWKS, err := restarted.JWKS()
@@ -332,13 +327,10 @@ func TestRotationOverlapKeepsOldAndNewTokensValid(t *testing.T) {
 		return tok.Value
 	}
 
-	// Step 0: only A exists and signs.
 	ring0 := ringFrom(t, "a", map[string][]byte{"a": keyA.Private})
 	signer0, _ := signerAndVerifier(t, ring0, clock)
 	tokenA := issue(signer0)
 
-	// Step 1: B's public key is published while A still signs. A service refreshes its
-	// JWKS cache now and learns both keys.
 	ring1 := ringFrom(t, "a", map[string][]byte{"a": keyA.Private, "b": keyB.Public})
 
 	jwks1, err := ring1.JWKS()
@@ -356,7 +348,6 @@ func TestRotationOverlapKeepsOldAndNewTokensValid(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Step 2: the active key switches to B; A stays as a public key.
 	ring2 := ringFrom(t, "b", map[string][]byte{"a": keyA.Public, "b": keyB.Private})
 	signer2, verifier2 := signerAndVerifier(t, ring2, clock)
 	tokenB := issue(signer2)
@@ -368,8 +359,7 @@ func TestRotationOverlapKeepsOldAndNewTokensValid(t *testing.T) {
 	if _, err := verifier2.VerifyAccess(tokenB); err != nil {
 		t.Errorf("a token of the new key must verify: %v", err)
 	}
-	// The service never fetched anything after step 1, yet it accepts the new key:
-	// that is why the public key goes out before the switch.
+
 	if _, err := serviceVerifier.VerifyAccess(tokenB); err != nil {
 		t.Errorf("a service with the step-1 cache rejects the new key: %v", err)
 	}
@@ -378,7 +368,6 @@ func TestRotationOverlapKeepsOldAndNewTokensValid(t *testing.T) {
 		t.Errorf("a service with the step-1 cache rejects the old key: %v", err)
 	}
 
-	// Step 3: after expiry plus skew the old public key is removed.
 	ring3 := ringFrom(t, "b", map[string][]byte{"b": keyB.Private})
 
 	_, verifier3 := signerAndVerifier(t, ring3, clock)

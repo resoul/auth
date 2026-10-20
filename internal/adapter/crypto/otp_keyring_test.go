@@ -21,7 +21,9 @@ func keyFile(t *testing.T, content string) string {
 	return path
 }
 
-func b64(key []byte) string { return base64.StdEncoding.EncodeToString(key) }
+func b64(key []byte) string {
+	return base64.StdEncoding.EncodeToString(key)
+}
 
 func TestLoadOTPKeyring(t *testing.T) {
 	files := map[string]string{
@@ -38,7 +40,6 @@ func TestLoadOTPKeyring(t *testing.T) {
 		t.Errorf("active=%q kids=%v", ring.ActiveKID(), ring.KIDs())
 	}
 
-	// The loaded keys derive the same code as keys given directly.
 	otp, err := crypto.NewOTP(ring, nil)
 	if err != nil {
 		t.Fatal(err)

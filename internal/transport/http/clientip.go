@@ -28,7 +28,9 @@ func clientIP(ctx context.Context) netip.Addr {
 
 // ClientIPFromContext returns the address withClientIP resolved for the request, for the handlers that live outside this
 // package; the zero Addr is unknown.
-func ClientIPFromContext(ctx context.Context) netip.Addr { return clientIP(ctx) }
+func ClientIPFromContext(ctx context.Context) netip.Addr {
+	return clientIP(ctx)
+}
 
 // ClientIP returns the address of the client. Without trusted proxies, or when the TCP
 // peer is not one of them, it is the peer itself and every header is ignored. Behind a

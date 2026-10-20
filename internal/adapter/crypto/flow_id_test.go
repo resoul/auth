@@ -62,7 +62,9 @@ func TestNewFlowIDFailsWithoutEnoughRandomness(t *testing.T) {
 
 type failingReader struct{ err error }
 
-func (r failingReader) Read([]byte) (int, error) { return 0, r.err }
+func (r failingReader) Read([]byte) (int, error) {
+	return 0, r.err
+}
 
 func TestNewFlowIDWrapsSourceError(t *testing.T) {
 	boom := errors.New("entropy unavailable")

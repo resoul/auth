@@ -34,7 +34,9 @@ import (
 var schema string
 
 // Schema is the SQL that creates the tables; it is idempotent.
-func Schema() string { return schema }
+func Schema() string {
+	return schema
+}
 
 // Migrate creates the tables if they are not there.
 //
@@ -85,7 +87,9 @@ func New(pool *pgxpool.Pool, now func() time.Time) *Store {
 }
 
 // utc keeps what is stored in one zone; the database keeps microseconds.
-func utc(t time.Time) time.Time { return t.UTC() }
+func utc(t time.Time) time.Time {
+	return t.UTC()
+}
 
 // PutLogin implements bff.Store. It also removes what has expired, so no job is needed for the small tables.
 func (s *Store) PutLogin(ctx context.Context, tx bff.LoginTx) error {
@@ -289,7 +293,9 @@ func (s *Store) EndProviderSession(ctx context.Context, issuer, sid, jti string,
 }
 
 // lockKey names the session lock; the session's key is a hash, so it is as good as any.
-func lockKey(key string) string { return "bff-session:" + key }
+func lockKey(key string) string {
+	return "bff-session:" + key
+}
 
 // writeTimeout bounds what is done after the function has run, with a context nobody can cancel.
 const writeTimeout = 15 * time.Second

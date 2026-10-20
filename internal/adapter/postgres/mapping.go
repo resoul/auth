@@ -13,7 +13,9 @@ import (
 
 // dbTime normalizes a time for storage: PostgreSQL keeps microseconds, so the
 // value is truncated here, in UTC, and a read returns exactly what was written.
-func dbTime(t time.Time) time.Time { return t.UTC().Truncate(time.Microsecond) }
+func dbTime(t time.Time) time.Time {
+	return t.UTC().Truncate(time.Microsecond)
+}
 
 func dbTimePtr(t time.Time) *time.Time {
 	if t.IsZero() {
@@ -25,7 +27,9 @@ func dbTimePtr(t time.Time) *time.Time {
 	return &v
 }
 
-func goTime(t time.Time) time.Time { return t.UTC() }
+func goTime(t time.Time) time.Time {
+	return t.UTC()
+}
 
 func goTimePtr(t *time.Time) time.Time {
 	if t == nil {
@@ -44,7 +48,9 @@ func toUUID(s string) (uuid.UUID, error) {
 	return u, nil
 }
 
-func userUUID(id identity.UserID) (uuid.UUID, error) { return toUUID(id.String()) }
+func userUUID(id identity.UserID) (uuid.UUID, error) {
+	return toUUID(id.String())
+}
 
 func toInt64(v uint64) (int64, error) {
 	if v > math.MaxInt64 {
@@ -54,4 +60,6 @@ func toInt64(v uint64) (int64, error) {
 	return int64(v), nil
 }
 
-func pgText(s string) pgtype.Text { return pgtype.Text{String: s, Valid: true} }
+func pgText(s string) pgtype.Text {
+	return pgtype.Text{String: s, Valid: true}
+}

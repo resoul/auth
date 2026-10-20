@@ -110,7 +110,9 @@ func NewProfile(windows map[Scope][]Window) (Profile, error) {
 }
 
 // Unlimited is the profile without any budget, for tests and tools.
-func Unlimited() Profile { return Profile{} }
+func Unlimited() Profile {
+	return Profile{}
+}
 
 // DefaultProfile is the working profile. Pair and IP budgets are provisional values
 // that only narrow the address-wide budgets.
@@ -149,7 +151,9 @@ func knownScope(s Scope) bool {
 }
 
 // Windows returns the windows of a scope.
-func (p Profile) Windows(s Scope) []Window { return p.windows[s] }
+func (p Profile) Windows(s Scope) []Window {
+	return p.windows[s]
+}
 
 // Limit is one budget a spend draws from: the windows of Scope applied to Key.
 type Limit struct {

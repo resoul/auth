@@ -158,7 +158,9 @@ func (h *handler) clearedCookie() *http.Cookie {
 	return c
 }
 
-func (h *handler) clientIP(r *http.Request) netip.Addr { return httpapi.ClientIP(r, h.TrustedProxies) }
+func (h *handler) clientIP(r *http.Request) netip.Addr {
+	return httpapi.ClientIP(r, h.TrustedProxies)
+}
 
 // denied counts an expected refusal for the alerts, with the reason of the use case.
 func (h *handler) denied(operation string, reason appadmin.Reason) {

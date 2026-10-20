@@ -167,28 +167,46 @@ func (c *Challenge) Record() ChallengeRecord {
 }
 
 // ID returns the row identifier, which the client sends back with the ceremony result.
-func (c *Challenge) ID() ID { return c.id }
+func (c *Challenge) ID() ID {
+	return c.id
+}
 
 // Purpose returns the ceremony.
-func (c *Challenge) Purpose() ChallengePurpose { return c.purpose }
+func (c *Challenge) Purpose() ChallengePurpose {
+	return c.purpose
+}
 
 // UserID returns the User the ceremony is for, or the zero value.
-func (c *Challenge) UserID() identity.UserID { return c.userID }
+func (c *Challenge) UserID() identity.UserID {
+	return c.userID
+}
 
 // TicketID returns the ticket that authorized the ceremony, or the zero value.
-func (c *Challenge) TicketID() ID { return c.ticketID }
+func (c *Challenge) TicketID() ID {
+	return c.ticketID
+}
 
 // SessionID returns the session of a step-up challenge, or the zero value.
-func (c *Challenge) SessionID() session.ID { return c.sessionID }
+func (c *Challenge) SessionID() session.ID {
+	return c.sessionID
+}
 
 // Operation returns the operation of a step-up challenge, or "".
-func (c *Challenge) Operation() Operation { return c.operation }
+func (c *Challenge) Operation() Operation {
+	return c.operation
+}
 
 // Data returns the ceremony state.
-func (c *Challenge) Data() []byte { return slices.Clone(c.data) }
+func (c *Challenge) Data() []byte {
+	return slices.Clone(c.data)
+}
 
 // ExpiresAt returns when the challenge stops being accepted.
-func (c *Challenge) ExpiresAt() time.Time { return c.expiresAt }
+func (c *Challenge) ExpiresAt() time.Time {
+	return c.expiresAt
+}
 
 // ConsumedAt returns when the challenge was used, or the zero time.
-func (c *Challenge) ConsumedAt() time.Time { return c.consumedAt }
+func (c *Challenge) ConsumedAt() time.Time {
+	return c.consumedAt
+}

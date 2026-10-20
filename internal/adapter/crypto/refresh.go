@@ -15,14 +15,10 @@ var _ port.RefreshSecrets = Refresh{}
 
 const refreshSecretBytes = 32
 
-// Refresh issues refresh secrets: 32 random bytes in unpadded base64url. The
-// stored hash is SHA-256 of the decoded bytes. The zero value uses crypto/rand.
 type Refresh struct {
-	// Source overrides crypto/rand in tests of this package only.
 	Source io.Reader
 }
 
-// NewRefreshSecret creates a secret and its hash.
 func (r Refresh) NewRefreshSecret() (string, token.Hash, error) {
 	source := r.Source
 	if source == nil {
@@ -42,10 +38,8 @@ func (r Refresh) NewRefreshSecret() (string, token.Hash, error) {
 	return base64.RawURLEncoding.EncodeToString(raw), hash, nil
 }
 
-// HashRefreshSecret hashes a presented secret; any other shape is ErrInvalidRefreshSecret.
 func (Refresh) HashRefreshSecret(secret string) (token.Hash, error) {
 	raw, err := base64.RawURLEncoding.Strict().DecodeString(secret)
-	// The decoder skips CR and LF, so the canonical re-encoding must match the input.
 	if err != nil || len(raw) != refreshSecretBytes || base64.RawURLEncoding.EncodeToString(raw) != secret {
 		return token.Hash{}, port.ErrInvalidRefreshSecret
 	}

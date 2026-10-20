@@ -42,7 +42,9 @@ func (m *recordingMetrics) MailProcessed(class authflow.QuotaClass, outcome port
 	m.mails = append(m.mails, recordedMetric{class, outcome, wait, send})
 }
 
-func (m *recordingMetrics) RefreshReuseDetected() { m.reuses++ }
+func (m *recordingMetrics) RefreshReuseDetected() {
+	m.reuses++
+}
 
 func (m *recordingMetrics) outcomes() []port.MailOutcome {
 	m.mu.Lock()
@@ -294,7 +296,9 @@ func (e *workerEnv) process() bool {
 	return processed
 }
 
-func (e *workerEnv) statuses() []memory.MailStatus { return e.store.OutboxStatuses() }
+func (e *workerEnv) statuses() []memory.MailStatus {
+	return e.store.OutboxStatuses()
+}
 
 func TestWorkerSendsTheCodeOfTheStoredFlow(t *testing.T) {
 	e := newWorkerEnv(t)
@@ -750,7 +754,9 @@ func TestRunSurvivesDatabaseErrors(t *testing.T) {
 
 type failingComplete struct{ port.Outbox }
 
-func (failingComplete) Complete(context.Context, port.MailJobID) error { return errBoom }
+func (failingComplete) Complete(context.Context, port.MailJobID) error {
+	return errBoom
+}
 
 func TestAFailedCompletionLeavesTheJobToBeRetriedAfterTheLease(t *testing.T) {
 	e := newWorkerEnv(t)

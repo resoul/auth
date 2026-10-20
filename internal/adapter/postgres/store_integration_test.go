@@ -216,7 +216,9 @@ func (f *faultyUoW) Do(ctx context.Context, fn func(ctx context.Context, s port.
 
 type failingOutbox struct{ port.Outbox }
 
-func (failingOutbox) Enqueue(context.Context, port.MailJob) error { return errBoom }
+func (failingOutbox) Enqueue(context.Context, port.MailJob) error {
+	return errBoom
+}
 
 type failingUsers struct{ port.UserRepository }
 

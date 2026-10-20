@@ -103,7 +103,9 @@ func newEnv(t *testing.T, opts ...memory.Option) *env {
 	return e
 }
 
-func withQuota(p quota.Profile) memory.Option { return memory.WithQuota(p) }
+func withQuota(p quota.Profile) memory.Option {
+	return memory.WithQuota(p)
+}
 
 func must(t *testing.T, err error) {
 	t.Helper()

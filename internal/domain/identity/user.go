@@ -80,14 +80,14 @@ func (u *User) Unblock(now time.Time) error {
 	return nil
 }
 
-// Blocked reports whether the User is barred from signing in.
-func (u *User) Blocked() bool { return !u.blockedAt.IsZero() }
+func (u *User) Blocked() bool {
+	return !u.blockedAt.IsZero()
+}
 
-// BlockedAt returns when the User was blocked, or the zero time.
-func (u *User) BlockedAt() time.Time { return u.blockedAt }
+func (u *User) BlockedAt() time.Time {
+	return u.blockedAt
+}
 
-// UserRecord is the stored form of a User, used by adapters to rebuild it. BlockedAt is the
-// zero time for a User who may sign in.
 type UserRecord struct {
 	ID              UserID
 	Email           Email
@@ -112,16 +112,26 @@ func (u *User) Record() UserRecord {
 }
 
 // ID returns the User identifier.
-func (u *User) ID() UserID { return u.id }
+func (u *User) ID() UserID {
+	return u.id
+}
 
 // Email returns the confirmed normalized address.
-func (u *User) Email() Email { return u.email }
+func (u *User) Email() Email {
+	return u.email
+}
 
 // EmailVerifiedAt returns when the address was proven.
-func (u *User) EmailVerifiedAt() time.Time { return u.emailVerifiedAt }
+func (u *User) EmailVerifiedAt() time.Time {
+	return u.emailVerifiedAt
+}
 
 // CreatedAt returns when the User was created.
-func (u *User) CreatedAt() time.Time { return u.createdAt }
+func (u *User) CreatedAt() time.Time {
+	return u.createdAt
+}
 
 // UpdatedAt returns when the User last changed.
-func (u *User) UpdatedAt() time.Time { return u.updatedAt }
+func (u *User) UpdatedAt() time.Time {
+	return u.updatedAt
+}

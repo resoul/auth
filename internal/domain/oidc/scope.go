@@ -13,7 +13,9 @@ const (
 )
 
 // SupportedScopes is the list the discovery document publishes.
-func SupportedScopes() []string { return []string{ScopeOpenID, ScopeEmail} }
+func SupportedScopes() []string {
+	return []string{ScopeOpenID, ScopeEmail}
+}
 
 // ParseScopes splits a space-separated scope parameter. It refuses an empty list, a repeated scope, an unknown one
 // and a list without openid: this provider serves OpenID Connect only.
@@ -37,4 +39,6 @@ func ParseScopes(raw string) ([]string, error) {
 }
 
 // HasScope reports whether the list holds the scope.
-func HasScope(scopes []string, scope string) bool { return slices.Contains(scopes, scope) }
+func HasScope(scopes []string, scope string) bool {
+	return slices.Contains(scopes, scope)
+}

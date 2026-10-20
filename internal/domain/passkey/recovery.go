@@ -130,10 +130,16 @@ func (c *RecoveryCode) Record() RecoveryCodeRecord {
 }
 
 // ID returns the row identifier.
-func (c *RecoveryCode) ID() ID { return c.id }
+func (c *RecoveryCode) ID() ID {
+	return c.id
+}
 
 // UserID returns the owner.
-func (c *RecoveryCode) UserID() identity.UserID { return c.userID }
+func (c *RecoveryCode) UserID() identity.UserID {
+	return c.userID
+}
 
 // UsedAt returns when the code was redeemed, or the zero time.
-func (c *RecoveryCode) UsedAt() time.Time { return c.usedAt }
+func (c *RecoveryCode) UsedAt() time.Time {
+	return c.usedAt
+}
