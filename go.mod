@@ -1,6 +1,6 @@
 module go.airlance.org/auth
 
-go 1.27.1
+go 1.27.2
 
 require (
 	github.com/coreos/go-oidc/v3 v3.21.0

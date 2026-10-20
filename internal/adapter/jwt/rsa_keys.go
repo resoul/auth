@@ -14,25 +14,17 @@ import (
 	"github.com/go-jose/go-jose/v4"
 )
 
-// Bounds of an RSA signing key. Below 2048 bits the key is too weak to sign with; the upper bound keeps a
-// misplaced file from making every verification slow.
 const (
 	minRSABits = 2048
 	maxRSABits = 8192
 )
 
-// RSARing holds the RS256 keys of the OpenID Provider by kid: the active private key and the public keys of every
-// kid that may still sign valid tokens. It is separate from Ring on purpose: the ES256 keys of the /v1 API and the
-// RS256 keys of OIDC publish in different key sets, so adding OIDC cannot change what existing verifiers see.
 type RSARing struct {
 	activeKID string
 	private   *rsa.PrivateKey
 	public    map[string]*rsa.PublicKey
 }
 
-// LoadRSARing reads every key file (kid to path) and builds the ring. A file holds one PEM block: PKCS#8
-// "PRIVATE KEY" or PKIX "PUBLIC KEY" of an RSA key of 2048 to 8192 bits. The active kid must have a private key.
-// Errors name the kid and path, never contents.
 func LoadRSARing(activeKID string, keyFiles map[string]string) (*RSARing, error) {
 	if len(keyFiles) == 0 {
 		return nil, errors.New("oidc keyring: no keys")
@@ -99,7 +91,6 @@ func readRSAKeyFile(path string) (*rsa.PublicKey, *rsa.PrivateKey, error) {
 	return pub, priv, nil
 }
 
-// parseRSAPEM accepts exactly one block. The messages never include the data.
 func parseRSAPEM(data []byte) (*rsa.PublicKey, *rsa.PrivateKey, error) {
 	block, rest := pem.Decode(data)
 	if block == nil {
@@ -151,12 +142,10 @@ func parseRSAPEM(data []byte) (*rsa.PublicKey, *rsa.PrivateKey, error) {
 	return pub, priv, nil
 }
 
-// ActiveKID returns the kid that signs new tokens.
 func (r *RSARing) ActiveKID() string {
 	return r.activeKID
 }
 
-// KIDs returns every kid in sorted order.
 func (r *RSARing) KIDs() []string {
 	kids := make([]string, 0, len(r.public))
 	for kid := range r.public {
@@ -168,7 +157,6 @@ func (r *RSARing) KIDs() []string {
 	return kids
 }
 
-// PublicKeys returns a copy of the kid to public key map, for a verifier.
 func (r *RSARing) PublicKeys() map[string]*rsa.PublicKey {
 	out := make(map[string]*rsa.PublicKey, len(r.public))
 	for kid, key := range r.public {
@@ -178,8 +166,6 @@ func (r *RSARing) PublicKeys() map[string]*rsa.PublicKey {
 	return out
 }
 
-// JWKS returns the public key set as JSON, ordered by kid so a restart publishes the same bytes. Private
-// material is never included.
 func (r *RSARing) JWKS() ([]byte, error) {
 	set := jose.JSONWebKeySet{}
 	for _, kid := range r.KIDs() {
@@ -194,12 +180,10 @@ func (r *RSARing) JWKS() ([]byte, error) {
 	return data, nil
 }
 
-// String and GoString keep key material out of %v and %#v output.
 func (r *RSARing) String() string {
 	return fmt.Sprintf("oidc keyring (active %q, %d keys)", r.activeKID, len(r.public))
 }
 
-// GoString implements fmt.GoStringer.
 func (r *RSARing) GoString() string {
 	return r.String()
 }

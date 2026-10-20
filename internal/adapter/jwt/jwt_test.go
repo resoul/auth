@@ -33,7 +33,6 @@ const (
 
 var t0 = time.Date(2026, 10, 2, 12, 0, 0, 0, time.UTC)
 
-// world is one signing key, its ring, a signer and a verifier on a fake clock.
 type world struct {
 	t        *testing.T
 	clock    *testutil.FakeClock
@@ -149,7 +148,7 @@ func TestTokenShape(t *testing.T) {
 
 func TestVerifierTimeBounds(t *testing.T) {
 	w := newWorld(t)
-	token := w.token() // iat t0, exp t0+5m
+	token := w.token()
 
 	tests := []struct {
 		name string
@@ -184,7 +183,6 @@ func isInvalid(err error) bool {
 	return err != nil && strings.Contains(err.Error(), port.ErrInvalidAccessToken.Error())
 }
 
-// forge signs arbitrary claims and headers so that single properties can be broken.
 type forge struct {
 	key     *ecdsa.PrivateKey
 	kid     string
@@ -333,7 +331,6 @@ func TestVerifierRejectsBrokenHeadersAndKeys(t *testing.T) {
 		return f.sign(t, claims)
 	}
 
-	// HS256 keyed with the public key, the classic algorithm confusion attack.
 	pubDER, err := x509.MarshalPKIXPublicKey(&w.activeKey().PublicKey)
 	if err != nil {
 		t.Fatal(err)
@@ -361,7 +358,6 @@ func TestVerifierRejectsBrokenHeadersAndKeys(t *testing.T) {
 	}
 
 	dupHeader := b64([]byte(`{"alg":"ES256","typ":"at+jwt","kid":"sign-a","kid":"sign-a"}`))
-	// A real signature over a header with a repeated name would still be refused.
 	dupSigned := dupHeader + "." + parts[1] + "." + parts[2]
 
 	badFormats := []string{"", "x", "a.b", "a.b.c.d", " " + good, good + "\n", good + " ", `{"payload":"x","signatures":[]}`}

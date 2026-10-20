@@ -19,7 +19,6 @@ type OIDC struct {
 	Source io.Reader
 }
 
-// NewOIDCSecret creates a secret and its hash.
 func (o OIDC) NewOIDCSecret() (string, oidc.SecretHash, error) {
 	source := o.Source
 	if source == nil {
@@ -34,10 +33,8 @@ func (o OIDC) NewOIDCSecret() (string, oidc.SecretHash, error) {
 	return base64.RawURLEncoding.EncodeToString(raw), sha256.Sum256(raw), nil
 }
 
-// HashOIDCSecret hashes a presented secret; any other shape is ErrInvalidOIDCSecret and nothing is compared.
 func (OIDC) HashOIDCSecret(secret string) (oidc.SecretHash, error) {
 	raw, err := base64.RawURLEncoding.Strict().DecodeString(secret)
-	// The decoder skips CR and LF, so the canonical re-encoding must match the input.
 	if err != nil || len(raw) != oidcSecretBytes || base64.RawURLEncoding.EncodeToString(raw) != secret {
 		return oidc.SecretHash{}, port.ErrInvalidOIDCSecret
 	}

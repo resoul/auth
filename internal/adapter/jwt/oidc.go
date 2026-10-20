@@ -20,7 +20,6 @@ var (
 	_ port.OIDCAccessVerifier = (*OIDCTokens)(nil)
 )
 
-// Types of the tokens this provider issues. An ID Token is a plain JWT; the access token follows RFC 9068.
 const (
 	idTokenType     = "JWT"
 	logoutTokenType = "logout+jwt"
@@ -34,7 +33,6 @@ const (
 	maxAudienceSize = 512
 )
 
-// OIDCTokens signs and verifies the RS256 tokens of the OpenID Provider with the ring's active key.
 type OIDCTokens struct {
 	ring      *RSARing
 	idSigner  jose.Signer
@@ -47,7 +45,6 @@ type OIDCTokens struct {
 	leeway    time.Duration
 }
 
-// NewOIDCTokens builds the signer and verifier. The issuer and positive lifetimes are required.
 func NewOIDCTokens(ring *RSARing, clock port.Clock, issuer string, idTTL, accessTTL, leeway time.Duration) (*OIDCTokens, error) {
 	if ring == nil || ring.private == nil || clock == nil {
 		return nil, errors.New("new oidc tokens: a keyring with a private key and a clock are required")
@@ -86,7 +83,6 @@ type idClaims struct {
 	EmailVerified *bool                `json:"email_verified,omitempty"`
 }
 
-// SignIDToken issues an ID Token whose only audience is the client.
 func (t *OIDCTokens) SignIDToken(c port.IDTokenClaims) (port.AccessToken, error) {
 	if c.Subject.IsZero() || c.ClientID == "" || c.Nonce == "" || c.AuthTime.IsZero() || len(c.AMR) == 0 || c.SessionID == "" {
 		return port.AccessToken{}, errors.New("sign id token: subject, client, nonce, auth time, methods and session are required")
@@ -123,8 +119,6 @@ type accessClaims struct {
 	AuthTime  *josejwt.NumericDate `json:"auth_time,omitempty"`
 }
 
-// SignOIDCAccessToken issues an access token for exactly one audience (RFC 9068) and returns the claims it made,
-// the jti included, for the audit trail.
 func (t *OIDCTokens) SignOIDCAccessToken(c port.OIDCAccessClaims) (port.AccessToken, port.OIDCAccessClaims, error) {
 	if c.Subject.IsZero() || c.ClientID == "" || c.Audience == "" || len(c.Scope) == 0 || c.SessionID == "" || c.GrantID == "" || c.AuthTime.IsZero() {
 		return port.AccessToken{}, port.OIDCAccessClaims{}, errors.New("sign oidc access token: subject, client, audience, scope, session, grant and auth time are required")
@@ -159,9 +153,6 @@ func invalidOIDC(reason string) error {
 	return fmt.Errorf("%w: %s", port.ErrInvalidOIDCToken, reason)
 }
 
-// parseAccess checks what every access token of this provider shares: RS256 only, the at+jwt type, a key of the ring, this
-// issuer, exactly the audience asked for, one audience, and the time bounds. The header may name only alg, typ and kid:
-// nothing in a token points at or carries a key. What a kind of token must carry is for its own verifier.
 func (t *OIDCTokens) parseAccess(token, audience string) (josejwt.Claims, accessClaims, error) {
 	var (
 		std  josejwt.Claims
@@ -231,8 +222,6 @@ func (t *OIDCTokens) parseAccess(token, audience string) (josejwt.Claims, access
 	return std, priv, nil
 }
 
-// VerifyOIDCAccess checks the access token of a user presented to this provider: what parseAccess checks, and the claims of
-// a sign-in (sid, grant, auth_time) with a user's identifier as the subject.
 func (t *OIDCTokens) VerifyOIDCAccess(token, audience string) (port.OIDCAccessClaims, error) {
 	std, priv, err := t.parseAccess(token, audience)
 	if err != nil {
@@ -255,9 +244,6 @@ func (t *OIDCTokens) VerifyOIDCAccess(token, audience string) (port.OIDCAccessCl
 	}, nil
 }
 
-// SignServiceToken issues the access token of a service identity: the client is the subject, and the token carries no
-// sid, grant or auth_time, so it cannot pass for a user's. The type, issuer, audience and lifetime are those of any access
-// token of the provider.
 func (t *OIDCTokens) SignServiceToken(c port.ServiceAccessClaims) (port.AccessToken, port.ServiceAccessClaims, error) {
 	if c.ClientID == "" || c.Audience == "" || len(c.Scope) == 0 {
 		return port.AccessToken{}, port.ServiceAccessClaims{}, errors.New("sign service token: client, audience and scope are required")
@@ -288,8 +274,6 @@ func (t *OIDCTokens) SignServiceToken(c port.ServiceAccessClaims) (port.AccessTo
 	return port.AccessToken{Value: value, ExpiresAt: c.ExpiresAt}, c, nil
 }
 
-// VerifyServiceAccess checks the access token of a service: what parseAccess checks, a subject equal to the client_id, and
-// none of the claims of a sign-in.
 func (t *OIDCTokens) VerifyServiceAccess(token, audience string) (port.ServiceAccessClaims, error) {
 	std, priv, err := t.parseAccess(token, audience)
 	if err != nil {
@@ -311,9 +295,6 @@ type logoutClaims struct {
 	SessionID string              `json:"sid"`
 }
 
-// SignLogoutToken issues the token of a back-channel logout notice (OpenID Connect Back-Channel Logout 1.0): the type
-// logout+jwt, the audience of the one client, the sign-in's sid, the backchannel-logout event, and no nonce, so it can
-// never pass for an ID token. Its life is short; a notice delivered again gets a fresh token with the same jti.
 func (t *OIDCTokens) SignLogoutToken(c port.LogoutClaims) (port.AccessToken, error) {
 	if c.Subject.IsZero() || c.ClientID == "" || c.SessionID == "" || c.JTI == "" {
 		return port.AccessToken{}, errors.New("sign logout token: subject, client, session and jti are required")
@@ -336,9 +317,6 @@ func (t *OIDCTokens) SignLogoutToken(c port.LogoutClaims) (port.AccessToken, err
 	return port.AccessToken{Value: value, ExpiresAt: expiry.Time().UTC()}, nil
 }
 
-// VerifyIDTokenHint checks that an ID token is one this provider issued: RS256, the JWT type, a key of the ring, this
-// issuer and exactly one audience. The expiry is not checked, because a client names the sign-in to end with the last ID
-// token it holds, and that one has usually expired. A token of another type (an access token, a logout token) is refused.
 func (t *OIDCTokens) VerifyIDTokenHint(token string) (port.IDTokenHint, error) {
 	if strings.Count(token, ".") != 2 || strings.ContainsAny(token, " \t\r\n{}\"") {
 		return port.IDTokenHint{}, invalidOIDC("not a compact JWT")
@@ -375,6 +353,7 @@ func (t *OIDCTokens) VerifyIDTokenHint(token string) (port.IDTokenHint, error) {
 		std  josejwt.Claims
 		priv idClaims
 	)
+
 	if err := parsed.Claims(key, &std, &priv); err != nil {
 		return port.IDTokenHint{}, invalidOIDC("bad signature or claims")
 	}

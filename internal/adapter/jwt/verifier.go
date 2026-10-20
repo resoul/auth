@@ -20,9 +20,6 @@ import (
 
 var _ port.AccessVerifier = (*Verifier)(nil)
 
-// Verifier checks access tokens against a fixed set of trusted public keys. It
-// never fetches keys named by the token, and an unknown kid is a refusal: there is
-// no search through the other keys and no fallback to the active one.
 type Verifier struct {
 	keys     map[string]*ecdsa.PublicKey
 	clock    port.Clock
@@ -31,8 +28,6 @@ type Verifier struct {
 	leeway   time.Duration
 }
 
-// NewVerifier builds a Verifier for one issuer and one audience. leeway is the
-// allowed clock skew for exp, iat and nbf.
 func NewVerifier(keys map[string]*ecdsa.PublicKey, clock port.Clock, issuer, audience string, leeway time.Duration) (*Verifier, error) {
 	if len(keys) == 0 || clock == nil || issuer == "" || audience == "" || leeway < 0 {
 		return nil, errors.New("new verifier: keys, a clock, an issuer, an audience and a non-negative leeway are required")
@@ -50,16 +45,12 @@ func NewVerifier(keys map[string]*ecdsa.PublicKey, clock port.Clock, issuer, aud
 	return &Verifier{keys: copied, clock: clock, issuer: issuer, audience: audience, leeway: leeway}, nil
 }
 
-// allowedHeaders are the only protected header names a token may carry. Anything
-// that could point at or embed a key (jwk, jku, x5u, x5c, x5t) or change the rules
-// (crit) is refused, and so is a repeated name, which parsers resolve differently.
 var allowedHeaders = map[string]bool{"alg": true, "typ": true, "kid": true}
 
 func checkHeaderNames(token string) error {
 	return checkHeaderNamesFor(token, invalid)
 }
 
-// checkHeaderNamesFor is checkHeaderNames with the error each kind of token reports.
 func checkHeaderNamesFor(token string, invalid func(string) error) error {
 	segment, _, _ := strings.Cut(token, ".")
 
@@ -105,10 +96,7 @@ func invalid(reason string) error {
 	return fmt.Errorf("%w: %s", port.ErrInvalidAccessToken, reason)
 }
 
-// VerifyAccess checks the algorithm, type, key, signature, issuer, audience, time
-// bounds and the presence and shape of every required claim.
 func (v *Verifier) VerifyAccess(token string) (port.AccessClaims, error) {
-	// Only the compact form is accepted; the library would also take JSON serializations.
 	if strings.Count(token, ".") != 2 || strings.ContainsAny(token, " \t\r\n{}\"") {
 		return port.AccessClaims{}, invalid("not a compact JWT")
 	}
@@ -148,7 +136,6 @@ func (v *Verifier) VerifyAccess(token string) (port.AccessClaims, error) {
 		return port.AccessClaims{}, invalid("bad signature or claims")
 	}
 
-	// The library validates fields that are present; presence is checked here.
 	if std.Issuer == "" || std.Subject == "" || len(std.Audience) == 0 || std.Expiry == nil || std.IssuedAt == nil ||
 		priv.SessionID == "" || priv.AuthTime == nil || len(priv.AMR) == 0 {
 		return port.AccessClaims{}, invalid("a required claim is missing")
@@ -183,7 +170,6 @@ func (v *Verifier) VerifyAccess(token string) (port.AccessClaims, error) {
 
 	return port.AccessClaims{
 		UserID: userID, SessionID: sessionID, AMR: priv.AMR,
-		// NumericDate.Time returns the server's local zone; the port promises UTC.
 		AuthTime: priv.AuthTime.Time().UTC(), IssuedAt: std.IssuedAt.Time().UTC(), ExpiresAt: std.Expiry.Time().UTC(),
 	}, nil
 }

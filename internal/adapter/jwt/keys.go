@@ -21,18 +21,12 @@ var _ port.JWKSPublisher = (*Ring)(nil)
 
 const maxKeyFileSize = 8 * 1024
 
-// Ring holds the signing keys by kid: the active private key and the public keys
-// of every kid that may still sign valid tokens. Old kids may be public only.
-// Key material is never printed.
 type Ring struct {
 	activeKID string
 	private   *ecdsa.PrivateKey
 	public    map[string]*ecdsa.PublicKey
 }
 
-// LoadRing reads every key file (kid to path) and builds the ring. A file holds one
-// PEM block: PKCS#8 "PRIVATE KEY" or PKIX "PUBLIC KEY" of an ECDSA P-256 key. The
-// active kid must have a private key. Errors name the kid and path, never contents.
 func LoadRing(activeKID string, keyFiles map[string]string) (*Ring, error) {
 	if len(keyFiles) == 0 {
 		return nil, errors.New("jwt keyring: no keys")
@@ -99,7 +93,6 @@ func readKeyFile(path string) (*ecdsa.PublicKey, *ecdsa.PrivateKey, error) {
 	return pub, priv, nil
 }
 
-// parsePEM accepts exactly one block. The messages never include the data.
 func parsePEM(data []byte) (*ecdsa.PublicKey, *ecdsa.PrivateKey, error) {
 	block, rest := pem.Decode(data)
 	if block == nil {
@@ -153,12 +146,10 @@ func trimSpace(b []byte) []byte {
 	return b[start:end]
 }
 
-// ActiveKID returns the kid that signs new tokens.
 func (r *Ring) ActiveKID() string {
 	return r.activeKID
 }
 
-// KIDs returns every kid in sorted order.
 func (r *Ring) KIDs() []string {
 	kids := make([]string, 0, len(r.public))
 	for kid := range r.public {
@@ -170,7 +161,6 @@ func (r *Ring) KIDs() []string {
 	return kids
 }
 
-// PublicKeys returns a copy of the kid to public key map, for a Verifier.
 func (r *Ring) PublicKeys() map[string]*ecdsa.PublicKey {
 	out := make(map[string]*ecdsa.PublicKey, len(r.public))
 	for kid, key := range r.public {
@@ -180,8 +170,6 @@ func (r *Ring) PublicKeys() map[string]*ecdsa.PublicKey {
 	return out
 }
 
-// JWKS returns the public key set as JSON, ordered by kid so a restart publishes
-// the same bytes. Private material is never included.
 func (r *Ring) JWKS() ([]byte, error) {
 	set := jose.JSONWebKeySet{}
 	for _, kid := range r.KIDs() {
@@ -198,19 +186,14 @@ func (r *Ring) JWKS() ([]byte, error) {
 	return data, nil
 }
 
-// String and GoString keep key material out of %v and %#v output.
 func (r *Ring) String() string {
 	return fmt.Sprintf("jwt keyring (active %q, %d keys)", r.activeKID, len(r.public))
 }
 
-// GoString implements fmt.GoStringer.
 func (r *Ring) GoString() string {
 	return r.String()
 }
 
-// ParseJWKS reads a published key set into a kid to public key map, as a service
-// that only knows the JWKS URL would. Private keys, other key types and curves,
-// duplicate or missing kids, and keys not meant for signatures are rejected.
 func ParseJWKS(data []byte) (map[string]*ecdsa.PublicKey, error) {
 	var set jose.JSONWebKeySet
 	if err := json.Unmarshal(data, &set); err != nil {

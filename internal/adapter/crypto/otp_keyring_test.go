@@ -40,7 +40,6 @@ func TestLoadOTPKeyring(t *testing.T) {
 		t.Errorf("active=%q kids=%v", ring.ActiveKID(), ring.KIDs())
 	}
 
-	// The loaded keys derive the same code as keys given directly.
 	otp, err := crypto.NewOTP(ring, nil)
 	if err != nil {
 		t.Fatal(err)
