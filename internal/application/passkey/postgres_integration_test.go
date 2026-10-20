@@ -10,6 +10,7 @@ import (
 
 	"go.airlance.org/auth/internal/application/passkey"
 	"go.airlance.org/auth/internal/application/port"
+	appsession "go.airlance.org/auth/internal/application/session"
 	"go.airlance.org/auth/internal/domain/identity"
 	dpasskey "go.airlance.org/auth/internal/domain/passkey"
 	"go.airlance.org/auth/internal/testutil"
@@ -322,4 +323,112 @@ func TestTwoRecoveriesAtOnceLeaveOneOwner(t *testing.T) {
 			t.Errorf("round %d: the winner's key does not sign in: %+v", i, r)
 		}
 	}
+}
+
+func TestTwoAdditionsCannotTakeTheLastFreePlaceAtOnce(t *testing.T) {
+	e := newPostgresEnv(t)
+	holder := e.enroll()
+
+	// The account is one key short of the limit.
+	e.do(func(ctx context.Context, st port.Stores) error {
+		for range dpasskey.MaxPerUser - 2 {
+			if err := st.Credentials.Create(ctx, e.factory.Credential(testutil.CredentialSpec{User: holder.user})); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
+
+	if n := len(e.credentials(holder.user)); n != dpasskey.MaxPerUser-1 {
+		t.Fatalf("%d keys before the race, want %d", n, dpasskey.MaxPerUser-1)
+	}
+
+	// Two sessions of the owner each prove the key and begin adding one.
+	type attempt struct {
+		actor     appsession.Actor
+		ticket    string
+		challenge string
+		response  []byte
+	}
+
+	attempts := [2]attempt{{actor: holder.actor}, {actor: e.secondSession(holder)}}
+	for i := range attempts {
+		a := &attempts[i]
+		a.ticket = e.stepUp(a.actor, holder.auth, dpasskey.OperationAddPasskey)
+
+		begun, err := e.beginAdd.Execute(context.Background(), passkey.BeginAddCommand{Actor: a.actor, StepUpSecret: a.ticket})
+		must(t, err)
+
+		if begun.Outcome != passkey.OutcomeOK {
+			t.Fatalf("begin add %d = %+v", i, begun)
+		}
+
+		a.challenge = begun.ChallengeID
+		a.response = testutil.NewSoftAuthenticator(t, rpID, origin).Register(begun.Options)
+	}
+
+	// Each waits after counting the keys: unless the counting is serialized, both see the free place.
+	at := newMeet(2, time.Second)
+	e.faults.wrap = func(s port.Stores) port.Stores {
+		s.Credentials = listsAt{CredentialRepository: s.Credentials, at: at}
+		return s
+	}
+
+	var (
+		results [2]passkey.FinishAddResult
+		wg      sync.WaitGroup
+	)
+
+	for i := range attempts {
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+
+			a := attempts[i]
+
+			got, err := e.finishAdd.Execute(context.Background(), passkey.FinishAddCommand{
+				Actor: a.actor, StepUpSecret: a.ticket, ChallengeID: a.challenge, Response: a.response, Name: "Spare",
+			})
+			if err != nil {
+				t.Errorf("finish add %d: %v", i, err)
+			}
+
+			results[i] = got
+		}()
+	}
+
+	wg.Wait()
+
+	e.faults.wrap = nil
+
+	ok, refused := 0, 0
+
+	for _, r := range results {
+		switch {
+		case r.Outcome == passkey.OutcomeOK:
+			ok++
+		case r.Outcome == passkey.OutcomeConflict && r.Reason == passkey.ReasonTooManyKeys:
+			refused++
+		default:
+			t.Errorf("unexpected result %+v", r)
+		}
+	}
+
+	if ok != 1 || refused != 1 {
+		t.Errorf("%d additions succeeded and %d were refused, want exactly one of each", ok, refused)
+	}
+
+	if n := len(e.credentials(holder.user)); n != dpasskey.MaxPerUser {
+		t.Errorf("%d keys stored, want the limit of %d", n, dpasskey.MaxPerUser)
+	}
+}
+
+func TestAnotherUsersAuthenticatorIsRefusedAtEnrollmentOnPostgres(t *testing.T) {
+	anotherUsersAuthenticatorIsRefusedAtEnrollment(t, newPostgresEnv(t))
+}
+
+func TestAnotherUsersAuthenticatorIsRefusedWhenAddedOnPostgres(t *testing.T) {
+	anotherUsersAuthenticatorIsRefusedWhenAdded(t, newPostgresEnv(t))
 }

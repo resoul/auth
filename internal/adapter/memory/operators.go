@@ -36,6 +36,11 @@ func (r *operators) Get(_ context.Context, id operator.ID) (*operator.Operator, 
 	return restoreOperator(rec)
 }
 
+// GetForUpdate is Get: the store runs one transaction at a time.
+func (r *operators) GetForUpdate(ctx context.Context, id operator.ID) (*operator.Operator, error) {
+	return r.Get(ctx, id)
+}
+
 func (r *operators) FindByEmail(_ context.Context, email identity.Email) (*operator.Operator, error) {
 	for _, rec := range r.tx.operators {
 		if rec.Email == email {

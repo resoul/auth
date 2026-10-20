@@ -28,6 +28,10 @@ SELECT id, kind, user_id, session_id, operation, binding_hash, secret_hash, crea
 FROM auth_tickets
 WHERE secret_hash = $1;
 
+-- The owner of a ticket, read without a lock: the user row is locked first, then the ticket row.
+-- name: GetAuthTicketOwner :one
+SELECT user_id FROM auth_tickets WHERE id = $1;
+
 -- name: GetAuthTicketForUpdate :one
 SELECT id, kind, user_id, session_id, operation, binding_hash, secret_hash, created_at, expires_at, consumed_at
 FROM auth_tickets

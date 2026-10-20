@@ -6,6 +6,11 @@ INSERT INTO operators (id, email, created_at, disabled_at) VALUES ($1, $2, $3, $
 -- name: GetOperatorByID :one
 SELECT id, email, created_at, disabled_at FROM operators WHERE id = $1;
 
+-- Enrolling a key holds the operator while it counts the keys, so two enrollments of one operator run one after the
+-- other.
+-- name: GetOperatorForUpdate :one
+SELECT id, email, created_at, disabled_at FROM operators WHERE id = $1 FOR UPDATE;
+
 -- name: GetOperatorByEmail :one
 SELECT id, email, created_at, disabled_at FROM operators WHERE email = $1;
 
@@ -30,10 +35,13 @@ FROM operator_enrollments WHERE id = $1 FOR UPDATE;
 -- name: UpdateOperatorEnrollment :execrows
 UPDATE operator_enrollments SET consumed_at = $2 WHERE id = $1;
 
--- name: CreateOperatorCredential :exec
+-- A credential ID that is registered already inserts nothing (no rows), instead of a unique violation that would
+-- abort the transaction: the refusal of such an enrollment must still commit its spent challenge.
+-- name: CreateOperatorCredential :execrows
 INSERT INTO operator_credentials (id, operator_id, credential_id, public_key, aaguid, transports, sign_count,
                                   backup_eligible, backup_state, name, created_at, last_used_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12);
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+ON CONFLICT (credential_id) DO NOTHING;
 
 -- name: ListOperatorCredentials :many
 SELECT id, operator_id, credential_id, public_key, aaguid, transports, sign_count,

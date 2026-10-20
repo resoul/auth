@@ -38,19 +38,17 @@ func (r *credentials) Create(ctx context.Context, c *passkey.Credential) error {
 		transports = []string{}
 	}
 
-	err = r.q.CreatePasskeyCredential(ctx, sqlc.CreatePasskeyCredentialParams{
+	n, err := r.q.CreatePasskeyCredential(ctx, sqlc.CreatePasskeyCredentialParams{
 		ID: id, UserID: userID, CredentialID: rec.CredentialID, PublicKey: rec.PublicKey, Aaguid: rec.AAGUID,
 		Transports: transports, SignCount: int64(rec.SignCount), BackupEligible: rec.BackupEligible,
 		BackupState: rec.BackupState, Name: rec.Name, CreatedAt: dbTime(rec.CreatedAt), LastUsedAt: dbTimePtr(rec.LastUsedAt),
 	})
-
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgErr.Code == pgUniqueViolation && pgErr.ConstraintName == "passkey_credentials_credential_id_unique" {
-		return port.ErrCredentialConflict
-	}
-
 	if err != nil {
 		return fmt.Errorf("create credential: %w", err)
+	}
+
+	if n == 0 {
+		return port.ErrCredentialConflict
 	}
 
 	return nil
@@ -375,6 +373,19 @@ func (r *tickets) Create(ctx context.Context, t *passkey.Ticket) error {
 }
 
 func (r *tickets) GetByHashForUpdate(ctx context.Context, hash passkey.SecretHash) (*passkey.Ticket, error) {
+	owner, err := r.q.GetAuthTicketByHash(ctx, hash.Bytes())
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, port.ErrNotFound
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("get ticket: %w", err)
+	}
+
+	if err := r.lockOwner(ctx, owner.UserID); err != nil {
+		return nil, err
+	}
+
 	row, err := r.q.GetAuthTicketByHashForUpdate(ctx, hash.Bytes())
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, port.ErrNotFound
@@ -406,6 +417,19 @@ func (r *tickets) GetForUpdate(ctx context.Context, id passkey.ID) (*passkey.Tic
 		return nil, fmt.Errorf("get ticket: %w", err)
 	}
 
+	owner, err := r.q.GetAuthTicketOwner(ctx, u)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, port.ErrNotFound
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("get ticket: %w", err)
+	}
+
+	if err := r.lockOwner(ctx, owner); err != nil {
+		return nil, err
+	}
+
 	row, err := r.q.GetAuthTicketForUpdate(ctx, u)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, port.ErrNotFound
@@ -416,6 +440,21 @@ func (r *tickets) GetForUpdate(ctx context.Context, id passkey.ID) (*passkey.Tic
 	}
 
 	return ticketFromRow(row)
+}
+
+// lockOwner locks the owner of a ticket (shared) before the ticket row, the order every statement that changes a
+// user's protection uses: a recovery holds the user and spends every ticket of it (RevokeAllForUser), so a use case
+// that held a ticket while it waited for the user would wait for the recovery while the recovery waited for it. A
+// use case that will change the user takes the user exclusively before it loads the ticket. A ticket whose owner
+// is gone is not found.
+func (r *tickets) lockOwner(ctx context.Context, owner uuid.UUID) error {
+	if _, err := r.q.LockUserShare(ctx, owner); errors.Is(err, pgx.ErrNoRows) {
+		return port.ErrNotFound
+	} else if err != nil {
+		return fmt.Errorf("get ticket: lock user: %w", err)
+	}
+
+	return nil
 }
 
 func (r *tickets) Save(ctx context.Context, t *passkey.Ticket) error {
@@ -437,6 +476,11 @@ func (r *tickets) Save(ctx context.Context, t *passkey.Ticket) error {
 }
 
 func (r *tickets) RevokeAllForUser(ctx context.Context, userID identity.UserID, keep session.ID, now time.Time) error {
+	// Like every revocation of a user, it queues on the user row first.
+	if _, err := lockUser(ctx, r.q, userID); err != nil {
+		return fmt.Errorf("revoke tickets: %w", err)
+	}
+
 	user, err := userUUID(userID)
 	if err != nil {
 		return fmt.Errorf("revoke tickets: %w", err)

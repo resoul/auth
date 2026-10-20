@@ -44,6 +44,10 @@ type Deps struct {
 	Logger   *slog.Logger
 	Requests port.RequestMetrics
 	Clock    port.Clock
+	// ClientRequests caps the token, introspection and revocation requests served at once; 0 lifts the cap. These
+	// endpoints answer anyone before a client is authenticated and each request holds a database connection, so a
+	// flood of them must leave connections to the sign-ins.
+	ClientRequests int
 }
 
 // Handler serves the provider's routes.
@@ -51,6 +55,10 @@ type Handler struct {
 	d         Deps
 	jwks      []byte
 	discovery []byte
+	// slots holds one token per client request being served; nil when ClientRequests is 0.
+	slots chan struct{}
+	// slotWait is how long a client request waits for a slot before it is refused.
+	slotWait time.Duration
 }
 
 // New checks the dependencies and builds the documents that never change while the process runs.
@@ -73,7 +81,12 @@ func New(d Deps) (*Handler, error) {
 		return nil, err
 	}
 
-	return &Handler{d: d, jwks: keys, discovery: doc}, nil
+	h := &Handler{d: d, jwks: keys, discovery: doc, slotWait: time.Second}
+	if d.ClientRequests > 0 {
+		h.slots = make(chan struct{}, d.ClientRequests)
+	}
+
+	return h, nil
 }
 
 type discardRequests struct{}
@@ -94,13 +107,13 @@ func (h *Handler) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /oauth2/jwks", h.serveJWKS)
 	mux.HandleFunc("GET /oauth2/authorize", h.authorize)
 	mux.HandleFunc("POST /oauth2/authorize", h.authorize)
-	mux.HandleFunc("POST /oauth2/token", h.token)
+	mux.HandleFunc("POST /oauth2/token", h.limited(h.token))
 	mux.HandleFunc("GET /oauth2/userinfo", h.userinfo)
 	mux.HandleFunc("POST /oauth2/userinfo", h.userinfo)
-	mux.HandleFunc("POST /oauth2/revoke", h.revoke)
+	mux.HandleFunc("POST /oauth2/revoke", h.limited(h.revoke))
 
 	if h.d.Introspect != nil {
-		mux.HandleFunc("POST /oauth2/introspect", h.introspect)
+		mux.HandleFunc("POST /oauth2/introspect", h.limited(h.introspect))
 	}
 
 	mux.HandleFunc("GET /oauth2/logout", h.logout)
@@ -180,6 +193,32 @@ func (h *Handler) serverError(w http.ResponseWriter, r *http.Request, err error)
 func (h *Handler) denied(r *http.Request, operation, reason string) {
 	h.d.Requests.AuthDenied(operation, reason)
 	h.d.Logger.DebugContext(r.Context(), "request denied", "operation", operation, "reason", reason)
+}
+
+// limited serves next only while one of the client request slots is free. A request that finds none within slotWait
+// is refused with 503 and Retry-After, before it reaches the database: it is cheaper to turn a flood away here than
+// to queue it for connections the sign-ins need.
+func (h *Handler) limited(next http.HandlerFunc) http.HandlerFunc {
+	if h.slots == nil {
+		return next
+	}
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		timer := time.NewTimer(h.slotWait)
+		defer timer.Stop()
+
+		select {
+		case h.slots <- struct{}{}:
+			defer func() { <-h.slots }()
+
+			next(w, r)
+		case <-timer.C:
+			h.denied(r, "oidc_client_request", "busy")
+			w.Header().Set("Retry-After", "1")
+			oauthError(w, http.StatusServiceUnavailable, &appoidc.Failure{Code: appoidc.ErrServerError, Description: "The service is busy; try again shortly."})
+		case <-r.Context().Done():
+		}
+	}
 }
 
 // asset serves one embedded file of the sign-in page.

@@ -69,8 +69,9 @@ func newOIDCDeps(cfg config.Config, uow port.UnitOfWork) (appoidc.Deps, *jwt.RSA
 	}, ring, nil
 }
 
-// newOIDC builds the routes of the OpenID Provider. It returns nil when the provider is off.
-func newOIDC(logger *slog.Logger, parts *oidcParts, tokens *jwtParts, registry *metrics.Registry) (*oidcapi.Handler, error) {
+// newOIDC builds the routes of the OpenID Provider. It returns nil when the provider is off. clientRequests caps the
+// token, introspection and revocation requests served at once.
+func newOIDC(logger *slog.Logger, parts *oidcParts, tokens *jwtParts, registry *metrics.Registry, clientRequests int) (*oidcapi.Handler, error) {
 	if parts == nil {
 		return nil, nil
 	}
@@ -117,7 +118,7 @@ func newOIDC(logger *slog.Logger, parts *oidcParts, tokens *jwtParts, registry *
 
 	handler, err := oidcapi.New(oidcapi.Deps{
 		Issuer: deps.Issuer, Policy: deps.Policy, Authorize: authorize, Login: login, Token: token, UserInfo: userinfo, Logout: logout, Revoke: revoke, Introspect: introspect,
-		JWKS: parts.ring, Logger: logger, Requests: registry, Clock: clock.System{},
+		JWKS: parts.ring, Logger: logger, Requests: registry, Clock: clock.System{}, ClientRequests: clientRequests,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create oidc handler: %w", err)

@@ -20,7 +20,8 @@ var (
 
 // CredentialRepository stores WebAuthn credentials.
 type CredentialRepository interface {
-	// Create stores a credential. It returns ErrCredentialConflict when the credential ID exists.
+	// Create stores a credential. It returns ErrCredentialConflict when the credential ID exists, and the transaction
+	// stays usable, so that the refusal can still be recorded and committed.
 	Create(ctx context.Context, c *passkey.Credential) error
 	// ListByUser returns the credentials of a User, oldest first.
 	ListByUser(ctx context.Context, userID identity.UserID) ([]*passkey.Credential, error)

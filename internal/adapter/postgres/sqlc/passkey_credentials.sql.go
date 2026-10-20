@@ -23,10 +23,11 @@ func (q *Queries) CountPasskeyCredentials(ctx context.Context, userID uuid.UUID)
 	return column_1, err
 }
 
-const createPasskeyCredential = `-- name: CreatePasskeyCredential :exec
+const createPasskeyCredential = `-- name: CreatePasskeyCredential :execrows
 INSERT INTO passkey_credentials (id, user_id, credential_id, public_key, aaguid, transports, sign_count,
                                  backup_eligible, backup_state, name, created_at, last_used_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+ON CONFLICT (credential_id) DO NOTHING
 `
 
 type CreatePasskeyCredentialParams struct {
@@ -44,8 +45,10 @@ type CreatePasskeyCredentialParams struct {
 	LastUsedAt     *time.Time
 }
 
-func (q *Queries) CreatePasskeyCredential(ctx context.Context, arg CreatePasskeyCredentialParams) error {
-	_, err := q.db.Exec(ctx, createPasskeyCredential,
+// A credential ID that is registered already inserts nothing (no rows), instead of a unique violation that would
+// abort the transaction: the refusal of such a registration must still commit its audit and its spent challenge.
+func (q *Queries) CreatePasskeyCredential(ctx context.Context, arg CreatePasskeyCredentialParams) (int64, error) {
+	result, err := q.db.Exec(ctx, createPasskeyCredential,
 		arg.ID,
 		arg.UserID,
 		arg.CredentialID,
@@ -59,7 +62,10 @@ func (q *Queries) CreatePasskeyCredential(ctx context.Context, arg CreatePasskey
 		arg.CreatedAt,
 		arg.LastUsedAt,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const deletePasskeyCredential = `-- name: DeletePasskeyCredential :execrows

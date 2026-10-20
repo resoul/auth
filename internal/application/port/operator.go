@@ -26,6 +26,9 @@ type OperatorRepository interface {
 	Create(ctx context.Context, o *operator.Operator) error
 	// Get loads an operator without locking it. It returns ErrNotFound.
 	Get(ctx context.Context, id operator.ID) (*operator.Operator, error)
+	// GetForUpdate loads an operator and keeps it locked until the transaction ends, so that changes of its keys run
+	// one after the other. It returns ErrNotFound.
+	GetForUpdate(ctx context.Context, id operator.ID) (*operator.Operator, error)
 	// FindByEmail loads the operator with the address. It returns ErrNotFound.
 	FindByEmail(ctx context.Context, email identity.Email) (*operator.Operator, error)
 	// List returns every operator, oldest first.
@@ -43,7 +46,8 @@ type OperatorRepository interface {
 	// SaveEnrollment writes the changed state of an enrollment loaded for update.
 	SaveEnrollment(ctx context.Context, e *operator.Enrollment) error
 
-	// CreateCredential stores a key. It returns ErrCredentialConflict when the credential ID exists.
+	// CreateCredential stores a key. It returns ErrCredentialConflict when the credential ID exists, and the transaction
+	// stays usable, so that the refusal can still be committed.
 	CreateCredential(ctx context.Context, c *passkey.Credential) error
 	// ListCredentials returns the keys of an operator, oldest first.
 	ListCredentials(ctx context.Context, id operator.ID) ([]*passkey.Credential, error)

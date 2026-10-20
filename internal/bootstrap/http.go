@@ -257,7 +257,9 @@ func newHTTP(cfg config.Config, logger *slog.Logger, otp *crypto.OTP, tokens *jw
 		return component{}, nil, err
 	}
 
-	oidcRoutes, err := newOIDC(logger, oidcParts, tokens, registry)
+	// Half the pool at most serves the client requests of the provider, which come before any authentication; the
+	// rest stays for sign-ins.
+	oidcRoutes, err := newOIDC(logger, oidcParts, tokens, registry, max(1, int(store.MaxConns())/2))
 	if err != nil {
 		return component{}, nil, err
 	}

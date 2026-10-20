@@ -65,10 +65,11 @@ func (q *Queries) CreateOperatorChallenge(ctx context.Context, arg CreateOperato
 	return err
 }
 
-const createOperatorCredential = `-- name: CreateOperatorCredential :exec
+const createOperatorCredential = `-- name: CreateOperatorCredential :execrows
 INSERT INTO operator_credentials (id, operator_id, credential_id, public_key, aaguid, transports, sign_count,
                                   backup_eligible, backup_state, name, created_at, last_used_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+ON CONFLICT (credential_id) DO NOTHING
 `
 
 type CreateOperatorCredentialParams struct {
@@ -86,8 +87,10 @@ type CreateOperatorCredentialParams struct {
 	LastUsedAt     *time.Time
 }
 
-func (q *Queries) CreateOperatorCredential(ctx context.Context, arg CreateOperatorCredentialParams) error {
-	_, err := q.db.Exec(ctx, createOperatorCredential,
+// A credential ID that is registered already inserts nothing (no rows), instead of a unique violation that would
+// abort the transaction: the refusal of such an enrollment must still commit its spent challenge.
+func (q *Queries) CreateOperatorCredential(ctx context.Context, arg CreateOperatorCredentialParams) (int64, error) {
+	result, err := q.db.Exec(ctx, createOperatorCredential,
 		arg.ID,
 		arg.OperatorID,
 		arg.CredentialID,
@@ -101,7 +104,10 @@ func (q *Queries) CreateOperatorCredential(ctx context.Context, arg CreateOperat
 		arg.CreatedAt,
 		arg.LastUsedAt,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const createOperatorEnrollment = `-- name: CreateOperatorEnrollment :exec
@@ -273,6 +279,24 @@ func (q *Queries) GetOperatorEnrollmentForUpdate(ctx context.Context, id uuid.UU
 		&i.CreatedAt,
 		&i.ExpiresAt,
 		&i.ConsumedAt,
+	)
+	return i, err
+}
+
+const getOperatorForUpdate = `-- name: GetOperatorForUpdate :one
+SELECT id, email, created_at, disabled_at FROM operators WHERE id = $1 FOR UPDATE
+`
+
+// Enrolling a key holds the operator while it counts the keys, so two enrollments of one operator run one after the
+// other.
+func (q *Queries) GetOperatorForUpdate(ctx context.Context, id uuid.UUID) (Operator, error) {
+	row := q.db.QueryRow(ctx, getOperatorForUpdate, id)
+	var i Operator
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.CreatedAt,
+		&i.DisabledAt,
 	)
 	return i, err
 }
