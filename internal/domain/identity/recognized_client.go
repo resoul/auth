@@ -63,9 +63,11 @@ func (c *RecognizedClient) Active(now time.Time) bool {
 	return c.revokedAt.IsZero() && now.Before(c.expiresAt)
 }
 
-// Renew applies a successful verify: the email was just proven again, so the
-// record starts a new period and a revoked or expired record becomes active.
-func (c *RecognizedClient) Renew(now time.Time) {
+// Renew applies a successful verify of email: the address was just proven again, so the record starts a new period,
+// a revoked or expired record becomes active, and it is now recognized for that address. After a change of address the
+// same client proves the new one; the old one must not stay recognized through this record.
+func (c *RecognizedClient) Renew(email Email, now time.Time) {
+	c.email = email
 	c.verifiedAt = now
 	c.expiresAt = now.Add(RecognitionTTL)
 	c.revokedAt = time.Time{}

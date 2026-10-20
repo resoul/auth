@@ -379,3 +379,63 @@ func TestVerifyRenewsTheRecognitionWithoutDuplicatingIt(t *testing.T) {
 		t.Errorf("renewed = %+v, %v; want the same record with a later expiry", renewed, err)
 	}
 }
+
+// After a change of address the client signs in with the new one: its recognition moves there, and the old address,
+// which may now be someone else's, earns nothing through it.
+func TestRecognitionFollowsTheNewAddress(t *testing.T) {
+	e := newEnv(t)
+	flowID, binding := e.begin("alice@example.test")
+	login := e.check(flowID, e.code(flowID), binding)
+
+	before, err := e.activeRecognized("alice@example.test", binding)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// What a confirmed change of address does to the account and its recognition.
+	e.clock.Advance(time.Hour)
+
+	err = e.store.Do(context.Background(), func(ctx context.Context, st port.Stores) error {
+		user := login.User
+		if err := user.ChangeEmail(e.email("alice.new@example.test"), e.clock.Now()); err != nil {
+			return err
+		}
+
+		if err := st.Users.ChangeEmail(ctx, user); err != nil {
+			return err
+		}
+
+		return st.Recognized.RevokeAll(ctx, user.ID(), e.clock.Now())
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The same client proves the new address.
+	res, err := e.start.Execute(context.Background(), emailauth.StartCommand{Email: "alice.new@example.test", BindingSecret: binding})
+	if err != nil || res.Outcome != emailauth.OutcomeOK {
+		t.Fatalf("start with the new address = %+v, %v", res, err)
+	}
+
+	if got := e.check(res.FlowID.String(), e.code(res.FlowID.String()), binding); got.Outcome != emailauth.OutcomeOK {
+		t.Fatalf("verify the new address = %+v", got)
+	}
+
+	after, err := e.activeRecognized("alice.new@example.test", binding)
+	if err != nil || after.ID() != before.ID() {
+		t.Errorf("recognized for the new address = %+v, %v; want the same record %s", after, err, before.ID())
+	}
+
+	if got, err := e.activeRecognized("alice@example.test", binding); !errors.Is(err, port.ErrNotFound) {
+		t.Errorf("recognized for the old address = %+v, %v; want ErrNotFound", got, err)
+	}
+
+	old, err := e.start.Execute(context.Background(), emailauth.StartCommand{Email: "alice@example.test", BindingSecret: binding})
+	if err != nil || old.Outcome != emailauth.OutcomeOK {
+		t.Fatalf("start with the old address = %+v, %v", old, err)
+	}
+
+	if f := e.flow(old.FlowID.String()); f.QuotaClass() != authflow.QuotaUnknown {
+		t.Errorf("the old address gets quota class %s through the moved record, want unknown", f.QuotaClass())
+	}
+}

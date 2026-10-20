@@ -7,7 +7,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// buildVersion is set at link time: -ldflags "-X main.buildVersion=v1.2.3".
 var buildVersion = ""
 
 func version() string {

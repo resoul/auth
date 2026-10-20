@@ -12,8 +12,6 @@ import (
 	"go.airlance.org/auth/internal/config"
 )
 
-// newInviteCommand manages the invitations of the invite-only registration mode. It is run on the
-// server by the operator and talks to the database directly: there is no invitation API.
 func newInviteCommand() *cobra.Command {
 	invite := &cobra.Command{
 		Use:   "invite",

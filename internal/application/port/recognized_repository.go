@@ -11,9 +11,10 @@ import (
 type RecognizedClientRepository interface {
 	// Register records a successful verify for (user, binding). It creates candidate,
 	// or renews the existing record of that pair, including a revoked or expired one,
-	// because the email was just proven again. It returns the stored record, which
-	// keeps the existing ID. It must be safe against concurrent registration of the
-	// same pair: one record results.
+	// because the email was just proven again. The renewed record takes the email of
+	// candidate: after a change of address it is recognized for the new one only.
+	// It returns the stored record, which keeps the existing ID. It must be safe
+	// against concurrent registration of the same pair: one record results.
 	Register(ctx context.Context, candidate *identity.RecognizedClient) (*identity.RecognizedClient, error)
 	// FindActive returns the record that is active at now for the confirmed email and
 	// binding, or ErrNotFound. It is read-only and used when a flow chooses its class.

@@ -11,8 +11,6 @@ import (
 	"go.airlance.org/auth/internal/config"
 )
 
-// newOperatorCommand manages the operators of the admin API. It is run on the server by whoever holds it and
-// talks to the database directly: the admin API cannot create or enable an operator.
 func newOperatorCommand() *cobra.Command {
 	operator := &cobra.Command{
 		Use:   "operator",
@@ -29,6 +27,7 @@ func newOperatorCommand() *cobra.Command {
 
 		return bootstrap.Operator(ctx, cfg, req, cmd.OutOrStdout())
 	}
+
 	withEmail := func(use, short string, action bootstrap.OperatorAction) *cobra.Command {
 		return &cobra.Command{
 			Use:   use,
@@ -39,6 +38,7 @@ func newOperatorCommand() *cobra.Command {
 			},
 		}
 	}
+
 	operator.AddCommand(
 		withEmail("create EMAIL", "Register an operator and print the one-time code that enrolls their first key", bootstrap.OperatorCreate),
 		withEmail("enroll EMAIL", "Print a new one-time code that adds a key to an operator, or brings back one who lost every key", bootstrap.OperatorEnroll),

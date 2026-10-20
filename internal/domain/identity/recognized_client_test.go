@@ -124,7 +124,7 @@ func TestRenewRestartsPeriodAndReactivates(t *testing.T) {
 	c.Revoke(now.Add(time.Hour))
 	later := now.Add(200 * 24 * time.Hour) // after the old expiry too
 
-	c.Renew(later)
+	c.Renew(c.Email(), later)
 
 	if !c.Active(later) || !c.RevokedAt().IsZero() ||
 		!c.VerifiedAt().Equal(later) || !c.ExpiresAt().Equal(later.Add(identity.RecognitionTTL)) {
@@ -187,5 +187,22 @@ func TestBindingHashEqual(t *testing.T) {
 	var zero identity.BindingHash
 	if zero.Equal(zero) || a.Equal(zero) || zero.Equal(a) {
 		t.Error("a zero hash must equal nothing, not even itself")
+	}
+}
+
+func TestRenewMovesTheRecordToTheProvenAddress(t *testing.T) {
+	c := newRecognized(t, now)
+	c.Revoke(now.Add(time.Hour))
+
+	moved, err := identity.ParseEmail("moved@example.test")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	later := now.Add(2 * time.Hour)
+	c.Renew(moved, later)
+
+	if c.Email() != moved || !c.Active(later) {
+		t.Errorf("record after Renew with a new address = %+v", c.Record())
 	}
 }
