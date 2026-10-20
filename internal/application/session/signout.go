@@ -53,6 +53,17 @@ func (u *SignOut) Execute(ctx context.Context, cmd SignOutCommand) (RevokeResult
 	result := RevokeResult{Outcome: OutcomeDenied}
 
 	err := u.UnitOfWork.Do(ctx, func(ctx context.Context, st port.Stores) error {
+		// Revoking everything locks the user and then every session of the user. The acting session is one of them,
+		// so it is locked after the user too: two devices signing out everywhere at once would otherwise each hold
+		// its own session and wait for the other's, and the database would abort one of them.
+		if cmd.Scope == ScopeAll {
+			if _, err := st.Users.GetForUpdate(ctx, cmd.Actor.UserID); errors.Is(err, port.ErrNotFound) {
+				return nil
+			} else if err != nil {
+				return fmt.Errorf("lock user: %w", err)
+			}
+		}
+
 		sess, err := st.Sessions.GetForUpdate(ctx, cmd.Actor.SessionID)
 		if errors.Is(err, port.ErrNotFound) {
 			return nil

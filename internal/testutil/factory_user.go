@@ -6,13 +6,10 @@ import (
 	"go.airlance.org/auth/internal/domain/identity"
 )
 
-// UserSpec overrides the fields a scenario cares about.
 type UserSpec struct {
-	// Email defaults to a unique address under example.test.
 	Email string
 }
 
-// User builds a User confirmed at the factory clock time.
 func (f *Factory) User(spec UserSpec) *identity.User {
 	f.t.Helper()
 

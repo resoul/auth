@@ -15,10 +15,8 @@ import (
 	"go.airlance.org/auth/internal/domain/quota"
 )
 
-// NewQuotaUnitOfWork returns an empty UnitOfWork whose limiter enforces profile.
 type NewQuotaUnitOfWork func(t *testing.T, profile quota.Profile) port.UnitOfWork
 
-// contractProfile has small budgets so that a test can run each one out.
 func contractProfile(t *testing.T) quota.Profile {
 	t.Helper()
 
@@ -42,8 +40,6 @@ func contractProfile(t *testing.T) quota.Profile {
 	return p
 }
 
-// RunLimiterContract checks the Limiter port: sliding windows, all-or-nothing charges,
-// the separation of unknown and recognized budgets, rollback and concurrent spends.
 func RunLimiterContract(t *testing.T, newUoW NewQuotaUnitOfWork) {
 	t.Helper()
 	lc := func(t *testing.T) *limiterCase {
@@ -98,7 +94,7 @@ func RunLimiterContract(t *testing.T, newUoW NewQuotaUnitOfWork) {
 	t.Run("a denial charges no budget", func(t *testing.T) {
 		c := lc(t)
 		email := c.email()
-		// The pair allows 2 an hour; the address allows 3 a day.
+
 		for i := 0; i < 2; i++ {
 			if !c.allow(c.unknown(quota.KindSend, email, 1, "", contractNow)) {
 				t.Fatalf("send %d denied", i+1)
@@ -108,7 +104,7 @@ func RunLimiterContract(t *testing.T, newUoW NewQuotaUnitOfWork) {
 		if c.allow(c.unknown(quota.KindSend, email, 1, "", contractNow)) {
 			t.Fatal("the pair budget was not enforced")
 		}
-		// Had the denial charged the address budget, it would be exhausted here.
+
 		if !c.allow(c.unknown(quota.KindSend, email, 2, "", contractNow)) {
 			t.Error("a denied spend charged the address budget")
 		}
@@ -178,7 +174,6 @@ func RunLimiterContract(t *testing.T, newUoW NewQuotaUnitOfWork) {
 			t.Error("another recognition record shares the budget")
 		}
 
-		// The other way round: a recognized client exhausting its send budget leaves unknown clients alone.
 		other := c.email()
 
 		orc := c.recognizedID()
@@ -215,7 +210,7 @@ func RunLimiterContract(t *testing.T, newUoW NewQuotaUnitOfWork) {
 	t.Run("every window of a budget applies", func(t *testing.T) {
 		c := lc(t)
 		email, rc := c.email(), c.recognizedID()
-		// 2 an hour and 4 a day.
+
 		for i := 0; i < 2; i++ {
 			if !c.allow(c.recognized(quota.KindSend, email, rc, "", contractNow)) {
 				t.Fatalf("send %d denied", i+1)
@@ -285,7 +280,7 @@ func RunLimiterContract(t *testing.T, newUoW NewQuotaUnitOfWork) {
 		spend := func(ip, ref string, now time.Time) bool {
 			return c.allow(port.Spend{Kind: quota.KindPasskey, IP: addr(ip), Ref: ref, Now: now})
 		}
-		// The reference budget (2) runs out before the address budget (4); a refusal charges nothing.
+
 		for i := 0; i < 2; i++ {
 			if !spend("192.0.2.1", "ticket-a", contractNow) {
 				t.Fatalf("spend %d denied", i+1)
@@ -309,7 +304,7 @@ func RunLimiterContract(t *testing.T, newUoW NewQuotaUnitOfWork) {
 		if !spend("192.0.2.2", "ticket-b", contractNow) {
 			t.Error("another address was refused")
 		}
-		// An unknown address shares one budget instead of escaping the limit.
+
 		for i := 0; i < 4; i++ {
 			if !spend("", "", contractNow) {
 				t.Fatalf("unknown address spend %d denied", i+1)
@@ -319,7 +314,7 @@ func RunLimiterContract(t *testing.T, newUoW NewQuotaUnitOfWork) {
 		if spend("", "", contractNow) {
 			t.Error("unknown addresses escaped the limit")
 		}
-		// IPv6 clients are grouped by /64, and the window slides.
+
 		if !spend("2001:db8::1", "", contractNow) || !spend("2001:db8::2", "", contractNow) {
 			t.Fatal("IPv6 spends denied")
 		}
@@ -378,7 +373,7 @@ func RunLimiterContract(t *testing.T, newUoW NewQuotaUnitOfWork) {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				// Each request brings its own binding and IP: only the address budget holds.
+
 				ip := fmt.Sprintf("10.0.%d.%d", i/200, i%200+1)
 				if c.allow(c.unknown(quota.KindVerify, email, i, ip, contractNow)) {
 					mu.Lock()
@@ -462,7 +457,6 @@ func addr(s string) netip.Addr {
 	return netip.MustParseAddr(s)
 }
 
-// allow spends in a transaction of its own and fails the test on a technical error.
 func (c *limiterCase) allow(s port.Spend) bool {
 	c.t.Helper()
 

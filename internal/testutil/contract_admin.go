@@ -15,8 +15,6 @@ import (
 	"go.airlance.org/auth/internal/domain/passkey"
 )
 
-// adminContract checks what the admin API needs of an adapter: blocking and listing users, reading
-// the audit log, and the operator tables.
 func adminContract(t *testing.T, newUoW NewUnitOfWork) {
 	t.Run("blocking", func(t *testing.T) { blockContract(t, newUoW) })
 	t.Run("user list", func(t *testing.T) { userListContract(t, newUoW) })
@@ -72,7 +70,7 @@ func blockContract(t *testing.T, newUoW NewUnitOfWork) {
 					t.Errorf("%s after Block: blocked=%v at=%v updated=%v", name, u.Blocked(), u.BlockedAt(), u.UpdatedAt())
 				}
 			}
-			// Ensure of the same address returns the stored user, blocked state included.
+
 			again, created, err := s.Users.Ensure(ctx, f.User(UserSpec{Email: user.Email().String()}))
 			if err != nil || created || !again.Blocked() {
 				t.Errorf("Ensure of a blocked address = blocked %v, created %v, %v", again != nil && again.Blocked(), created, err)
@@ -216,7 +214,7 @@ func auditListContract(t *testing.T, newUoW NewUnitOfWork) {
 
 			return s.Operators.Create(ctx, op)
 		})
-		// Two events share an instant so the cursor has to break the tie by ID.
+
 		events := []port.AuditEvent{
 			{Type: port.AuditLoginSucceeded, Result: port.AuditSuccess, UserID: user.ID(), At: contractNow, Fields: map[string]string{"method": "passkey"}},
 			{Type: port.AuditAdminAction, Result: port.AuditSuccess, UserID: user.ID(), OperatorID: op.ID(), At: contractNow.Add(time.Minute), Fields: map[string]string{"operation": "block"}},
@@ -285,7 +283,6 @@ func auditListContract(t *testing.T, newUoW NewUnitOfWork) {
 				t.Errorf("by user and type = %d, %v; want 1", len(both), err)
 			}
 
-			// Walk the log one entry at a time: every entry exactly once, in order.
 			var (
 				walked []string
 				cursor port.AuditCursor
@@ -577,7 +574,6 @@ func operatorCredentialContract(t *testing.T, newUoW NewUnitOfWork) {
 			t.Errorf("a repeated credential ID = %v, want ErrCredentialConflict", err)
 		}
 
-		// A refused enrollment commits what it spent: the duplicate leaves the transaction usable.
 		later := f.OperatorCredential(a, nil)
 
 		mustDo(t, uow, func(ctx context.Context, s port.Stores) error {
@@ -712,7 +708,7 @@ func operatorChallengeContract(t *testing.T, newUoW NewUnitOfWork) {
 			if err != nil || got.ConsumedAt().IsZero() {
 				t.Errorf("after Consume: %+v, %v", got, err)
 			}
-			// A user's challenge table does not hold it.
+
 			if _, err := s.Challenges.GetForUpdate(ctx, reg.ID()); !errors.Is(err, port.ErrNotFound) {
 				t.Errorf("an operator challenge is in the users' table: %v", err)
 			}

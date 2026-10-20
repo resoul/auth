@@ -4,17 +4,12 @@ import (
 	"go.airlance.org/auth/internal/domain/identity"
 )
 
-// RecognizedSpec describes a RecognizedClient. User is required: the link is
-// explicit and no user is created implicitly.
 type RecognizedSpec struct {
-	User *identity.User
-	// BindingSecret defaults to DefaultBindingSecret.
+	User          *identity.User
 	BindingSecret string
-	// Email defaults to the email of User; a client may prove another address of the same user, such as a new one.
-	Email identity.Email
+	Email         identity.Email
 }
 
-// RecognizedClient builds a record verified at the factory clock time.
 func (f *Factory) RecognizedClient(spec RecognizedSpec) *identity.RecognizedClient {
 	f.t.Helper()
 

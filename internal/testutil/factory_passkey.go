@@ -9,7 +9,6 @@ import (
 	"go.airlance.org/auth/internal/domain/session"
 )
 
-// SecretHash returns the stored hash of a ticket secret or recovery code.
 func SecretHash(secret string) passkey.SecretHash {
 	sum := sha256.Sum256([]byte(secret))
 
@@ -21,16 +20,13 @@ func SecretHash(secret string) passkey.SecretHash {
 	return hash
 }
 
-// CredentialSpec describes a credential. User is required.
 type CredentialSpec struct {
-	User *identity.User
-	// CredentialID defaults to a distinct value per credential.
+	User         *identity.User
 	CredentialID []byte
 	Name         string
 	SignCount    uint32
 }
 
-// Credential builds a credential registered at the factory clock time.
 func (f *Factory) Credential(spec CredentialSpec) *passkey.Credential {
 	f.t.Helper()
 
@@ -63,17 +59,14 @@ func (f *Factory) Credential(spec CredentialSpec) *passkey.Credential {
 	return c
 }
 
-// ChallengeSpec describes a challenge. User may be nil only for a login.
 type ChallengeSpec struct {
-	User     *identity.User
-	Purpose  passkey.ChallengePurpose
-	TicketID passkey.ID
-	// Session and Operation are required for a step-up challenge.
+	User      *identity.User
+	Purpose   passkey.ChallengePurpose
+	TicketID  passkey.ID
 	Session   session.ID
 	Operation passkey.Operation
 }
 
-// Challenge builds a challenge issued at the factory clock time.
 func (f *Factory) Challenge(spec ChallengeSpec) *passkey.Challenge {
 	f.t.Helper()
 
@@ -103,20 +96,15 @@ func (f *Factory) Challenge(spec ChallengeSpec) *passkey.Challenge {
 	return c
 }
 
-// TicketSpec describes a ticket and the secret whose hash it keeps. User is required.
 type TicketSpec struct {
-	User *identity.User
-	Kind passkey.TicketKind
-	// Secret defaults to a distinct value per ticket.
-	Secret string
-	// BindingSecret defaults to DefaultBindingSecret; used by enroll and second-factor tickets.
+	User          *identity.User
+	Kind          passkey.TicketKind
+	Secret        string
 	BindingSecret string
-	// Session and Operation are required for a step-up ticket.
-	Session   session.ID
-	Operation passkey.Operation
+	Session       session.ID
+	Operation     passkey.Operation
 }
 
-// Ticket builds a ticket issued at the factory clock time.
 func (f *Factory) Ticket(spec TicketSpec) *passkey.Ticket {
 	f.t.Helper()
 
@@ -159,7 +147,6 @@ func (f *Factory) Ticket(spec TicketSpec) *passkey.Ticket {
 	return t
 }
 
-// RecoveryCode builds an unused recovery code of the user for the code text.
 func (f *Factory) RecoveryCode(user *identity.User, code string) *passkey.RecoveryCode {
 	f.t.Helper()
 

@@ -69,7 +69,6 @@ var (
 	mailpitSMTP = env("AIRLANCE_AUTH_E2E_SMTP", "127.0.0.1:1025")
 )
 
-// stack is one service process with its own schema, keys and address.
 type stack struct {
 	t     *testing.T
 	dir   string
@@ -81,14 +80,12 @@ type stack struct {
 	logs  *syncBuffer
 	done  chan error
 	db    *sql.DB
-	seen  []string // every secret a test saw, to check the logs against
+	seen  []string
 	seenM sync.Mutex
 	// auths are the software authenticators of the users that registered a passkey, by email.
 	auths map[string]*testutil.SoftAuthenticator
 }
 
-// The relying party of the e2e service. The software authenticators claim this origin, as a
-// page of that domain would.
 const (
 	e2eRPID     = "e2e.test"
 	e2eRPOrigin = "https://e2e.test"
@@ -261,7 +258,6 @@ func (s *stack) start() {
 	}
 }
 
-// stop asks the server to stop as an operator does (SIGTERM) and requires a clean exit.
 func (s *stack) stop() {
 	if s.cmd == nil || s.cmd.Process == nil {
 		return
@@ -294,7 +290,6 @@ func (s *stack) secret(values ...string) {
 	s.seen = append(s.seen, values...)
 }
 
-// checkLogs fails if a secret a test handled appears in the server logs.
 func (s *stack) checkLogs() {
 	s.t.Helper()
 	s.seenM.Lock()
@@ -325,15 +320,12 @@ func (s *stack) count(table, where string) int {
 	return n
 }
 
-// uniqueEmail keeps tests apart in the shared Mailpit.
 func uniqueEmail(t *testing.T, label string) string {
 	return fmt.Sprintf("%s-%d@e2e.example.test", label, time.Now().UnixNano())
 }
 
 var codeInMail = regexp.MustCompile(`(\d{4}) (\d{4})`)
 
-// code reads the newest code mailed to the address, waiting for the worker to deliver it.
-// after is the number of mails the address had before the request.
 func code(t *testing.T, email string, after int) string {
 	t.Helper()
 
@@ -360,17 +352,12 @@ func code(t *testing.T, email string, after int) string {
 	}
 }
 
-// newDeviceSubject is the subject of the notice a sign-in of a new client sends.
 const newDeviceSubject = "New sign-in to your account"
 
-// mailIDs returns the Mailpit message ids addressed to email, newest first, without the notices of new devices:
-// a notice is queued with a sign-in and may arrive while a test already waits for a code, so counting it would
-// make the code of the next flow look delivered. noticeIDs returns the notices.
 func mailIDs(t *testing.T, email string) []string {
 	return messageIDs(t, email, false)
 }
 
-// noticeIDs returns the ids of the new device notices addressed to email, newest first.
 func noticeIDs(t *testing.T, email string) []string {
 	return messageIDs(t, email, true)
 }
@@ -393,7 +380,6 @@ func messageIDs(t *testing.T, email string, notices bool) []string {
 	return ids
 }
 
-// waitForNotices waits until the address has n new device notices and returns the text of the newest.
 func waitForNotices(t *testing.T, email string, n int) string {
 	t.Helper()
 

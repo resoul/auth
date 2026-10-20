@@ -30,8 +30,6 @@ type nativeSession struct {
 	access, refresh, binding, userID string
 }
 
-// nativeSignIn runs start, the mail, verify and then the passkey as a native app: a user seen
-// before proves the passkey they registered, a new one registers one.
 func nativeSignIn(t *testing.T, s *stack, c *client, email, binding string) nativeSession {
 	t.Helper()
 	before := len(mailIDs(t, email))
@@ -56,7 +54,6 @@ func nativeSignIn(t *testing.T, s *stack, c *client, email, binding string) nati
 	return nativePasskeyStep(t, s, c, email, binding, verified)
 }
 
-// nativePasskeyStep takes the reply of verify through the step it names.
 func nativePasskeyStep(t *testing.T, s *stack, c *client, email, binding string, verified reply) nativeSession {
 	t.Helper()
 
@@ -105,7 +102,6 @@ func nativePasskeyStep(t *testing.T, s *stack, c *client, email, binding string,
 	return got
 }
 
-// browserSignIn runs the same as a page whose cookies hold the secrets.
 func browserSignIn(t *testing.T, s *stack, c *client, email string) string {
 	t.Helper()
 	before := len(mailIDs(t, email))
@@ -172,12 +168,10 @@ func TestNativeLifecycleThroughRealMail(t *testing.T) {
 	want(t, rotated, http.StatusOK, "")
 	s.secret(rotated.str("access_token"), rotated.str("refresh_token"))
 
-	// The old token is used up, and presenting it ends the session of the newest one too.
 	want(t, c.native(http.MethodPost, "/v1/native/token/refresh", map[string]string{"refresh_token": me.refresh}, ""), http.StatusUnauthorized, "invalid_refresh")
 	want(t, c.native(http.MethodPost, "/v1/native/token/refresh", map[string]string{"refresh_token": rotated.str("refresh_token")}, ""), http.StatusUnauthorized, "invalid_refresh")
 	want(t, c.native(http.MethodGet, "/v1/native/me", nil, rotated.str("access_token")), http.StatusUnauthorized, "unauthenticated")
 
-	// The device is still recognized: a new sign-in with its binding uses the recognized budget.
 	again := nativeSignIn(t, s, c, email, me.binding)
 	if n := s.count("auth_flows", "quota_class = 'recognized'"); n != 1 {
 		t.Errorf("%d recognized flows, want the second sign-in's", n)
@@ -198,11 +192,9 @@ func TestBrowserLifecycleAndTheTwoTabProtocol(t *testing.T) {
 	email := uniqueEmail(t, "browser")
 	access := browserSignIn(t, s, tabA, email)
 
-	// A second tab of the same browser shares the cookie jar, not the in-memory access token.
 	tabB := &client{t: t, base: s.base, cookies: tabA.cookies}
 	want(t, tabB.browser(http.MethodGet, "/v1/me", nil, access), http.StatusOK, "")
 
-	// Tabs that refresh one after another each present the cookie the jar holds: both succeed.
 	first := tabA.browser(http.MethodPost, "/v1/token/refresh", nil, "")
 	want(t, first, http.StatusOK, "")
 
@@ -211,8 +203,6 @@ func TestBrowserLifecycleAndTheTwoTabProtocol(t *testing.T) {
 	s.secret(first.str("access_token"), second.str("access_token"))
 	want(t, tabA.browser(http.MethodGet, "/v1/me", nil, second.str("access_token")), http.StatusOK, "")
 
-	// Two tabs that refresh at once with the same cookie are why a client takes a Web Lock:
-	// exactly one exchange wins and the loser's replay revokes the session.
 	cookie := tabA.cookies["__Secure-px_refresh"].Value
 
 	var wg sync.WaitGroup
@@ -246,9 +236,8 @@ func TestBrowserLifecycleAndTheTwoTabProtocol(t *testing.T) {
 
 	want(t, tabA.browser(http.MethodPost, "/v1/token/refresh", nil, ""), http.StatusUnauthorized, "invalid_refresh")
 
-	// A new sign-in after the forced logout works from the same browser: the binding cookie survived.
 	access = browserSignIn(t, s, tabA, email)
-	// Signing out in one tab ends the session for the other, whose next refresh finds the cookie gone.
+
 	want(t, tabA.browser(http.MethodPost, "/v1/signout", map[string]any{}, access), http.StatusNoContent, "")
 
 	if _, ok := tabA.cookies["__Secure-px_refresh"]; ok {
@@ -283,9 +272,6 @@ func TestForeignPagesAreRefusedAndTrustedOriginsAreServed(t *testing.T) {
 	}
 }
 
-// The availability alert is exercised against the real process:
-// unknown clients from many addresses burn the shared budget of an address; its owner, whose
-// device was recognized earlier, still signs in.
 func TestTheOwnerSignsInWhileAnAttackerBurnsTheBudget(t *testing.T) {
 	s := newStack(t, "AIRLANCE_AUTH_TRUSTED_PROXIES=127.0.0.1/32")
 	c := newClient(s)
@@ -309,8 +295,6 @@ func TestTheOwnerSignsInWhileAnAttackerBurnsTheBudget(t *testing.T) {
 	stranger := c.do(http.MethodPost, "/v1/native/auth/email/start", map[string]string{"email": email}, map[string]string{"X-Forwarded-For": "203.0.113.200"})
 	want(t, stranger, http.StatusTooManyRequests, "rate_limited")
 
-	// The attacker's mails go to the same address, so let the queue drain before the owner
-	// starts: the newest mail is then the owner's.
 	deadline := time.Now().Add(20 * time.Second)
 	for s.count("outbox", "status = 'queued'") != 0 {
 		if time.Now().After(deadline) {
@@ -320,7 +304,6 @@ func TestTheOwnerSignsInWhileAnAttackerBurnsTheBudget(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 
-	// The owner presents the binding of the device that proved the address.
 	again := nativeSignIn(t, s, c, email, owner.binding)
 	want(t, c.native(http.MethodGet, "/v1/native/me", nil, again.access), http.StatusOK, "")
 	s.checkLogs()
@@ -336,18 +319,16 @@ func TestAFlowAndItsMailSurviveARestartAndStopIsClean(t *testing.T) {
 	want(t, started, http.StatusAccepted, "")
 	binding := started.str("client_binding")
 
-	s.restart() // stop() requires a clean exit after SIGTERM
+	s.restart()
 
-	// The flow lives in PostgreSQL and the mail is delivered whichever process sends it.
 	verified := c.native(http.MethodPost, "/v1/native/auth/email/verify", map[string]string{
 		"flow_id": started.str("flow_id"), "code": code(t, email, before), "client_binding": binding,
 	}, "")
 	want(t, verified, http.StatusOK, "")
-	// The ticket and the challenge live in PostgreSQL too: a restart between the steps is harmless.
+
 	s.restart()
 	me := nativePasskeyStep(t, s, c, email, binding, verified)
 
-	// Sessions survive a restart as well.
 	s.restart()
 	want(t, c.native(http.MethodGet, "/v1/native/me", nil, me.access), http.StatusOK, "")
 	s.checkLogs()
@@ -381,8 +362,6 @@ func TestAProductServiceTrustsTokensThroughTheJWKS(t *testing.T) {
 		t.Errorf("a refresh token passed as an access token: %v", err)
 	}
 
-	// A signed-out session's token still verifies as a JWT until it expires; the session API
-	// is what notices at once. A service that needs that calls GET /v1/me.
 	want(t, c.native(http.MethodPost, "/v1/native/signout", nil, me.access), http.StatusNoContent, "")
 
 	if _, err := verifier.Verify(context.Background(), me.access); err != nil {
@@ -399,8 +378,6 @@ func TestAMailboxAloneNeverOpensASession(t *testing.T) {
 	owner := nativeSignIn(t, s, c, email, "")
 	sessions := s.count("sessions", "true")
 
-	// Someone who controls the mailbox proves the code. The user has a passkey, so the answer
-	// is a second factor, never a session.
 	before := len(mailIDs(t, email))
 	started := c.native(http.MethodPost, "/v1/native/auth/email/start", map[string]string{"email": email}, "")
 	want(t, started, http.StatusAccepted, "")
@@ -417,10 +394,9 @@ func TestAMailboxAloneNeverOpensASession(t *testing.T) {
 	ticket := verified.str("ticket")
 	s.secret(ticket, binding)
 
-	// The ticket cannot register the attacker's own passkey ...
 	want(t, c.native(http.MethodPost, "/v1/native/auth/passkey/register/options", map[string]string{"ticket": ticket, "client_binding": binding}, ""),
 		http.StatusBadRequest, "invalid_proof")
-	// ... a key of the attacker's own is no second factor ...
+
 	attacker := testutil.NewSoftAuthenticator(t, e2eRPID, e2eRPOrigin)
 	attacker.UserHandle = []byte("0123456789abcdef")
 	begun := c.native(http.MethodPost, "/v1/native/auth/passkey/login/options", nil, "")
@@ -428,7 +404,7 @@ func TestAMailboxAloneNeverOpensASession(t *testing.T) {
 		"challenge_id": begun.str("challenge_id"), "credential": json.RawMessage(attacker.Assert(begun.options())),
 		"ticket": ticket, "client_binding": binding,
 	}, ""), http.StatusBadRequest, "invalid_proof")
-	// ... and a wrong recovery code only burns the ticket.
+
 	want(t, c.native(http.MethodPost, "/v1/native/auth/recovery/verify", map[string]string{"ticket": ticket, "client_binding": binding, "code": "AAAA-AAAA-AAAA-AAAA"}, ""),
 		http.StatusBadRequest, "invalid_proof")
 
@@ -445,7 +421,6 @@ func TestRecoveryCodeReplacesALostPasskeyAndClosesOldSessions(t *testing.T) {
 	c := newClient(s)
 	email := uniqueEmail(t, "recovery")
 
-	// The first sign-in registers a passkey and hands out the recovery codes.
 	before := len(mailIDs(t, email))
 	started := c.native(http.MethodPost, "/v1/native/auth/email/start", map[string]string{"email": email}, "")
 	want(t, started, http.StatusAccepted, "")
@@ -476,7 +451,6 @@ func TestRecoveryCodeReplacesALostPasskeyAndClosesOldSessions(t *testing.T) {
 	s.secret(ticket, binding, registered.str("access_token"), registered.str("refresh_token"))
 	lostDevice := registered.str("access_token")
 
-	// The device is lost. The mailbox proves the code, and a recovery code answers the second factor.
 	before = len(mailIDs(t, email))
 	again := c.native(http.MethodPost, "/v1/native/auth/email/start", map[string]string{"email": email}, "")
 	want(t, again, http.StatusAccepted, "")
@@ -501,7 +475,6 @@ func TestRecoveryCodeReplacesALostPasskeyAndClosesOldSessions(t *testing.T) {
 
 	s.secret(second.str("ticket"), redeemed.str("ticket"), newBinding)
 
-	// The lost device's session is still alive until the new passkey is registered.
 	want(t, c.native(http.MethodGet, "/v1/native/me", nil, lostDevice), http.StatusOK, "")
 	fresh := testutil.NewSoftAuthenticator(t, e2eRPID, e2eRPOrigin)
 	begun = c.native(http.MethodPost, "/v1/native/auth/passkey/register/options", map[string]string{"ticket": redeemed.str("ticket"), "client_binding": newBinding}, "")
@@ -559,11 +532,9 @@ func TestManagingPasskeysNeedsAFreshProofOnTheRealService(t *testing.T) {
 		return done.str("step_up_token")
 	}
 
-	// Without a fresh proof nothing sensitive happens, even with a valid session.
 	want(t, auth(http.MethodPost, "/passkeys/options", nil, ""), http.StatusForbidden, "step_up_required")
 	want(t, auth(http.MethodPost, "/recovery-codes", nil, ""), http.StatusForbidden, "step_up_required")
 
-	// Add a second key.
 	token := stepUp(first, "add_passkey")
 	second := testutil.NewSoftAuthenticator(t, e2eRPID, e2eRPOrigin)
 	begun := auth(http.MethodPost, "/passkeys/options", nil, token)
@@ -585,13 +556,12 @@ func TestManagingPasskeysNeedsAFreshProofOnTheRealService(t *testing.T) {
 	firstID := fmt.Sprint(keys[0].(map[string]any)["id"])
 	secondID := added.str("id")
 
-	// Delete the first key; the last one cannot go.
 	if r := auth(http.MethodDelete, "/passkeys/"+firstID, nil, stepUp(second, "delete_passkey")); r.Status != http.StatusNoContent {
 		t.Fatalf("delete = %d %s", r.Status, r.Raw)
 	}
 
 	want(t, auth(http.MethodDelete, "/passkeys/"+secondID, nil, stepUp(second, "delete_passkey")), http.StatusConflict, "last_passkey")
-	// The deleted key signs in no more: its email code now leads to a second factor it cannot answer.
+
 	before := len(mailIDs(t, email))
 	started := c.native(http.MethodPost, "/v1/native/auth/email/start", map[string]string{"email": email}, "")
 	want(t, started, http.StatusAccepted, "")
@@ -608,7 +578,6 @@ func TestManagingPasskeysNeedsAFreshProofOnTheRealService(t *testing.T) {
 	}, ""), http.StatusBadRequest, "invalid_proof")
 	s.secret(verified.str("ticket"), binding)
 
-	// New recovery codes replace the old set.
 	codes := auth(http.MethodPost, "/recovery-codes", nil, stepUp(second, "regenerate_recovery_codes"))
 	want(t, codes, http.StatusOK, "")
 
@@ -623,7 +592,6 @@ func TestManagingPasskeysNeedsAFreshProofOnTheRealService(t *testing.T) {
 	s.checkLogs()
 }
 
-// subjectsTo returns the subjects of the mails addressed to the address, newest first.
 func subjectsTo(t *testing.T, email string) []string {
 	t.Helper()
 
@@ -638,7 +606,6 @@ func subjectsTo(t *testing.T, email string) []string {
 	return subjects
 }
 
-// waitForMail waits until the address has n mails, for the worker to deliver them.
 func waitForMail(t *testing.T, email string, n int) {
 	t.Helper()
 
@@ -680,7 +647,6 @@ func TestChangingTheEmailMovesTheAccountAndTellsTheOldAddress(t *testing.T) {
 		return done.str("step_up_token")
 	}
 
-	// A session alone changes nothing: the request needs a fresh proof of the passkey.
 	want(t, auth(http.MethodPost, "/email/change", map[string]string{"email": newEmail}, ""), http.StatusForbidden, "step_up_required")
 
 	if len(mailIDs(t, newEmail)) != 0 {
@@ -690,7 +656,7 @@ func TestChangingTheEmailMovesTheAccountAndTellsTheOldAddress(t *testing.T) {
 	token := stepUp()
 	started := auth(http.MethodPost, "/email/change", map[string]string{"email": newEmail}, token)
 	want(t, started, http.StatusAccepted, "")
-	// The code goes to the new address with its own subject; the token bought one request only.
+
 	flowID := started.str("flow_id")
 
 	got := code(t, newEmail, 0)
@@ -719,7 +685,6 @@ func TestChangingTheEmailMovesTheAccountAndTellsTheOldAddress(t *testing.T) {
 
 	want(t, auth(http.MethodPost, "/email/change/confirm", map[string]string{"flow_id": flowID, "code": got}, ""), http.StatusBadRequest, "invalid_code")
 
-	// The old address is told once, and the notice carries neither a code nor the new address.
 	waitForMail(t, oldEmail, 2)
 
 	subjects := subjectsTo(t, oldEmail)
@@ -734,7 +699,6 @@ func TestChangingTheEmailMovesTheAccountAndTellsTheOldAddress(t *testing.T) {
 		t.Errorf("the notice carries a code or an address: %q", notice.Text)
 	}
 
-	// The session lives on and shows the new address; the account moved, it was not copied.
 	profile := auth(http.MethodGet, "", nil, "")
 	want(t, profile, http.StatusOK, "")
 
@@ -750,7 +714,6 @@ func TestChangingTheEmailMovesTheAccountAndTellsTheOldAddress(t *testing.T) {
 		t.Errorf("%d accounts have the new address", n)
 	}
 
-	// Signing in by the new address reaches the same passkey; the old address is a stranger.
 	s.auths[newEmail] = key
 
 	again := nativeSignIn(t, s, c, newEmail, "")
@@ -806,7 +769,6 @@ func TestDeletingAccountStopsEverySessionAndAllowsANewIdentity(t *testing.T) {
 	s.checkLogs()
 }
 
-// rotate runs scripts/rotate_keys.py against the stack's keyring and schema, as the runbook does.
 func rotate(t *testing.T, s *stack, args ...string) (string, error) {
 	t.Helper()
 
@@ -817,8 +779,7 @@ func rotate(t *testing.T, s *stack, args ...string) (string, error) {
 
 	full := append([]string{"../../scripts/rotate_keys.py", "--keyring", filepath.Join(s.dir, "keyring.json"), "--schema", parsed.Query().Get("search_path")}, args...)
 	cmd := exec.Command("python3", full...)
-	// Where psql is installed (a CI job has no Docker to exec into) the script reaches the database of the test
-	// directly; otherwise it goes through the Compose service, as on a developer machine.
+
 	if _, err := exec.LookPath("psql"); err == nil {
 		direct := *parsed
 		direct.RawQuery = url.Values{"sslmode": parsed.Query()["sslmode"]}.Encode()
@@ -830,7 +791,6 @@ func rotate(t *testing.T, s *stack, args ...string) (string, error) {
 	return string(out), err
 }
 
-// keyIDs returns the key IDs of the published key set.
 func keyIDs(t *testing.T, s *stack) []string {
 	t.Helper()
 
@@ -849,7 +809,6 @@ func keyIDs(t *testing.T, s *stack) []string {
 	return kids
 }
 
-// tokenKid reads the key ID a token claims to be signed with.
 func tokenKid(t *testing.T, token string) string {
 	t.Helper()
 
@@ -875,14 +834,12 @@ func TestRotatingKeysKeepsEveryLoginAndTokenValid(t *testing.T) {
 	me := func(token string) reply { return c.native(http.MethodGet, "/v1/native/me", nil, token) }
 	want(t, me(old.access), http.StatusOK, "")
 
-	// A sign-in is half done when the keys change: its code was made with the old OTP key.
 	before := len(mailIDs(t, email))
 	started := c.native(http.MethodPost, "/v1/native/auth/email/start", map[string]string{"email": email}, "")
 	want(t, started, http.StatusAccepted, "")
 	binding := started.str("client_binding")
 	pending := code(t, email, before)
 
-	// Add the new keys and publish the JWT one: the key set carries both, signing stays with the old key.
 	for _, purpose := range []string{"otp", "jwt"} {
 		if out, err := rotate(t, s, "add", purpose); err != nil {
 			t.Fatalf("add %s: %v\n%s", purpose, err, out)
@@ -899,7 +856,7 @@ func TestRotatingKeysKeepsEveryLoginAndTokenValid(t *testing.T) {
 	if tokenKid(t, nativeSignIn(t, s, c, email, "").access) != oldKid {
 		t.Error("a key that is only published already signs")
 	}
-	// The runbook's wait is real: the script refuses to switch before verifiers could see the key.
+
 	newJWT := ""
 
 	for _, kid := range kids {
@@ -925,7 +882,6 @@ func TestRotatingKeysKeepsEveryLoginAndTokenValid(t *testing.T) {
 
 	s.restart()
 
-	// Old tokens still pass, new ones carry the new kid, and the half done sign-in still ends well.
 	want(t, me(old.access), http.StatusOK, "")
 
 	fresh := nativeSignIn(t, s, c, email, "")
@@ -942,7 +898,6 @@ func TestRotatingKeysKeepsEveryLoginAndTokenValid(t *testing.T) {
 		t.Fatalf("the half done sign-in was told %q", verified.str("next"))
 	}
 
-	// The old OTP key goes once nothing waits for it. A flow started now still uses the new key.
 	if out, err := rotate(t, s, "retire", "otp", "otp-a"); err != nil {
 		t.Fatalf("retire otp: %v\n%s", err, out)
 	}
@@ -952,10 +907,9 @@ func TestRotatingKeysKeepsEveryLoginAndTokenValid(t *testing.T) {
 	}
 
 	s.restart()
-	want(t, me(old.access), http.StatusOK, "") // the old public key is still published until the wait is over
+	want(t, me(old.access), http.StatusOK, "")
 	nativeSignIn(t, s, c, email, "")
 
-	// A leaked signing key does not wait: it is gone with its file, and its tokens stop with the next start.
 	if out, err := rotate(t, s, "retire", "jwt", oldKid, "--compromised"); err != nil {
 		t.Fatalf("retire compromised: %v\n%s", err, out)
 	}
@@ -995,7 +949,6 @@ func TestMetricsShowFailingSignInWithoutRevealingWhoFailed(t *testing.T) {
 	email := uniqueEmail(t, "metrics")
 	nativeSignIn(t, s, c, email, "")
 
-	// A wrong code and a wrong ticket: what an operator should see as failing sign-in.
 	before := len(mailIDs(t, email))
 	started := c.native(http.MethodPost, "/v1/native/auth/email/start", map[string]string{"email": email}, "")
 	want(t, started, http.StatusAccepted, "")
@@ -1029,7 +982,7 @@ func TestMetricsShowFailingSignInWithoutRevealingWhoFailed(t *testing.T) {
 			t.Errorf("the scrape contains %q", secret)
 		}
 	}
-	// A code is eight digits, which a sample value can also be: look for it only where a label could carry it.
+
 	for _, labels := range regexp.MustCompile(`\{[^}]*\}`).FindAllString(body, -1) {
 		if strings.Contains(labels, right) || strings.Contains(labels, wrong) {
 			t.Errorf("a label carries a code: %s", labels)
@@ -1041,7 +994,6 @@ func TestMetricsShowFailingSignInWithoutRevealingWhoFailed(t *testing.T) {
 	}
 }
 
-// invite runs `airlance-auth invite ...` as the operator does, against the stack's database.
 func invite(t *testing.T, s *stack, args ...string) (string, error) {
 	t.Helper()
 
@@ -1059,7 +1011,6 @@ func TestClosedRegistrationLetsOnlyTheInvitedIn(t *testing.T) {
 	c := newClient(s)
 	guest, stranger := uniqueEmail(t, "guest"), uniqueEmail(t, "stranger")
 
-	// A stranger gets an ordinary answer and no mail: the answer cannot tell who is invited.
 	started := c.native(http.MethodPost, "/v1/native/auth/email/start", map[string]string{"email": stranger}, "")
 	want(t, started, http.StatusAccepted, "")
 
@@ -1067,7 +1018,7 @@ func TestClosedRegistrationLetsOnlyTheInvitedIn(t *testing.T) {
 		t.Fatalf("the answer to a stranger is not an ordinary start: %s", started.Raw)
 	}
 
-	time.Sleep(3 * time.Second) // the worker polls every second
+	time.Sleep(3 * time.Second)
 
 	if n := len(mailIDs(t, stranger)); n != 0 {
 		t.Fatalf("a stranger got %d mails", n)
@@ -1075,7 +1026,6 @@ func TestClosedRegistrationLetsOnlyTheInvitedIn(t *testing.T) {
 
 	s.secret(started.str("client_binding"))
 
-	// The operator invites the guest on the server.
 	if out, err := invite(t, s, "create", guest); err != nil || !strings.Contains(out, "invited "+guest) {
 		t.Fatalf("invite create: %v\n%s", err, out)
 	}
@@ -1084,7 +1034,6 @@ func TestClosedRegistrationLetsOnlyTheInvitedIn(t *testing.T) {
 		t.Fatalf("invite list: %v\n%s", err, out)
 	}
 
-	// The invitation reaches the guest by mail, with the link and the end, and no code.
 	waitForMail(t, guest, 1)
 
 	if subjects := subjectsTo(t, guest); len(subjects) != 1 || subjects[0] != "You have been invited" {
@@ -1098,7 +1047,6 @@ func TestClosedRegistrationLetsOnlyTheInvitedIn(t *testing.T) {
 		t.Errorf("the invitation mail = %q", invitation.Text)
 	}
 
-	// The guest registers like anybody did before, and the invitation is spent.
 	me := nativeSignIn(t, s, c, guest, "")
 	if me.access == "" {
 		t.Fatal("the guest got no session")
@@ -1107,10 +1055,9 @@ func TestClosedRegistrationLetsOnlyTheInvitedIn(t *testing.T) {
 	if out, err := invite(t, s, "list"); err != nil || !strings.Contains(out, "no invitations") {
 		t.Errorf("the invitation survived the registration: %v\n%s", err, out)
 	}
-	// A registered address signs in again with no invitation.
+
 	nativeSignIn(t, s, c, guest, "")
 
-	// A withdrawn invitation sends nothing.
 	late := uniqueEmail(t, "late")
 	if out, err := invite(t, s, "create", late, "--no-mail"); err != nil || !strings.Contains(out, "no email was queued") {
 		t.Fatalf("invite create: %v\n%s", err, out)
@@ -1127,7 +1074,6 @@ func TestClosedRegistrationLetsOnlyTheInvitedIn(t *testing.T) {
 		t.Errorf("a withdrawn invitation still got %d mails", n)
 	}
 
-	// The operator sees the refusals the client cannot.
 	if body := scrapeMetrics(t, s); !strings.Contains(body, `airlance_auth_denied_total{operation="start",reason="not_invited"} 2`) {
 		t.Errorf("the scrape lacks two not_invited refusals:\n%s", body)
 	}
@@ -1140,7 +1086,7 @@ func TestClosedRegistrationLetsOnlyTheInvitedIn(t *testing.T) {
 }
 
 func TestTheInviteCommandSaysWhenTheModeMakesItPointlessAndRefusesRegisteredAddresses(t *testing.T) {
-	s := newStack(t) // open registration
+	s := newStack(t)
 	c := newClient(s)
 	member := uniqueEmail(t, "member")
 	nativeSignIn(t, s, c, member, "")

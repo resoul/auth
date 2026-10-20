@@ -11,8 +11,6 @@ import (
 	"go.airlance.org/auth/internal/domain/session"
 )
 
-// sessionReadContract checks the read-only session and user lookups that the access check
-// and the session API use.
 func sessionReadContract(t *testing.T, newUoW NewUnitOfWork) {
 	t.Run("Get reads a session without locking or changing it", func(t *testing.T) {
 		fx := newSessionFixture(t, newUoW)
@@ -102,7 +100,7 @@ func sessionReadContract(t *testing.T, newUoW NewUnitOfWork) {
 
 		now := f.Clock.Now()
 		got := list(now, 10)
-		// first was touched last; third and revoked started together, and the revoked one is gone.
+
 		if want := []session.ID{first.ID(), third.ID(), second.ID()}; !reflect.DeepEqual(ids(got), want) {
 			t.Errorf("ListActive = %v, want %v", ids(got), want)
 		}
@@ -118,11 +116,11 @@ func sessionReadContract(t *testing.T, newUoW NewUnitOfWork) {
 		if got := list(now, 0); len(got) != 0 {
 			t.Errorf("ListActive with a limit of 0 = %d sessions", len(got))
 		}
-		// Idle: shortly before the touched session's idle limit, the others have passed theirs.
+
 		if got := ids(list(now.Add(30*24*time.Hour-30*time.Minute), 10)); len(got) != 1 || got[0] != first.ID() {
 			t.Errorf("near the idle limit = %v, want only the touched session", got)
 		}
-		// Absolute: nothing lives past 90 days.
+
 		if got := list(now.Add(91*24*time.Hour), 10); len(got) != 0 {
 			t.Errorf("after 91 days = %d sessions", len(got))
 		}

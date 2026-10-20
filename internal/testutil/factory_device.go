@@ -7,9 +7,7 @@ import (
 	"go.airlance.org/auth/internal/domain/deviceauth"
 )
 
-// DeviceSpec overrides the fields a scenario cares about.
 type DeviceSpec struct {
-	// PollSecret and BindingSecret default to values that match PollHash and BindingHash of the helpers below.
 	PollSecret    string
 	BindingSecret string
 	DeviceName    string
@@ -17,8 +15,6 @@ type DeviceSpec struct {
 	PairingCode string
 }
 
-// DeviceRequest builds a pending request made at the factory clock time. The ID is random: the identifier of a
-// request is 16 random bytes and tests need not reproduce them.
 func (f *Factory) DeviceRequest(spec DeviceSpec) *deviceauth.Request {
 	f.t.Helper()
 

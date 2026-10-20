@@ -11,10 +11,6 @@ import (
 	"go.airlance.org/auth/internal/adapter/postgres"
 )
 
-// PostgresStore opens a store on a fresh, migrated schema of the test database, and drops the schema at cleanup.
-// It is for tests that need real row locks and real READ COMMITTED: the in-memory store runs one transaction at a
-// time, so it cannot show a race. The database is the one `make up` starts; the URL is in
-// AIRLANCE_AUTH_TEST_DATABASE_URL. opts come after the test defaults and can replace them.
 func PostgresStore(t *testing.T, opts ...postgres.Option) *postgres.Store {
 	t.Helper()
 

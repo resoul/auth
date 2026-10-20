@@ -8,30 +8,20 @@ import (
 	"go.airlance.org/auth/internal/domain/identity"
 )
 
-// FlowSpec overrides the fields a scenario cares about. The zero value builds a
-// pending login flow for an unknown client with the default policy.
 type FlowSpec struct {
-	// Email defaults to a unique address under example.test.
-	Email   string
-	Purpose authflow.Purpose
-	// BindingSecret defaults to DefaultBindingSecret; compare with BindingHash.
-	BindingSecret string
-	QuotaClass    authflow.QuotaClass
-	// RecognizedClientID is required with QuotaRecognized and is never created implicitly.
+	Email              string
+	Purpose            authflow.Purpose
+	BindingSecret      string
+	QuotaClass         authflow.QuotaClass
 	RecognizedClientID identity.RecognizedClientID
-	// UserID is required with PurposeChangeEmail and is never created implicitly.
-	UserID identity.UserID
-	// Salt defaults to 16 distinct bytes; KeyID defaults to "otp-test".
-	Salt  []byte
-	KeyID string
-	// Policy defaults to authflow.DefaultPolicy().
-	Policy *authflow.Policy
+	UserID             identity.UserID
+	Salt               []byte
+	KeyID              string
+	Policy             *authflow.Policy
 }
 
-// DefaultKeyID is the OTP key ID of flows built without KeyID.
 const DefaultKeyID = "otp-test"
 
-// Flow starts a flow at the factory clock time.
 func (f *Factory) Flow(spec FlowSpec) *authflow.Flow {
 	f.t.Helper()
 
@@ -91,7 +81,6 @@ func (f *Factory) Flow(spec FlowSpec) *authflow.Flow {
 	return flow
 }
 
-// Salt returns a fresh salt of the right length, distinct from earlier ones.
 func (f *Factory) Salt() []byte {
 	salt := make([]byte, authflow.SaltLength)
 	binary.BigEndian.PutUint64(salt, f.IDs.n.Add(1))

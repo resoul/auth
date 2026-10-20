@@ -14,7 +14,6 @@ import (
 	"go.airlance.org/auth/internal/domain/token"
 )
 
-// sessionFixture is a user with one session and its root token, already stored.
 type sessionFixture struct {
 	uow  port.UnitOfWork
 	f    *Factory
@@ -117,7 +116,7 @@ func sessionContract(t *testing.T, newUoW NewUnitOfWork) {
 		if got := history(fx.user, other.Binding()); !got.Any || got.ThisBinding || !got.NewClient() {
 			t.Errorf("a binding no session has: %+v", got)
 		}
-		// Ended sessions still count: the client was used.
+
 		mustDo(t, fx.uow, func(ctx context.Context, s port.Stores) error {
 			return s.Sessions.RevokeAllForUser(ctx, fx.user.ID(), contractNow)
 		})
@@ -125,7 +124,7 @@ func sessionContract(t *testing.T, newUoW NewUnitOfWork) {
 		if got := history(fx.user, fx.sess.Binding()); !got.ThisBinding {
 			t.Errorf("a revoked session is forgotten: %+v", got)
 		}
-		// Another user's sessions say nothing; an account without any has no history to compare with.
+
 		stranger := seedUser(t, fx.uow, fx.f, "")
 		if got := history(stranger, fx.sess.Binding()); got.Any || got.ThisBinding || got.NewClient() {
 			t.Errorf("a user without sessions: %+v", got)
@@ -407,14 +406,11 @@ func tokenContract(t *testing.T, newUoW NewUnitOfWork) {
 			return s.Tokens.Create(ctx, first)
 		})
 
-		// A second child of the same parent is refused, even built from a fresh copy.
-		// The domain would not rotate a used parent, so build the sibling from a record.
 		sibling := forgedChild(t, fx, parent, contractNow.Add(2*time.Minute))
 		if err := create(fx, sibling); !errors.Is(err, port.ErrTokenConflict) {
 			t.Fatalf("second live child = %v, want ErrTokenConflict", err)
 		}
 
-		// Once the first child is revoked the slot is free again.
 		mustDo(t, fx.uow, func(ctx context.Context, s port.Stores) error {
 			c, err := s.Tokens.GetForUpdate(ctx, first.ID())
 			if err != nil {
@@ -526,7 +522,7 @@ func tokenContract(t *testing.T, newUoW NewUnitOfWork) {
 
 			return s.Tokens.Save(ctx, live)
 		})
-		// The stale copy was never revoked; saving it must not clear the mark.
+
 		mustDo(t, fx.uow, func(ctx context.Context, s port.Stores) error { return s.Tokens.Save(ctx, stale) })
 
 		if got := loadToken(t, fx.uow, fx.root.ID()); !got.RevokedAt().Equal(contractNow.Add(time.Hour)) {
@@ -601,14 +597,11 @@ func tokenContract(t *testing.T, newUoW NewUnitOfWork) {
 	})
 }
 
-// rootCopy loads a fresh copy of the root token, as a concurrent request would.
 func (fx sessionFixture) rootCopy(t *testing.T) *token.RefreshToken {
 	t.Helper()
 	return loadToken(t, fx.uow, fx.root.ID())
 }
 
-// forgedChild builds a child of parent without going through Rotate, to probe the
-// storage invariant that guards against a second live child.
 func forgedChild(t *testing.T, fx sessionFixture, parent *token.RefreshToken, at time.Time) *token.RefreshToken {
 	t.Helper()
 

@@ -1,10 +1,3 @@
-// Command funcstyle reports function declarations whose body shares a line with its braces, such as
-//
-//	func (r *Ring) String() string { return r.name }
-//
-// and with -fix spreads each such body over lines. gofmt keeps one-line bodies and no linter of golangci-lint
-// forbids them. An empty body ({}) is left alone, as are function literals. Generated files (with the standard
-// "Code generated" header) are skipped; -exclude skips others by path.
 package main
 
 import (
@@ -97,7 +90,6 @@ func walk(root string, skip *regexp.Regexp, fix bool) (int, error) {
 	return found, err
 }
 
-// check reports, or with fix rewrites, the one-line function bodies of one file and returns how many it found.
 func check(path string, fix bool) (int, error) {
 	src, err := os.ReadFile(path) //nolint:gosec // the paths are the source files of the walked tree
 	if err != nil {
@@ -117,8 +109,6 @@ func check(path string, fix bool) (int, error) {
 
 	found := 0
 
-	// Offsets where a line break goes: after each opening brace and before each closing one, and after the closing
-	// brace when a declaration follows on the next line: one-line functions often stood in a block without blank lines.
 	var breaks []int
 
 	for _, decl := range file.Decls {
