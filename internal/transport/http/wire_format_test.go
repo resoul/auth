@@ -11,7 +11,6 @@ import (
 	"go.airlance.org/auth/internal/testutil"
 )
 
-// rawTimes returns the time fields of a response exactly as they are written on the wire.
 func rawTimes(t *testing.T, rec *httptest.ResponseRecorder, status int, fields ...string) map[string]string {
 	t.Helper()
 
@@ -38,8 +37,6 @@ func rawTimes(t *testing.T, rec *httptest.ResponseRecorder, status int, fields .
 	return out
 }
 
-// Every instant the API returns is in UTC, whatever the time zone of the server:
-// clients compare and cache these strings, and a mix of +03:00 and Z would be a trap.
 func TestTimesOnTheWireAreUTCWhateverTheServerZone(t *testing.T) {
 	previous := time.Local
 	time.Local = time.FixedZone("EEST", 3*60*60)

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Rotate the keys of the keyring file without hand edits.
 
-    rotate_keys.py status
+    rotate_keys.py [--keys-dir DIR] status
     rotate_keys.py add otp|jwt
     rotate_keys.py activate otp|jwt KID [--cache-wait 10m]
     rotate_keys.py public-only KID
@@ -80,9 +80,16 @@ def read_ring(path):
     return ring
 
 
+# Where the key files are on this machine when the keyring names them where the service runs, such as a Kubernetes
+# secret mounted in the pod: --keys-dir. None reads every file at the path the keyring gives.
+KEYS_DIR = None
+
+
 def resolve(reference):
     # The service resolves a relative path from its working directory, which is the repository root here.
     path = Path(reference)
+    if KEYS_DIR is not None and path.is_absolute():
+        return KEYS_DIR / path.name
     return path if path.is_absolute() else ROOT / path
 
 
@@ -139,7 +146,7 @@ class History:
 class Compose:
     """The local PostgreSQL of deploy/compose.yaml, reached the way scripts/backup.py reaches it."""
 
-    def __init__(self, database="airlance_auth", schema="public"):
+    def __init__(self, database="airlance_auth", schema="auth"):
         if not re.fullmatch(r"[a-z][a-z0-9_]{0,62}", database) or not re.fullmatch(r"[a-z][a-z0-9_]{0,62}", schema):
             raise Refusal("database and schema must be lowercase names")
         self.database, self.schema = database, schema
@@ -242,7 +249,8 @@ def reference_for(ring, purpose, path):
     """Write the path in the form the active key uses: relative to the repository, or absolute."""
     active = group_of(ring, purpose)["keys"][group_of(ring, purpose)["active_kid"]]["key_file"]
     if Path(active).is_absolute():
-        return str(path)
+        # With --keys-dir the file is written here and named where the service will find it, next to the active key.
+        return str(Path(active).parent / path.name) if KEYS_DIR is not None else str(path)
     return os.path.relpath(path, ROOT)
 
 
@@ -363,8 +371,11 @@ def cmd_retire(args, ring, history, database):
 def build_parser():
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0], formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--keyring", type=Path, default=os.environ.get("AIRLANCE_AUTH_KEYRING_FILE"), help="default: AIRLANCE_AUTH_KEYRING_FILE")
+    parser.add_argument("--keys-dir", type=Path, help="the key files are here, though the keyring names them where the "
+                        "service runs (a Kubernetes secret mounted in the pod)")
     parser.add_argument("--database", default="airlance_auth")
-    parser.add_argument("--schema", default="public")
+    parser.add_argument("--schema", default=os.environ.get("AIRLANCE_AUTH_DATABASE_SCHEMA") or "auth",
+                        help="schema of the service's tables (AIRLANCE_AUTH_DATABASE_SCHEMA, default auth)")
     parser.add_argument("--no-database", action="store_true", help="skip every database check (a refusal for OTP retire)")
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("status")
@@ -397,6 +408,8 @@ def main(argv=None):
         print("keyring: set AIRLANCE_AUTH_KEYRING_FILE or pass --keyring", file=sys.stderr)
         return 2
     args.keyring = Path(args.keyring)
+    global KEYS_DIR
+    KEYS_DIR = args.keys_dir
     try:
         ring = read_ring(args.keyring)
         database = None if args.no_database else Compose(args.database, args.schema)

@@ -18,7 +18,6 @@ type servedRecord struct {
 
 type deniedRecord struct{ operation, reason string }
 
-// recorder keeps what the transport reports, for assertions.
 type recorder struct {
 	mu     sync.Mutex
 	served []servedRecord

@@ -114,7 +114,7 @@ secrets: ## Scan the git history for committed secrets (needs Docker; CI runs th
 
 kube-check: ## Build the Kubernetes manifests and validate them against the API schemas (needs kubectl and Docker)
 	@tmp=$$(mktemp) && trap 'rm -f "$$tmp"' EXIT && \
-		{ kubectl kustomize deploy/kubernetes; echo '---'; kubectl kustomize deploy/kubernetes/migrate; } > "$$tmp" && \
+		{ kubectl kustomize deploy/kubernetes; echo '---'; kubectl kustomize deploy/kubernetes/migrate; echo '---'; cat deploy/kubernetes/networkpolicy-egress.yaml; } > "$$tmp" && \
 		docker run --rm -v "$$tmp":/manifests.yaml $(KUBECONFORM_IMAGE) -strict -summary -kubernetes-version $(KUBE_VERSION) /manifests.yaml
 
 tidy-check: ## Fail if go.mod/go.sum are not tidy

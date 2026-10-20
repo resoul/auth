@@ -9,11 +9,8 @@ import (
 	"go.airlance.org/auth/internal/transport/http/openapi"
 )
 
-// maxBearerLength bounds the token a request may present; a signed access token is a few hundred bytes.
 const maxBearerLength = 4096
 
-// bearerToken reads the access token of the Authorization header. Exactly one header with
-// the Bearer scheme and a single token passes; anything else counts as no credentials.
 func bearerToken(ctx context.Context) (string, bool) {
 	values := requestHeaderValues(ctx, "Authorization")
 	if len(values) != 1 {
@@ -28,8 +25,6 @@ func bearerToken(ctx context.Context) (string, bool) {
 	return token, true
 }
 
-// authenticate resolves the caller of a protected route. It reports false for every kind of
-// failure alike: no header, a bad token, a revoked or expired session.
 func (a *API) authenticate(ctx context.Context) (appsession.Actor, bool, error) {
 	token, ok := bearerToken(ctx)
 	if !ok {
@@ -64,7 +59,6 @@ func apiSession(s *dsession.Session, current dsession.ID) openapi.Session {
 	}
 }
 
-// me runs the whole protected read; ok is false when the caller is not authenticated.
 func (a *API) me(ctx context.Context) (body openapi.MeResponse, ok bool, err error) {
 	actor, ok, err := a.authenticate(ctx)
 	if err != nil || !ok {
@@ -109,7 +103,6 @@ func (a *API) listSessions(ctx context.Context) (body openapi.SessionList, ok bo
 	return body, true, nil
 }
 
-// signOutResult is what a sign-out tells the transport.
 type signOutResult struct {
 	invalid, unauthenticated bool
 	// forget says the binding cookie should go too; revoked says the refresh cookie should.
@@ -156,9 +149,6 @@ func (a *API) signOut(ctx context.Context, body *openapi.SignOutRequest) (signOu
 	return signOutResult{forget: cmd.ForgetClient || cmd.Scope == appsession.ScopeAll}, nil
 }
 
-// revokeSession ends one session of the caller. A session that is not the caller's gives
-// the same result as one that exists, so the response cannot be used to probe ids; current
-// reports that the caller ended its own session.
 func (a *API) revokeSession(ctx context.Context, id string) (current, unauthenticated bool, err error) {
 	actor, ok, err := a.authenticate(ctx)
 	if err != nil {
@@ -181,8 +171,6 @@ func (a *API) revokeSession(ctx context.Context, id string) (current, unauthenti
 
 	return id == actor.SessionID.String(), false, nil
 }
-
-// Browser operations.
 
 func (a *API) BrowserGetMe(ctx context.Context, _ openapi.BrowserGetMeRequestObject) (openapi.BrowserGetMeResponseObject, error) {
 	body, ok, err := a.me(ctx)
@@ -246,8 +234,6 @@ func (a *API) BrowserSignOut(ctx context.Context, req openapi.BrowserSignOutRequ
 
 	return openapi.BrowserSignOut204Response{}, nil
 }
-
-// Native operations: the same use cases, no cookies.
 
 func (a *API) NativeGetMe(ctx context.Context, _ openapi.NativeGetMeRequestObject) (openapi.NativeGetMeResponseObject, error) {
 	body, ok, err := a.me(ctx)

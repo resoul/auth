@@ -1,0 +1,39 @@
+# Where the pods may open connections. With it, a compromised process can reach the database, the mail server and the
+# applications it notifies, and nothing else. It is not in kustomization.yaml: the addresses differ in every cluster.
+# Replace each `to:` marked REQUIRED with yours, then add this file to the resources. Needs a CNI that enforces
+# NetworkPolicy, like networkpolicy.yaml.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: airlance-auth-egress
+spec:
+  podSelector:
+    matchLabels: {app.kubernetes.io/name: airlance-auth}
+  policyTypes: [Egress]
+  egress:
+    # The DNS of the cluster.
+    - to:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: kube-system}
+          podSelector:
+            matchLabels: {k8s-app: kube-dns}
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+    # REQUIRED: PostgreSQL, the network of your database server or managed instance.
+    - to:
+        - ipBlock: {cidr: 10.0.0.0/8}
+      ports:
+        - {protocol: TCP, port: 5432}
+    # REQUIRED: the SMTP server of AIRLANCE_AUTH_SMTP_ADDR, and its port.
+    - to:
+        - ipBlock: {cidr: 0.0.0.0/0}
+      ports:
+        - {protocol: TCP, port: 587}
+        - {protocol: TCP, port: 465}
+    # With the OpenID Provider only: the back-channel logout endpoints of your applications (oidc client set-logout).
+    # Keep it in step with AIRLANCE_AUTH_OIDC_BACKCHANNEL_ALLOW for endpoints inside the cluster.
+    - to:
+        - ipBlock: {cidr: 0.0.0.0/0}
+      ports:
+        - {protocol: TCP, port: 443}
