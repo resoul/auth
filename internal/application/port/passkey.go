@@ -3,9 +3,11 @@ package port
 import (
 	"context"
 	"errors"
+	"time"
 
 	"go.airlance.org/auth/internal/domain/identity"
 	"go.airlance.org/auth/internal/domain/passkey"
+	"go.airlance.org/auth/internal/domain/session"
 )
 
 // Errors of the passkey repositories.
@@ -55,10 +57,18 @@ type TicketRepository interface {
 	// GetByHashForUpdate loads the ticket of a presented secret and keeps it locked until the
 	// transaction ends. It returns ErrNotFound.
 	GetByHashForUpdate(ctx context.Context, hash passkey.SecretHash) (*passkey.Ticket, error)
+	// GetByHash loads the ticket of a presented secret without locking it, so that a use case can learn whose it is and
+	// lock that user first. It returns ErrNotFound.
+	GetByHash(ctx context.Context, hash passkey.SecretHash) (*passkey.Ticket, error)
 	// GetForUpdate loads a ticket by ID and keeps it locked until the transaction ends. It returns ErrNotFound.
 	GetForUpdate(ctx context.Context, id passkey.ID) (*passkey.Ticket, error)
 	// Save writes the changed state of a ticket loaded for update.
 	Save(ctx context.Context, t *passkey.Ticket) error
+	// RevokeAllForUser spends every live ticket of the user, so that none issued before a change of the account's
+	// protection (a recovery, new recovery codes, a deleted key, a moved address, a block) can be redeemed after it.
+	// The step-up tickets of the session keep stay: the session that made the change proved a key just now. The zero ID
+	// keeps none. A ticket locked by another transaction is waited for.
+	RevokeAllForUser(ctx context.Context, userID identity.UserID, keep session.ID, now time.Time) error
 }
 
 // ErrTicketConflict reports a ticket secret hash that already exists.

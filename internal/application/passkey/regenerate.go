@@ -81,6 +81,12 @@ func (u *RegenerateRecoveryCodes) Execute(ctx context.Context, cmd RegenerateCom
 			return err
 		}
 
+		// A recovery ticket redeemed with a code of the old set must not outlive it. The step-up tickets of this session
+		// stay: its owner just proved a key.
+		if err := st.Tickets.RevokeAllForUser(ctx, cmd.Actor.UserID, cmd.Actor.SessionID, now); err != nil {
+			return fmt.Errorf("revoke tickets: %w", err)
+		}
+
 		if err := st.Audit.Record(ctx, port.AuditEvent{
 			Type: port.AuditRecoveryRenewed, Result: port.AuditSuccess, UserID: cmd.Actor.UserID, SessionID: cmd.Actor.SessionID, At: now,
 		}); err != nil {

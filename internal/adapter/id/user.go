@@ -15,10 +15,8 @@ import (
 
 var _ port.UserIDGenerator = Generator{}
 
-// Generator creates record identifiers with google/uuid.
 type Generator struct{}
 
-// NewUserID returns a random UUIDv4.
 func (Generator) NewUserID() (identity.UserID, error) {
 	u, err := uuid.NewRandom()
 	if err != nil {
@@ -28,8 +26,6 @@ func (Generator) NewUserID() (identity.UserID, error) {
 	return identity.ParseUserID(u.String())
 }
 
-// NewRecordID returns a UUIDv7 for rows without a domain ID type, such as outbox jobs.
-// Its time-ordered prefix keeps index inserts local.
 func (Generator) NewRecordID() (uuid.UUID, error) {
 	u, err := uuid.NewV7()
 	if err != nil {
@@ -45,7 +41,6 @@ var (
 	_ port.RefreshTokenIDGenerator     = Generator{}
 )
 
-// NewSessionID returns a random UUIDv7.
 func (Generator) NewSessionID() (session.ID, error) {
 	u, err := uuid.NewV7()
 	if err != nil {
@@ -55,7 +50,6 @@ func (Generator) NewSessionID() (session.ID, error) {
 	return session.ParseID(u.String())
 }
 
-// NewRefreshTokenID returns a random UUIDv7.
 func (Generator) NewRefreshTokenID() (token.ID, error) {
 	u, err := uuid.NewV7()
 	if err != nil {
@@ -65,7 +59,6 @@ func (Generator) NewRefreshTokenID() (token.ID, error) {
 	return token.ParseID(u.String())
 }
 
-// NewFamilyID returns a random UUIDv7.
 func (Generator) NewFamilyID() (token.FamilyID, error) {
 	u, err := uuid.NewV7()
 	if err != nil {
@@ -75,7 +68,6 @@ func (Generator) NewFamilyID() (token.FamilyID, error) {
 	return token.ParseFamilyID(u.String())
 }
 
-// NewRecognizedClientID returns a random UUIDv4.
 func (Generator) NewRecognizedClientID() (identity.RecognizedClientID, error) {
 	u, err := uuid.NewRandom()
 	if err != nil {
@@ -87,7 +79,6 @@ func (Generator) NewRecognizedClientID() (identity.RecognizedClientID, error) {
 
 var _ port.PasskeyIDGenerator = Generator{}
 
-// NewPasskeyID returns a random UUIDv7 for a credential, challenge, ticket or recovery code.
 func (Generator) NewPasskeyID() (passkey.ID, error) {
 	u, err := uuid.NewV7()
 	if err != nil {
@@ -99,7 +90,6 @@ func (Generator) NewPasskeyID() (passkey.ID, error) {
 
 var _ port.OperatorIDGenerator = Generator{}
 
-// NewOperatorID returns a random UUIDv4.
 func (Generator) NewOperatorID() (operator.ID, error) {
 	u, err := uuid.NewRandom()
 	if err != nil {
@@ -111,7 +101,6 @@ func (Generator) NewOperatorID() (operator.ID, error) {
 
 var _ port.OIDCIDGenerator = Generator{}
 
-// NewOIDCID returns a random UUIDv7 as text.
 func (Generator) NewOIDCID() (string, error) {
 	u, err := uuid.NewV7()
 	if err != nil {

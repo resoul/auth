@@ -242,3 +242,84 @@ func TestSignInAndRecoveryDoNotDeadlock(t *testing.T) {
 		wg.Wait()
 	}
 }
+
+func TestStaleRecoveryTicketAfterAnotherRecoveryOnPostgres(t *testing.T) {
+	staleRecoveryTicketAfterAnotherRecovery(t, newPostgresEnv(t))
+}
+
+func TestStaleRecoveryTicketAfterNewRecoveryCodesOnPostgres(t *testing.T) {
+	staleRecoveryTicketAfterNewRecoveryCodes(t, newPostgresEnv(t))
+}
+
+func TestNewRecoveryCodesKeepTheStepUpOfTheirSessionOnPostgres(t *testing.T) {
+	newRecoveryCodesKeepTheStepUpOfTheirSession(t, newPostgresEnv(t))
+}
+
+func TestStaleRecoveryTicketAfterADeletedKeyOnPostgres(t *testing.T) {
+	staleRecoveryTicketAfterADeletedKey(t, newPostgresEnv(t))
+}
+
+func TestTwoRecoveriesAtOnceLeaveOneOwner(t *testing.T) {
+	// Each recovery spends every other ticket of the user. Both lock the user before their ticket, so they queue on it
+	// instead of each holding a ticket the other waits for until the database aborts one: the second finds its ticket
+	// spent and is refused like any stale ticket.
+	for i := range 10 {
+		e := newPostgresEnv(t)
+		holder := e.enroll()
+		recoveries := []stolenRecovery{e.stealRecovery(holder, holder.codes[0]), e.stealRecovery(holder, holder.codes[1])}
+
+		results := make([]passkey.FinishEnrollResult, len(recoveries))
+		errs := make([]error, len(recoveries))
+
+		var wg sync.WaitGroup
+
+		for j, r := range recoveries {
+			wg.Add(1)
+
+			go func() {
+				defer wg.Done()
+
+				results[j], errs[j] = e.finishEnroll.Execute(context.Background(), passkey.FinishEnrollCommand{
+					TicketSecret: r.ticket, BindingSecret: r.binding.secret, ChallengeID: r.begun.ChallengeID,
+					Response: r.auth.Register(r.begun.Options), CredentialName: "New", DeviceName: "test",
+				})
+			}()
+		}
+
+		wg.Wait()
+
+		won := -1
+
+		for j := range recoveries {
+			switch {
+			case errs[j] == nil && results[j].Outcome == passkey.OutcomeOK:
+				if won >= 0 {
+					t.Fatalf("round %d: both recoveries won", i)
+				}
+
+				won = j
+			case errs[j] != nil:
+				t.Errorf("round %d: recovery failed: %v", i, errs[j])
+			case results[j].Outcome != passkey.OutcomeDenied || results[j].Reason != passkey.ReasonBadTicket:
+				t.Errorf("round %d: loser = %+v, want denied for a bad ticket", i, results[j])
+			}
+		}
+
+		if won < 0 {
+			t.Fatalf("round %d: no recovery won: %+v, %v", i, results, errs)
+		}
+
+		loser := recoveries[1-won]
+		if again := e.enrollWith(holder.user, loser.auth, loser.ticket, loser.binding); again.Outcome != passkey.OutcomeDenied || again.Reason != passkey.ReasonBadTicket {
+			t.Errorf("round %d: the losing ticket afterwards = %+v, want spent", i, again)
+		}
+
+		if n := len(e.credentials(holder.user)); n != 1 {
+			t.Errorf("round %d: %d keys, want the winner's only", i, n)
+		}
+
+		if r := e.signIn(recoveries[won].auth, "", e.newBinding()); r.Outcome != passkey.OutcomeOK {
+			t.Errorf("round %d: the winner's key does not sign in: %+v", i, r)
+		}
+	}
+}

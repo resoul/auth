@@ -20,10 +20,8 @@ var (
 )
 
 var (
-	// ErrUnknownOTPKey means the flow names a key ID that is not in the keyring.
 	ErrUnknownOTPKey = errors.New("unknown otp key id")
-	// ErrNoOTPSalt means the flow has no salt, because it is already closed.
-	ErrNoOTPSalt = errors.New("flow has no otp salt")
+	ErrNoOTPSalt     = errors.New("flow has no otp salt")
 )
 
 const (
@@ -32,13 +30,11 @@ const (
 	otpModulus      = 100_000_000
 )
 
-// OTP derives email codes from the flow secret and normalized address.
 type OTP struct {
 	ring   *OTPKeyring
 	random io.Reader
 }
 
-// NewOTP returns an OTP provider. A nil random uses crypto/rand.
 func NewOTP(ring *OTPKeyring, random io.Reader) (*OTP, error) {
 	if ring == nil {
 		return nil, errors.New("new otp: keyring is required")
@@ -51,7 +47,6 @@ func NewOTP(ring *OTPKeyring, random io.Reader) (*OTP, error) {
 	return &OTP{ring: ring, random: random}, nil
 }
 
-// NewGeneration draws a fresh salt and names the active key.
 func (o *OTP) NewGeneration() (port.OTPGeneration, error) {
 	salt := make([]byte, authflow.SaltLength)
 	if _, err := io.ReadFull(o.random, salt); err != nil {
@@ -61,13 +56,10 @@ func (o *OTP) NewGeneration() (port.OTPGeneration, error) {
 	return port.OTPGeneration{Salt: salt, KeyID: o.ring.ActiveKID()}, nil
 }
 
-// Code returns the code of the flow's current generation.
 func (o *OTP) Code(f *authflow.Flow) (string, error) {
 	return o.derive(f.KeyID(), f.ID().String(), string(f.Purpose()), f.Generation(), f.Salt())
 }
 
-// Matches compares submitted with the flow's code in constant time. The code is
-// derived first so that key and salt problems surface for any input.
 func (o *OTP) Matches(f *authflow.Flow, submitted string) (bool, error) {
 	want, err := o.Code(f)
 	if err != nil {
@@ -98,9 +90,6 @@ func (o *OTP) derive(keyID, flowID, purpose string, generation uint64, salt []by
 	return fmt.Sprintf("%0*d", otpDigits, value), nil
 }
 
-// encodeOTPMessage is the unambiguous encoding of the formula: the format domain,
-// flow ID, purpose and salt each follow a big-endian uint32 length, and the
-// generation is a big-endian uint64, in that order.
 func encodeOTPMessage(flowID, purpose string, generation uint64, salt []byte) []byte {
 	var msg []byte
 
@@ -119,7 +108,6 @@ func encodeOTPMessage(flowID, purpose string, generation uint64, salt []byte) []
 	return msg
 }
 
-// isCode accepts exactly eight ASCII digits.
 func isCode(s string) bool {
 	if len(s) != otpDigits {
 		return false

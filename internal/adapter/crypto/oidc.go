@@ -15,11 +15,7 @@ var _ port.OIDCSecrets = OIDC{}
 
 const oidcSecretBytes = 32
 
-// OIDC issues the random secrets of the OpenID Provider: 32 random bytes in unpadded base64url, 43 characters. The
-// stored hash is the SHA-256 of the decoded bytes. A value that long and that random needs no slow hash or salt. The
-// zero value uses crypto/rand.
 type OIDC struct {
-	// Source overrides crypto/rand in tests of this package only.
 	Source io.Reader
 }
 

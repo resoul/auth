@@ -11,20 +11,15 @@ import (
 )
 
 const (
-	otpKeyLength = 32
-	// maxKeyFileSize bounds what is read from a key file; a valid file is 44 bytes plus whitespace.
+	otpKeyLength   = 32
 	maxKeyFileSize = 1024
 )
 
-// OTPKeyring holds the HMAC keys of the OTP purpose by key ID and names the key
-// used for new generations. Key material is never printed or returned.
 type OTPKeyring struct {
 	activeKID string
 	keys      map[string][]byte
 }
 
-// NewOTPKeyring checks that every key is 32 bytes and that the active kid exists.
-// It copies the key material.
 func NewOTPKeyring(activeKID string, keys map[string][]byte) (*OTPKeyring, error) {
 	if len(keys) == 0 {
 		return nil, errors.New("otp keyring: no keys")
@@ -50,9 +45,6 @@ func NewOTPKeyring(activeKID string, keys map[string][]byte) (*OTPKeyring, error
 	return ring, nil
 }
 
-// LoadOTPKeyring reads every key file (kid to path) and builds the keyring.
-// A file holds standard base64 of 32 random bytes; surrounding whitespace is ignored.
-// Errors name the kid and path, never the contents.
 func LoadOTPKeyring(activeKID string, keyFiles map[string]string) (*OTPKeyring, error) {
 	keys := make(map[string][]byte, len(keyFiles))
 	for kid, path := range keyFiles {
@@ -104,10 +96,10 @@ func readOTPKeyFile(path string) ([]byte, error) {
 	return key, nil
 }
 
-// ActiveKID returns the key ID used for new generations.
-func (r *OTPKeyring) ActiveKID() string { return r.activeKID }
+func (r *OTPKeyring) ActiveKID() string {
+	return r.activeKID
+}
 
-// KIDs returns all key IDs in sorted order.
 func (r *OTPKeyring) KIDs() []string {
 	kids := make([]string, 0, len(r.keys))
 	for kid := range r.keys {
@@ -119,16 +111,13 @@ func (r *OTPKeyring) KIDs() []string {
 	return kids
 }
 
-// key looks the kid up in the ring. There is no fallback to the active key.
 func (r *OTPKeyring) key(kid string) ([]byte, bool) {
 	key, ok := r.keys[kid]
 	return key, ok
 }
 
-// String and GoString keep key material out of %v and %#v output.
 func (r *OTPKeyring) String() string {
 	return fmt.Sprintf("otp keyring (active %q, %d keys)", r.activeKID, len(r.keys))
 }
 
-// GoString implements fmt.GoStringer.
 func (r *OTPKeyring) GoString() string { return r.String() }

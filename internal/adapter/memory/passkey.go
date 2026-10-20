@@ -6,10 +6,12 @@ import (
 	"encoding/hex"
 	"fmt"
 	"slices"
+	"time"
 
 	"go.airlance.org/auth/internal/application/port"
 	"go.airlance.org/auth/internal/domain/identity"
 	"go.airlance.org/auth/internal/domain/passkey"
+	"go.airlance.org/auth/internal/domain/session"
 )
 
 type credentials struct{ tx *state }
@@ -193,6 +195,10 @@ func (r *tickets) GetByHashForUpdate(_ context.Context, hash passkey.SecretHash)
 	return nil, port.ErrNotFound
 }
 
+func (r *tickets) GetByHash(ctx context.Context, hash passkey.SecretHash) (*passkey.Ticket, error) {
+	return r.GetByHashForUpdate(ctx, hash)
+}
+
 func (r *tickets) GetForUpdate(_ context.Context, id passkey.ID) (*passkey.Ticket, error) {
 	rec, ok := r.tx.tickets[id.String()]
 	if !ok {
@@ -217,6 +223,23 @@ func (r *tickets) Save(_ context.Context, t *passkey.Ticket) error {
 	}
 
 	r.tx.tickets[t.ID().String()] = t.Record()
+
+	return nil
+}
+
+func (r *tickets) RevokeAllForUser(_ context.Context, userID identity.UserID, keep session.ID, now time.Time) error {
+	for key, rec := range r.tx.tickets {
+		if rec.UserID != userID || !rec.ConsumedAt.IsZero() || !rec.ExpiresAt.After(now) {
+			continue
+		}
+
+		if !keep.IsZero() && rec.SessionID == keep {
+			continue
+		}
+
+		rec.ConsumedAt = now
+		r.tx.tickets[key] = rec
+	}
 
 	return nil
 }

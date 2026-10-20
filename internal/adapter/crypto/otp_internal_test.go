@@ -15,7 +15,7 @@ func TestEncodeOTPMessageLayout(t *testing.T) {
 	want = append(want, "fl"...)
 	want = append(want, 0, 0, 0, 5)
 	want = append(want, "login"...)
-	want = append(want, 0, 0, 0, 0, 0, 0, 0, 7) // generation: uint64, no length prefix
+	want = append(want, 0, 0, 0, 0, 0, 0, 0, 7)
 
 	want = append(want, 0, 0, 0, 2, 0xaa, 0xbb)
 	if !bytes.Equal(got, want) {

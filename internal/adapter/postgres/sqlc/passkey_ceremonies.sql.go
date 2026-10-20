@@ -126,6 +126,31 @@ func (q *Queries) DeleteRecoveryCodes(ctx context.Context, userID uuid.UUID) err
 	return err
 }
 
+const getAuthTicketByHash = `-- name: GetAuthTicketByHash :one
+SELECT id, kind, user_id, session_id, operation, binding_hash, secret_hash, created_at, expires_at, consumed_at
+FROM auth_tickets
+WHERE secret_hash = $1
+`
+
+// Reads a ticket without locking it, to learn whose it is before taking locks in order.
+func (q *Queries) GetAuthTicketByHash(ctx context.Context, secretHash []byte) (AuthTicket, error) {
+	row := q.db.QueryRow(ctx, getAuthTicketByHash, secretHash)
+	var i AuthTicket
+	err := row.Scan(
+		&i.ID,
+		&i.Kind,
+		&i.UserID,
+		&i.SessionID,
+		&i.Operation,
+		&i.BindingHash,
+		&i.SecretHash,
+		&i.CreatedAt,
+		&i.ExpiresAt,
+		&i.ConsumedAt,
+	)
+	return i, err
+}
+
 const getAuthTicketByHashForUpdate = `-- name: GetAuthTicketByHashForUpdate :one
 SELECT id, kind, user_id, session_id, operation, binding_hash, secret_hash, created_at, expires_at, consumed_at
 FROM auth_tickets
@@ -219,6 +244,30 @@ func (q *Queries) GetRecoveryCodeByHashForUpdate(ctx context.Context, codeHash [
 		&i.UsedAt,
 	)
 	return i, err
+}
+
+const revokeUserAuthTickets = `-- name: RevokeUserAuthTickets :execrows
+UPDATE auth_tickets
+SET consumed_at = $1
+WHERE user_id = $2
+  AND consumed_at IS NULL
+  AND expires_at > $1
+  AND ($3::uuid IS NULL OR session_id IS DISTINCT FROM $3::uuid)
+`
+
+type RevokeUserAuthTicketsParams struct {
+	Now         *time.Time
+	UserID      uuid.UUID
+	KeepSession *uuid.UUID
+}
+
+// Ends every live ticket of a user by spending it, except the step-up tickets of keep_session (NULL keeps none).
+func (q *Queries) RevokeUserAuthTickets(ctx context.Context, arg RevokeUserAuthTicketsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, revokeUserAuthTickets, arg.Now, arg.UserID, arg.KeepSession)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const updateAuthTicket = `-- name: UpdateAuthTicket :execrows

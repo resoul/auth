@@ -87,6 +87,13 @@ func (u *BeginEnroll) Execute(ctx context.Context, cmd BeginEnrollCommand) (Cere
 	var result CeremonyResult
 
 	err = u.UnitOfWork.Do(ctx, func(ctx context.Context, st port.Stores) error {
+		if found, err := lockTicketOwner(ctx, st, hash, false); err != nil {
+			return err
+		} else if !found {
+			result = CeremonyResult{Outcome: OutcomeDenied, Reason: ReasonBadTicket}
+			return nil
+		}
+
 		ticket, err := st.Tickets.GetByHashForUpdate(ctx, hash)
 		if errors.Is(err, port.ErrNotFound) {
 			result = CeremonyResult{Outcome: OutcomeDenied, Reason: ReasonBadTicket}
@@ -154,6 +161,35 @@ func (u *BeginEnroll) Execute(ctx context.Context, cmd BeginEnrollCommand) (Cere
 	}
 
 	return result, nil
+}
+
+// lockTicketOwner locks the user a presented ticket belongs to, before the ticket itself. A recovery holds its user and
+// spends every other ticket of that user (session.RevokeEverything), so a registration that took its ticket first and
+// the user second would hold what the recovery waits for while waiting for the recovery. With the user first, two
+// registrations of one user queue on it, and the second finds its ticket spent. The ticket is read without a lock only
+// to learn whose it is; the caller locks and checks it next. found is false when no ticket or user is there.
+func lockTicketOwner(ctx context.Context, st port.Stores, hash dpasskey.SecretHash, exclusive bool) (bool, error) {
+	peek, err := st.Tickets.GetByHash(ctx, hash)
+	if errors.Is(err, port.ErrNotFound) {
+		return false, nil
+	}
+
+	if err != nil {
+		return false, fmt.Errorf("find ticket: %w", err)
+	}
+
+	lock := st.Users.GetForShare
+	if exclusive {
+		lock = st.Users.GetForUpdate
+	}
+
+	if _, err := lock(ctx, peek.UserID()); errors.Is(err, port.ErrNotFound) {
+		return false, nil
+	} else if err != nil {
+		return false, fmt.Errorf("lock user: %w", err)
+	}
+
+	return true, nil
 }
 
 // enrollSubject loads the User of an enroll ticket and the keys they already have. An enroll
@@ -299,6 +335,13 @@ func (u *FinishEnroll) Execute(ctx context.Context, cmd FinishEnrollCommand) (Fi
 	var result FinishEnrollResult
 
 	err = u.UnitOfWork.Do(ctx, func(ctx context.Context, st port.Stores) error {
+		if found, err := lockTicketOwner(ctx, st, hash, true); err != nil {
+			return err
+		} else if !found {
+			result, _ = denied(ReasonBadTicket)
+			return nil
+		}
+
 		ticket, err := st.Tickets.GetByHashForUpdate(ctx, hash)
 		if errors.Is(err, port.ErrNotFound) {
 			result, _ = denied(ReasonBadTicket)

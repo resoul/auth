@@ -115,7 +115,7 @@ func revokeSession(ctx context.Context, st port.Stores, sess *dsession.Session, 
 	return nil
 }
 
-// revokeEverything ends every session, token and recognition record of the user, and the shared sign-in of the
+// revokeEverything ends every session, token, ticket and recognition record of the user, and the shared sign-in of the
 // OpenID Provider with every grant and refresh token held on it: signing out everywhere forgets every device and every
 // application. A recovery or a block comes here too, so nothing issued from the old proof survives it.
 func revokeEverything(ctx context.Context, st port.Stores, userID identity.UserID, now time.Time) error {
@@ -133,6 +133,11 @@ func revokeEverything(ctx context.Context, st port.Stores, userID identity.UserI
 
 	if err := st.Recognized.RevokeAll(ctx, userID, now); err != nil {
 		return fmt.Errorf("revoke recognition: %w", err)
+	}
+
+	// A ticket issued before, a recovery one above all, must not reopen what was just closed.
+	if err := st.Tickets.RevokeAllForUser(ctx, userID, dsession.ID{}, now); err != nil {
+		return fmt.Errorf("revoke tickets: %w", err)
 	}
 
 	if err := st.Audit.Record(ctx, port.AuditEvent{
@@ -182,7 +187,7 @@ func (u *RevokeAll) Execute(ctx context.Context, cmd RevokeAllCommand) (RevokeRe
 	return RevokeResult{Outcome: OutcomeOK}, nil
 }
 
-// RevokeOthers ends every session and refresh token of the user except the session keep, inside the
+// RevokeOthers ends every session, refresh token and ticket of the user except the session keep, inside the
 // caller's transaction. A change that cuts someone off from the account (a deleted key, a moved
 // address) must not leave their other sessions alive; the one that made the change stays, since its
 // owner just proved a key. reason is the audit code of the change.
@@ -205,6 +210,11 @@ func RevokeOthers(ctx context.Context, st port.Stores, userID identity.UserID, k
 		return fmt.Errorf("revoke other tokens: %w", err)
 	}
 
+	// Tickets of the other devices go too; the step-up tickets of the kept session stay with it.
+	if err := st.Tickets.RevokeAllForUser(ctx, userID, keep, now); err != nil {
+		return fmt.Errorf("revoke tickets: %w", err)
+	}
+
 	if err := st.Audit.Record(ctx, port.AuditEvent{
 		Type: port.AuditAllSessionsRevoked, Result: port.AuditSuccess, UserID: userID, SessionID: keep, At: now,
 		Fields: map[string]string{"scope": "others", "reason": reason},
@@ -215,7 +225,7 @@ func RevokeOthers(ctx context.Context, st port.Stores, userID identity.UserID, k
 	return nil
 }
 
-// RevokeEverything ends every session, token and recognition record of the user inside the
+// RevokeEverything ends every session, token, ticket and recognition record of the user inside the
 // caller's transaction. A recovery code proves that keys were lost, so sessions opened with
 // them must not outlive the recovery.
 func RevokeEverything(ctx context.Context, st port.Stores, userID identity.UserID, now time.Time) error {
