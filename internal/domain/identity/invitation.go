@@ -28,7 +28,9 @@ func ParseRegistrationMode(s string) (RegistrationMode, error) {
 }
 
 // Invites reports whether the mode needs an invitation to register.
-func (m RegistrationMode) Invites() bool { return m == RegistrationInviteOnly }
+func (m RegistrationMode) Invites() bool {
+	return m == RegistrationInviteOnly
+}
 
 // Limits of an invitation's life: long enough to be read in a week, short enough not to pile up.
 const (
@@ -80,13 +82,21 @@ func (i *Invitation) Record() InvitationRecord {
 }
 
 // Email returns the invited address.
-func (i *Invitation) Email() Email { return i.email }
+func (i *Invitation) Email() Email {
+	return i.email
+}
 
 // CreatedAt returns when the invitation was made.
-func (i *Invitation) CreatedAt() time.Time { return i.createdAt }
+func (i *Invitation) CreatedAt() time.Time {
+	return i.createdAt
+}
 
 // ExpiresAt returns when the invitation stops allowing a registration.
-func (i *Invitation) ExpiresAt() time.Time { return i.expiresAt }
+func (i *Invitation) ExpiresAt() time.Time {
+	return i.expiresAt
+}
 
 // Active reports whether the invitation allows a registration at now.
-func (i *Invitation) Active(now time.Time) bool { return now.Before(i.expiresAt) }
+func (i *Invitation) Active(now time.Time) bool {
+	return now.Before(i.expiresAt)
+}

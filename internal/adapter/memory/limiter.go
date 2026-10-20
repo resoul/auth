@@ -14,7 +14,9 @@ type limiter struct {
 	profile quota.Profile
 }
 
-func eventKey(l quota.Limit) string { return string(l.Scope) + "\x00" + l.Key }
+func eventKey(l quota.Limit) string {
+	return string(l.Scope) + "\x00" + l.Key
+}
 
 // Allow keeps the times of the admitted spends per budget and counts those inside the
 // sliding window, like the PostgreSQL limiter. Slices are replaced, never appended in

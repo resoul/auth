@@ -138,4 +138,6 @@ func (f *Factory) RefreshSecret() string {
 }
 
 // TokenHash returns the stored hash of a secret.
-func TokenHash(secret string) token.Hash { return hashOfSecret(secret) }
+func TokenHash(secret string) token.Hash {
+	return hashOfSecret(secret)
+}

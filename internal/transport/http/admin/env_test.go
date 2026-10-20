@@ -69,7 +69,9 @@ type env struct {
 	csrf string
 }
 
-func newEnv(t *testing.T) *env { return newEnvScheme(t, "http") }
+func newEnv(t *testing.T) *env {
+	return newEnvScheme(t, "http")
+}
 
 // newEnvScheme builds the stack for a page served from the scheme. The test server itself speaks plain http;
 // the scheme decides the origin the handler trusts and the relying party expects.
@@ -172,7 +174,9 @@ type request struct {
 	raw string
 }
 
-func str(s string) *string { return &s }
+func str(s string) *string {
+	return &s
+}
 
 // send performs a request the way the admin page does: JSON, the page's origin and the CSRF token.
 func (e *env) send(r request) reply {
@@ -220,7 +224,10 @@ func (e *env) send(r request) reply {
 	return reply{status: resp.StatusCode, header: resp.Header, body: data}
 }
 
-func (e *env) get(path string) reply { return e.send(request{method: http.MethodGet, path: path}) }
+func (e *env) get(path string) reply {
+	return e.send(request{method: http.MethodGet, path: path})
+}
+
 func (e *env) post(path string, body any) reply {
 	return e.send(request{method: http.MethodPost, path: path, body: body})
 }

@@ -14,7 +14,9 @@ import (
 // unauthenticated for every kind of credential failure alike. Every refusal of the code is the same
 // invalid_code; a missing step-up is its own answer so a client knows to run the ceremony.
 
-func emailTaken(ctx context.Context) openapi.Error { return problem(ctx, openapi.ErrorCodeEmailTaken) }
+func emailTaken(ctx context.Context) openapi.Error {
+	return problem(ctx, openapi.ErrorCodeEmailTaken)
+}
 
 // startEmailChange runs the use case. unauth is true when the caller is not authenticated and
 // invalid when the address is malformed or is the account's own.

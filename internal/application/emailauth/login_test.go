@@ -18,7 +18,9 @@ import (
 
 type failingTickets struct{ port.TicketRepository }
 
-func (failingTickets) Create(context.Context, *passkey.Ticket) error { return errBoom }
+func (failingTickets) Create(context.Context, *passkey.Ticket) error {
+	return errBoom
+}
 
 type failingCredentials struct{ port.CredentialRepository }
 
@@ -36,7 +38,9 @@ func (failingRecognized) Register(context.Context, *identity.RecognizedClient) (
 
 type failingAudit struct{}
 
-func (failingAudit) Record(context.Context, port.AuditEvent) error { return errBoom }
+func (failingAudit) Record(context.Context, port.AuditEvent) error {
+	return errBoom
+}
 
 // activeRecognized looks the recognized client up like Start does.
 func (e *env) activeRecognized(email, bindingSecret string) (*identity.RecognizedClient, error) {

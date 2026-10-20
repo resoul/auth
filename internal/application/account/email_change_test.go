@@ -188,7 +188,9 @@ func TestStartLeavesNothingWhenTheQueueFails(t *testing.T) {
 
 type failingEnqueue struct{ port.Outbox }
 
-func (failingEnqueue) Enqueue(context.Context, port.MailJob) error { return errBoom }
+func (failingEnqueue) Enqueue(context.Context, port.MailJob) error {
+	return errBoom
+}
 
 func TestConfirmMovesTheAccountAndTellsTheOldAddress(t *testing.T) {
 	e := newEnv(t)

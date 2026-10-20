@@ -42,7 +42,9 @@ func (f *faults) Do(ctx context.Context, fn func(ctx context.Context, s port.Sto
 
 type failingTokenCreate struct{ port.RefreshTokenRepository }
 
-func (failingTokenCreate) Create(context.Context, *token.RefreshToken) error { return errBoom }
+func (failingTokenCreate) Create(context.Context, *token.RefreshToken) error {
+	return errBoom
+}
 
 // countingMetrics records what the use cases report.
 type countingMetrics struct{ reuses int }
@@ -50,7 +52,9 @@ type countingMetrics struct{ reuses int }
 func (*countingMetrics) MailProcessed(authflow.QuotaClass, port.MailOutcome, time.Duration, time.Duration) {
 }
 
-func (m *countingMetrics) RefreshReuseDetected() { m.reuses++ }
+func (m *countingMetrics) RefreshReuseDetected() {
+	m.reuses++
+}
 
 type env struct {
 	t         *testing.T
@@ -193,7 +197,9 @@ func (e *env) session(id session.ID) *session.Session {
 	return s
 }
 
-func (e *env) tokens(id session.ID) []*token.RefreshToken { return e.store.TokensOfSession(id) }
+func (e *env) tokens(id session.ID) []*token.RefreshToken {
+	return e.store.TokensOfSession(id)
+}
 
 func (e *env) allRevoked(id session.ID) bool {
 	for _, tok := range e.tokens(id) {

@@ -29,10 +29,14 @@ func NewBindingHash(hash []byte) (BindingHash, error) {
 }
 
 // Bytes returns a copy of the hash.
-func (h BindingHash) Bytes() []byte { return append([]byte(nil), h.value[:]...) }
+func (h BindingHash) Bytes() []byte {
+	return append([]byte(nil), h.value[:]...)
+}
 
 // IsZero reports whether h is the invalid zero value.
-func (h BindingHash) IsZero() bool { return !h.set }
+func (h BindingHash) IsZero() bool {
+	return !h.set
+}
 
 // Equal compares two hashes in constant time; a zero value equals nothing.
 func (h BindingHash) Equal(other BindingHash) bool {

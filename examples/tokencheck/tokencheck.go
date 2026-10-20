@@ -128,7 +128,9 @@ func isLoopback(host string) bool {
 	return ip != nil && ip.IsLoopback()
 }
 
-func invalid(reason string) error { return fmt.Errorf("%w: %s", ErrInvalidToken, reason) }
+func invalid(reason string) error {
+	return fmt.Errorf("%w: %s", ErrInvalidToken, reason)
+}
 
 // Verify checks the token and returns its claims. Every refusal wraps ErrInvalidToken; any
 // other error is a failure to reach the issuer's keys.

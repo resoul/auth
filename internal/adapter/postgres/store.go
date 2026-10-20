@@ -37,16 +37,22 @@ type Store struct {
 type Option func(*Store)
 
 // WithQuota replaces the default quota profile.
-func WithQuota(p quota.Profile) Option { return func(s *Store) { s.profile = p } }
+func WithQuota(p quota.Profile) Option {
+	return func(s *Store) { s.profile = p }
+}
 
 // WithMaxConns caps the connection pool; the default of pgx is the larger of 4 and the
 // number of CPUs. Tests that run many stores at once lower it to stay inside the server's
 // connection limit.
-func WithMaxConns(n int32) Option { return func(s *Store) { s.maxConns = n } }
+func WithMaxConns(n int32) Option {
+	return func(s *Store) { s.maxConns = n }
+}
 
 // WithSchema sets the search_path of every connection to schema, so tables are found there and
 // nowhere else. An empty name keeps the search_path of the connection string and of the role.
-func WithSchema(name string) Option { return func(s *Store) { s.schema = name } }
+func WithSchema(name string) Option {
+	return func(s *Store) { s.schema = name }
+}
 
 // Open connects to the database and checks it answers. Error messages never
 // contain the connection string, which holds a password.
@@ -93,10 +99,14 @@ func Open(ctx context.Context, dsn string, ids RecordIDs, opts ...Option) (*Stor
 }
 
 // Close releases every connection. Call it after all transactions finished.
-func (s *Store) Close() { s.pool.Close() }
+func (s *Store) Close() {
+	s.pool.Close()
+}
 
 // Ping checks that the database answers; readiness uses it.
-func (s *Store) Ping(ctx context.Context) error { return s.pool.Ping(ctx) }
+func (s *Store) Ping(ctx context.Context) error {
+	return s.pool.Ping(ctx)
+}
 
 // Do runs fn in one transaction: a nil result commits, an error or panic rolls back.
 func (s *Store) Do(ctx context.Context, fn func(ctx context.Context, st port.Stores) error) (err error) {

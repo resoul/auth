@@ -48,16 +48,24 @@ func ParseFamilyID(s string) (FamilyID, error) {
 }
 
 // String returns the canonical text form.
-func (id ID) String() string { return id.value }
+func (id ID) String() string {
+	return id.value
+}
 
 // IsZero reports whether id is the invalid zero value.
-func (id ID) IsZero() bool { return id.value == "" }
+func (id ID) IsZero() bool {
+	return id.value == ""
+}
 
 // String returns the canonical text form.
-func (id FamilyID) String() string { return id.value }
+func (id FamilyID) String() string {
+	return id.value
+}
 
 // IsZero reports whether id is the invalid zero value.
-func (id FamilyID) IsZero() bool { return id.value == "" }
+func (id FamilyID) IsZero() bool {
+	return id.value == ""
+}
 
 func isUUIDv7(s string) bool {
 	if len(s) != 36 {
@@ -101,10 +109,14 @@ func NewHash(b []byte) (Hash, error) {
 }
 
 // Bytes returns a copy of the hash.
-func (h Hash) Bytes() []byte { return append([]byte(nil), h.value[:]...) }
+func (h Hash) Bytes() []byte {
+	return append([]byte(nil), h.value[:]...)
+}
 
 // IsZero reports whether h is the invalid zero value.
-func (h Hash) IsZero() bool { return !h.set }
+func (h Hash) IsZero() bool {
+	return !h.set
+}
 
 // RefreshToken is one link of a family. Fields change only through its operations.
 type RefreshToken struct {
@@ -226,28 +238,46 @@ func (t *RefreshToken) Record() Record {
 }
 
 // ID returns the row identifier.
-func (t *RefreshToken) ID() ID { return t.id }
+func (t *RefreshToken) ID() ID {
+	return t.id
+}
 
 // SessionID returns the session the family belongs to.
-func (t *RefreshToken) SessionID() session.ID { return t.sessionID }
+func (t *RefreshToken) SessionID() session.ID {
+	return t.sessionID
+}
 
 // FamilyID returns the family.
-func (t *RefreshToken) FamilyID() FamilyID { return t.familyID }
+func (t *RefreshToken) FamilyID() FamilyID {
+	return t.familyID
+}
 
 // ParentID returns the token this one replaced, or the zero ID for a root.
-func (t *RefreshToken) ParentID() ID { return t.parentID }
+func (t *RefreshToken) ParentID() ID {
+	return t.parentID
+}
 
 // Hash returns the stored hash of the secret.
-func (t *RefreshToken) Hash() Hash { return t.hash }
+func (t *RefreshToken) Hash() Hash {
+	return t.hash
+}
 
 // CreatedAt returns the issue time.
-func (t *RefreshToken) CreatedAt() time.Time { return t.createdAt }
+func (t *RefreshToken) CreatedAt() time.Time {
+	return t.createdAt
+}
 
 // ExpiresAt returns the end of the token's life.
-func (t *RefreshToken) ExpiresAt() time.Time { return t.expiresAt }
+func (t *RefreshToken) ExpiresAt() time.Time {
+	return t.expiresAt
+}
 
 // UsedAt returns the exchange time, or the zero time.
-func (t *RefreshToken) UsedAt() time.Time { return t.usedAt }
+func (t *RefreshToken) UsedAt() time.Time {
+	return t.usedAt
+}
 
 // RevokedAt returns the revocation time, or the zero time.
-func (t *RefreshToken) RevokedAt() time.Time { return t.revokedAt }
+func (t *RefreshToken) RevokedAt() time.Time {
+	return t.revokedAt
+}

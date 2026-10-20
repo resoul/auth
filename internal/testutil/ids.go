@@ -49,27 +49,39 @@ func (s *SequentialIDs) NewFlowID() (authflow.FlowID, error) {
 }
 
 // NewOperatorID returns the next UUIDv4-shaped operator ID.
-func (s *SequentialIDs) NewOperatorID() (operator.ID, error) { return operator.ParseID(s.uuid()) }
+func (s *SequentialIDs) NewOperatorID() (operator.ID, error) {
+	return operator.ParseID(s.uuid())
+}
 
 func (s *SequentialIDs) uuid() string {
 	return fmt.Sprintf("00000000-0000-4000-8000-%012x", s.n.Add(1))
 }
 
 // NewSessionID returns the next UUIDv7-shaped session ID.
-func (s *SequentialIDs) NewSessionID() (session.ID, error) { return session.ParseID(s.uuid7()) }
+func (s *SequentialIDs) NewSessionID() (session.ID, error) {
+	return session.ParseID(s.uuid7())
+}
 
 // NewRefreshTokenID returns the next UUIDv7-shaped token ID.
-func (s *SequentialIDs) NewRefreshTokenID() (token.ID, error) { return token.ParseID(s.uuid7()) }
+func (s *SequentialIDs) NewRefreshTokenID() (token.ID, error) {
+	return token.ParseID(s.uuid7())
+}
 
 // NewFamilyID returns the next UUIDv7-shaped family ID.
-func (s *SequentialIDs) NewFamilyID() (token.FamilyID, error) { return token.ParseFamilyID(s.uuid7()) }
+func (s *SequentialIDs) NewFamilyID() (token.FamilyID, error) {
+	return token.ParseFamilyID(s.uuid7())
+}
 
 func (s *SequentialIDs) uuid7() string {
 	return fmt.Sprintf("00000000-0000-7000-8000-%012x", s.n.Add(1))
 }
 
 // NewPasskeyID returns the next UUIDv7-shaped passkey record ID.
-func (s *SequentialIDs) NewPasskeyID() (passkey.ID, error) { return passkey.ParseID(s.uuid7()) }
+func (s *SequentialIDs) NewPasskeyID() (passkey.ID, error) {
+	return passkey.ParseID(s.uuid7())
+}
 
 // NewOIDCID returns the next UUIDv7-shaped identifier as text.
-func (s *SequentialIDs) NewOIDCID() (string, error) { return s.uuid7(), nil }
+func (s *SequentialIDs) NewOIDCID() (string, error) {
+	return s.uuid7(), nil
+}

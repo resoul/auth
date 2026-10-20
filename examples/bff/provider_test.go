@@ -113,7 +113,9 @@ func newProvider(t *testing.T, now func() time.Time) *provider {
 	return p
 }
 
-func (p *provider) issuer() string { return p.srv.URL }
+func (p *provider) issuer() string {
+	return p.srv.URL
+}
 
 func (p *provider) discovery(w http.ResponseWriter, _ *http.Request) {
 	p.mu.Lock()

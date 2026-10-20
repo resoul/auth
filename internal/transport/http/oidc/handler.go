@@ -84,7 +84,9 @@ func (discardRequests) AuthDenied(string, string)                {}
 // BypassCrossOrigin lists the routes the cross-origin protection of the API must let through: the authorize endpoint
 // is called by a client's page with a form post, from another origin by design, and it only starts a request that a
 // browser signs in to complete.
-func BypassCrossOrigin() []string { return []string{"POST /oauth2/authorize"} }
+func BypassCrossOrigin() []string {
+	return []string{"POST /oauth2/authorize"}
+}
 
 // Routes registers every route of the provider on mux, each with its own pattern so that metrics and logs name them.
 func (h *Handler) Routes(mux *http.ServeMux) {
@@ -195,4 +197,6 @@ func (h *Handler) asset(name, contentType string) http.HandlerFunc {
 	}
 }
 
-func (h *Handler) now() time.Time { return h.d.Clock.Now() }
+func (h *Handler) now() time.Time {
+	return h.d.Clock.Now()
+}

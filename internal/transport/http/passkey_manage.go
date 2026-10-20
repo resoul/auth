@@ -18,7 +18,9 @@ func stepUpRequired(ctx context.Context) openapi.Error {
 	return problem(ctx, openapi.ErrorCodeStepUpRequired)
 }
 
-func notFound(ctx context.Context) openapi.Error { return problem(ctx, openapi.ErrorCodeNotFound) }
+func notFound(ctx context.Context) openapi.Error {
+	return problem(ctx, openapi.ErrorCodeNotFound)
+}
 
 func rateLimited(ctx context.Context) openapi.RateLimitedJSONResponse {
 	return openapi.RateLimitedJSONResponse(problem(ctx, openapi.ErrorCodeRateLimited))

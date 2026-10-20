@@ -61,10 +61,14 @@ func NewRequestID(random [requestIDBytes]byte) RequestID {
 }
 
 // String returns the textual form.
-func (id RequestID) String() string { return id.value }
+func (id RequestID) String() string {
+	return id.value
+}
 
 // IsZero reports whether id is the invalid zero value.
-func (id RequestID) IsZero() bool { return id.value == "" }
+func (id RequestID) IsZero() bool {
+	return id.value == ""
+}
 
 // State is the lifecycle state of a request. Expiry is not a state: it is a time, checked at use.
 type State string
@@ -89,7 +93,9 @@ func (s State) valid() bool {
 var pairingCode = regexp.MustCompile(`^[0-9]{6}$`)
 
 // ValidPairingCode reports whether s has the shape of a pairing code.
-func ValidPairingCode(s string) bool { return pairingCode.MatchString(s) }
+func ValidPairingCode(s string) bool {
+	return pairingCode.MatchString(s)
+}
 
 // Request is a new device asking for a session. It starts pending; a signed-in device approves it by proving a
 // passkey and typing the pairing code the new device shows; the new device then redeems it once.
@@ -168,7 +174,9 @@ func (r *Request) validate() error {
 }
 
 // Live reports whether the request may still be approved or redeemed at now.
-func (r *Request) Live(now time.Time) bool { return now.Before(r.expiresAt) }
+func (r *Request) Live(now time.Time) bool {
+	return now.Before(r.expiresAt)
+}
 
 // Approve records that the user of a signed-in session approved the request after proving a passkey. The typed
 // code must be the one the new device shows. A wrong code spends one of MaxAttempts and, on the last, kills the
@@ -237,34 +245,54 @@ func (r *Request) Matches(pollHash passkey.SecretHash, binding identity.BindingH
 }
 
 // ID returns the identifier.
-func (r *Request) ID() RequestID { return r.id }
+func (r *Request) ID() RequestID {
+	return r.id
+}
 
 // State returns the lifecycle state.
-func (r *Request) State() State { return r.state }
+func (r *Request) State() State {
+	return r.state
+}
 
 // Binding returns the client binding the request was made with, which the session inherits.
-func (r *Request) Binding() identity.BindingHash { return r.binding }
+func (r *Request) Binding() identity.BindingHash {
+	return r.binding
+}
 
 // DeviceName returns the label the new device gave itself.
-func (r *Request) DeviceName() string { return r.deviceName }
+func (r *Request) DeviceName() string {
+	return r.deviceName
+}
 
 // PairingCode returns the code the new device shows; it is never sent to the approving device.
-func (r *Request) PairingCode() string { return r.code }
+func (r *Request) PairingCode() string {
+	return r.code
+}
 
 // Attempts returns the wrong codes typed so far.
-func (r *Request) Attempts() int { return r.attempts }
+func (r *Request) Attempts() int {
+	return r.attempts
+}
 
 // UserID returns the approver, or the zero value before approval.
-func (r *Request) UserID() identity.UserID { return r.userID }
+func (r *Request) UserID() identity.UserID {
+	return r.userID
+}
 
 // ApproverSessionID returns the session that approved, or the zero value.
-func (r *Request) ApproverSessionID() session.ID { return r.sessionID }
+func (r *Request) ApproverSessionID() session.ID {
+	return r.sessionID
+}
 
 // CreatedAt returns the time of the request.
-func (r *Request) CreatedAt() time.Time { return r.createdAt }
+func (r *Request) CreatedAt() time.Time {
+	return r.createdAt
+}
 
 // ExpiresAt returns when the request stops being approvable and redeemable.
-func (r *Request) ExpiresAt() time.Time { return r.expiresAt }
+func (r *Request) ExpiresAt() time.Time {
+	return r.expiresAt
+}
 
 // Record is the stored form of a request. UserID and SessionID are zero until approval; DecidedAt and
 // RedeemedAt are the zero time until then.

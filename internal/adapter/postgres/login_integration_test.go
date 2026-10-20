@@ -20,11 +20,15 @@ import (
 
 type failingTicketCreate struct{ port.TicketRepository }
 
-func (failingTicketCreate) Create(context.Context, *passkey.Ticket) error { return errBoom }
+func (failingTicketCreate) Create(context.Context, *passkey.Ticket) error {
+	return errBoom
+}
 
 type failingAuditLog struct{}
 
-func (failingAuditLog) Record(context.Context, port.AuditEvent) error { return errBoom }
+func (failingAuditLog) Record(context.Context, port.AuditEvent) error {
+	return errBoom
+}
 
 type failingRecognizedRegister struct {
 	port.RecognizedClientRepository

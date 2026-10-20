@@ -20,10 +20,14 @@ func ParseID(s string) (ID, error) {
 }
 
 // String returns the canonical text form.
-func (id ID) String() string { return id.value }
+func (id ID) String() string {
+	return id.value
+}
 
 // IsZero reports whether id is the invalid zero value.
-func (id ID) IsZero() bool { return id.value == "" }
+func (id ID) IsZero() bool {
+	return id.value == ""
+}
 
 // isUUIDv7 accepts 8-4-4-4-12 lower-case hex with version 7 and RFC 4122 variant.
 func isUUIDv7(s string) bool {

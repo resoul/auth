@@ -17,7 +17,9 @@ import (
 	"go.airlance.org/auth/internal/domain/passkey"
 )
 
-func operatorUUID(id operator.ID) (uuid.UUID, error) { return toUUID(id.String()) }
+func operatorUUID(id operator.ID) (uuid.UUID, error) {
+	return toUUID(id.String())
+}
 
 type operators struct{ q *sqlc.Queries }
 

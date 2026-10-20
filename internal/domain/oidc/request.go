@@ -10,10 +10,14 @@ import (
 type SecretHash [32]byte
 
 // Bytes returns the hash as a slice, for storage.
-func (h SecretHash) Bytes() []byte { return h[:] }
+func (h SecretHash) Bytes() []byte {
+	return h[:]
+}
 
 // IsZero reports whether the hash is unset.
-func (h SecretHash) IsZero() bool { return h == SecretHash{} }
+func (h SecretHash) IsZero() bool {
+	return h == SecretHash{}
+}
 
 // SecretHashFrom reads a stored hash.
 func SecretHashFrom(b []byte) (SecretHash, error) {

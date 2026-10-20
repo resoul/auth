@@ -152,7 +152,9 @@ func parseRSAPEM(data []byte) (*rsa.PublicKey, *rsa.PrivateKey, error) {
 }
 
 // ActiveKID returns the kid that signs new tokens.
-func (r *RSARing) ActiveKID() string { return r.activeKID }
+func (r *RSARing) ActiveKID() string {
+	return r.activeKID
+}
 
 // KIDs returns every kid in sorted order.
 func (r *RSARing) KIDs() []string {
@@ -198,4 +200,6 @@ func (r *RSARing) String() string {
 }
 
 // GoString implements fmt.GoStringer.
-func (r *RSARing) GoString() string { return r.String() }
+func (r *RSARing) GoString() string {
+	return r.String()
+}

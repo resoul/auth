@@ -34,7 +34,9 @@ type browser struct {
 	cookies map[string]*http.Cookie
 }
 
-func newBrowser(e *env) *browser { return &browser{e: e, cookies: map[string]*http.Cookie{}} }
+func newBrowser(e *env) *browser {
+	return &browser{e: e, cookies: map[string]*http.Cookie{}}
+}
 
 func (b *browser) request(method, path, body string) *http.Request {
 	req := httptest.NewRequest(method, path, strings.NewReader(body))

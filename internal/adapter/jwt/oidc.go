@@ -155,7 +155,9 @@ func (t *OIDCTokens) SignOIDCAccessToken(c port.OIDCAccessClaims) (port.AccessTo
 	return port.AccessToken{Value: value, ExpiresAt: c.ExpiresAt}, c, nil
 }
 
-func invalidOIDC(reason string) error { return fmt.Errorf("%w: %s", port.ErrInvalidOIDCToken, reason) }
+func invalidOIDC(reason string) error {
+	return fmt.Errorf("%w: %s", port.ErrInvalidOIDCToken, reason)
+}
 
 // parseAccess checks what every access token of this provider shares: RS256 only, the at+jwt type, a key of the ring, this
 // issuer, exactly the audience asked for, one audience, and the time bounds. The header may name only alg, typ and kid:

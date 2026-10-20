@@ -14,10 +14,14 @@ type Attempt struct {
 }
 
 // FlowID returns the flow the attempt belongs to.
-func (a Attempt) FlowID() FlowID { return a.flowID }
+func (a Attempt) FlowID() FlowID {
+	return a.flowID
+}
 
 // Generation returns the code generation the attempt may be compared with.
-func (a Attempt) Generation() uint64 { return a.generation }
+func (a Attempt) Generation() uint64 {
+	return a.generation
+}
 
 // Reserve spends one verification attempt for the current generation. The attempt
 // stays spent whatever happens next. A reserved last attempt does not lock the

@@ -233,7 +233,9 @@ func (w *world) activeKey() *ecdsa.PrivateKey {
 	return parsed.(*ecdsa.PrivateKey)
 }
 
-func (w *world) good() forge { return forge{key: w.activeKey(), kid: "sign-a", typ: "at+jwt"} }
+func (w *world) good() forge {
+	return forge{key: w.activeKey(), kid: "sign-a", typ: "at+jwt"}
+}
 
 func TestForgedBaselineIsAccepted(t *testing.T) {
 	w := newWorld(t)

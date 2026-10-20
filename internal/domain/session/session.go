@@ -203,34 +203,56 @@ func (s *Session) Record() Record {
 }
 
 // ID returns the session identifier.
-func (s *Session) ID() ID { return s.id }
+func (s *Session) ID() ID {
+	return s.id
+}
 
 // UserID returns the owner.
-func (s *Session) UserID() identity.UserID { return s.userID }
+func (s *Session) UserID() identity.UserID {
+	return s.userID
+}
 
 // Binding returns the hash of the client binding secret the session was created with.
-func (s *Session) Binding() identity.BindingHash { return s.binding }
+func (s *Session) Binding() identity.BindingHash {
+	return s.binding
+}
 
 // AMR returns a copy of the authentication methods.
-func (s *Session) AMR() []string { return append([]string(nil), s.amr...) }
+func (s *Session) AMR() []string {
+	return append([]string(nil), s.amr...)
+}
 
 // AuthTime returns when the user proved ownership.
-func (s *Session) AuthTime() time.Time { return s.authTime }
+func (s *Session) AuthTime() time.Time {
+	return s.authTime
+}
 
 // DeviceName returns the client-chosen label.
-func (s *Session) DeviceName() string { return s.deviceName }
+func (s *Session) DeviceName() string {
+	return s.deviceName
+}
 
 // CreatedAt returns when the session started.
-func (s *Session) CreatedAt() time.Time { return s.createdAt }
+func (s *Session) CreatedAt() time.Time {
+	return s.createdAt
+}
 
 // LastActiveAt returns the time of the last refresh.
-func (s *Session) LastActiveAt() time.Time { return s.lastActiveAt }
+func (s *Session) LastActiveAt() time.Time {
+	return s.lastActiveAt
+}
 
 // IdleExpiresAt returns when the session ends without activity.
-func (s *Session) IdleExpiresAt() time.Time { return s.idleExpiresAt }
+func (s *Session) IdleExpiresAt() time.Time {
+	return s.idleExpiresAt
+}
 
 // ExpiresAt returns the absolute end of the session.
-func (s *Session) ExpiresAt() time.Time { return s.expiresAt }
+func (s *Session) ExpiresAt() time.Time {
+	return s.expiresAt
+}
 
 // RevokedAt returns the revocation time, or the zero time.
-func (s *Session) RevokedAt() time.Time { return s.revokedAt }
+func (s *Session) RevokedAt() time.Time {
+	return s.revokedAt
+}

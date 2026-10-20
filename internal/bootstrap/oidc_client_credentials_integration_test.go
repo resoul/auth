@@ -163,4 +163,6 @@ func TestAServiceCallsAnAPIWithoutAUserOnTheRealService(t *testing.T) {
 // writer adapts a strings.Builder to io.Writer for the commands that print.
 type writer struct{ b *strings.Builder }
 
-func (w *writer) Write(p []byte) (int, error) { return w.b.Write(p) }
+func (w *writer) Write(p []byte) (int, error) {
+	return w.b.Write(p)
+}

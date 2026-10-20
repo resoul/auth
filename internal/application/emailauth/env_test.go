@@ -240,7 +240,9 @@ func (e *env) email(raw string) identity.Email {
 
 type failingOutbox struct{ port.Outbox }
 
-func (failingOutbox) Enqueue(context.Context, port.MailJob) error { return errBoom }
+func (failingOutbox) Enqueue(context.Context, port.MailJob) error {
+	return errBoom
+}
 
 type failingUsers struct{ port.UserRepository }
 
@@ -250,7 +252,9 @@ func (failingUsers) Ensure(context.Context, *identity.User) (*identity.User, boo
 
 type failingCreate struct{ port.FlowRepository }
 
-func (failingCreate) Create(context.Context, *authflow.Flow) error { return errBoom }
+func (failingCreate) Create(context.Context, *authflow.Flow) error {
+	return errBoom
+}
 
 // failingSaveAfter lets the first n Save calls through and then fails.
 type failingSaveAfter struct {
@@ -270,7 +274,9 @@ func (f failingSaveAfter) Save(ctx context.Context, fl *authflow.Flow) error {
 
 type failingFlowIDs struct{}
 
-func (failingFlowIDs) NewFlowID() (authflow.FlowID, error) { return authflow.FlowID{}, errBoom }
+func (failingFlowIDs) NewFlowID() (authflow.FlowID, error) {
+	return authflow.FlowID{}, errBoom
+}
 
 type failingGenerations struct{}
 

@@ -21,7 +21,9 @@ func keyFile(t *testing.T, content string) string {
 	return path
 }
 
-func b64(key []byte) string { return base64.StdEncoding.EncodeToString(key) }
+func b64(key []byte) string {
+	return base64.StdEncoding.EncodeToString(key)
+}
 
 func TestLoadOTPKeyring(t *testing.T) {
 	files := map[string]string{

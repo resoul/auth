@@ -154,7 +154,9 @@ func trimSpace(b []byte) []byte {
 }
 
 // ActiveKID returns the kid that signs new tokens.
-func (r *Ring) ActiveKID() string { return r.activeKID }
+func (r *Ring) ActiveKID() string {
+	return r.activeKID
+}
 
 // KIDs returns every kid in sorted order.
 func (r *Ring) KIDs() []string {
@@ -202,7 +204,9 @@ func (r *Ring) String() string {
 }
 
 // GoString implements fmt.GoStringer.
-func (r *Ring) GoString() string { return r.String() }
+func (r *Ring) GoString() string {
+	return r.String()
+}
 
 // ParseJWKS reads a published key set into a kid to public key map, as a service
 // that only knows the JWKS URL would. Private keys, other key types and curves,

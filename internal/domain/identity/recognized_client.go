@@ -126,22 +126,36 @@ func (c *RecognizedClient) Record() RecognizedClientRecord {
 }
 
 // ID returns the record identifier. It survives binding secret updates.
-func (c *RecognizedClient) ID() RecognizedClientID { return c.id }
+func (c *RecognizedClient) ID() RecognizedClientID {
+	return c.id
+}
 
 // UserID returns the User that proved the email.
-func (c *RecognizedClient) UserID() UserID { return c.userID }
+func (c *RecognizedClient) UserID() UserID {
+	return c.userID
+}
 
 // Email returns the confirmed address the record is valid for.
-func (c *RecognizedClient) Email() Email { return c.email }
+func (c *RecognizedClient) Email() Email {
+	return c.email
+}
 
 // Binding returns the hash of the client's binding secret.
-func (c *RecognizedClient) Binding() BindingHash { return c.binding }
+func (c *RecognizedClient) Binding() BindingHash {
+	return c.binding
+}
 
 // VerifiedAt returns the time of the last successful verify.
-func (c *RecognizedClient) VerifiedAt() time.Time { return c.verifiedAt }
+func (c *RecognizedClient) VerifiedAt() time.Time {
+	return c.verifiedAt
+}
 
 // ExpiresAt returns when recognition ends unless extended.
-func (c *RecognizedClient) ExpiresAt() time.Time { return c.expiresAt }
+func (c *RecognizedClient) ExpiresAt() time.Time {
+	return c.expiresAt
+}
 
 // RevokedAt returns the revocation time, or the zero time.
-func (c *RecognizedClient) RevokedAt() time.Time { return c.revokedAt }
+func (c *RecognizedClient) RevokedAt() time.Time {
+	return c.revokedAt
+}

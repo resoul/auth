@@ -16,7 +16,9 @@ import (
 
 type credentials struct{ tx *state }
 
-func credentialKey(credentialID []byte) string { return hex.EncodeToString(credentialID) }
+func credentialKey(credentialID []byte) string {
+	return hex.EncodeToString(credentialID)
+}
 
 func (r *credentials) Create(_ context.Context, c *passkey.Credential) error {
 	key := credentialKey(c.CredentialID())

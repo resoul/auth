@@ -94,7 +94,9 @@ type AuditCursor struct {
 }
 
 // IsZero reports whether the cursor starts from the newest entry.
-func (c AuditCursor) IsZero() bool { return c.At.IsZero() }
+func (c AuditCursor) IsZero() bool {
+	return c.At.IsZero()
+}
 
 // AuditEntry is a stored event with the identifier that orders it.
 type AuditEntry struct {

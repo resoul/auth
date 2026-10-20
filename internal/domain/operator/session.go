@@ -56,7 +56,9 @@ func (s *Session) Active(now time.Time) bool {
 }
 
 // Fresh reports whether the sign-in is recent enough for an operation that needs one.
-func (s *Session) Fresh(now time.Time) bool { return now.Before(s.createdAt.Add(FreshFor)) }
+func (s *Session) Fresh(now time.Time) bool {
+	return now.Before(s.createdAt.Add(FreshFor))
+}
 
 // Touch records a use and reports whether the session changed and must be saved.
 func (s *Session) Touch(now time.Time) bool {
@@ -77,25 +79,39 @@ func (s *Session) Revoke(now time.Time) {
 }
 
 // ID returns the row identifier.
-func (s *Session) ID() passkey.ID { return s.id }
+func (s *Session) ID() passkey.ID {
+	return s.id
+}
 
 // OperatorID returns the owner.
-func (s *Session) OperatorID() ID { return s.operatorID }
+func (s *Session) OperatorID() ID {
+	return s.operatorID
+}
 
 // SecretHash returns the stored hash of the cookie secret.
-func (s *Session) SecretHash() passkey.SecretHash { return s.secretHash }
+func (s *Session) SecretHash() passkey.SecretHash {
+	return s.secretHash
+}
 
 // CreatedAt returns the sign-in time.
-func (s *Session) CreatedAt() time.Time { return s.createdAt }
+func (s *Session) CreatedAt() time.Time {
+	return s.createdAt
+}
 
 // LastSeenAt returns the last recorded use.
-func (s *Session) LastSeenAt() time.Time { return s.lastSeenAt }
+func (s *Session) LastSeenAt() time.Time {
+	return s.lastSeenAt
+}
 
 // ExpiresAt returns the absolute end of the session.
-func (s *Session) ExpiresAt() time.Time { return s.expiresAt }
+func (s *Session) ExpiresAt() time.Time {
+	return s.expiresAt
+}
 
 // RevokedAt returns when the session was revoked, or the zero time.
-func (s *Session) RevokedAt() time.Time { return s.revokedAt }
+func (s *Session) RevokedAt() time.Time {
+	return s.revokedAt
+}
 
 // SessionRecord is the stored form of a session.
 type SessionRecord struct {

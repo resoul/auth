@@ -366,10 +366,14 @@ const newDeviceSubject = "New sign-in to your account"
 // mailIDs returns the Mailpit message ids addressed to email, newest first, without the notices of new devices:
 // a notice is queued with a sign-in and may arrive while a test already waits for a code, so counting it would
 // make the code of the next flow look delivered. noticeIDs returns the notices.
-func mailIDs(t *testing.T, email string) []string { return messageIDs(t, email, false) }
+func mailIDs(t *testing.T, email string) []string {
+	return messageIDs(t, email, false)
+}
 
 // noticeIDs returns the ids of the new device notices addressed to email, newest first.
-func noticeIDs(t *testing.T, email string) []string { return messageIDs(t, email, true) }
+func noticeIDs(t *testing.T, email string) []string {
+	return messageIDs(t, email, true)
+}
 
 func messageIDs(t *testing.T, email string, notices bool) []string {
 	t.Helper()

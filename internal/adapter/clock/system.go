@@ -10,4 +10,6 @@ var _ port.Clock = System{}
 
 type System struct{}
 
-func (System) Now() time.Time { return time.Now().UTC() }
+func (System) Now() time.Time {
+	return time.Now().UTC()
+}

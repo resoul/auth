@@ -104,7 +104,9 @@ func (c *Credential) validate() error {
 }
 
 // ValidName reports whether a label can be stored: one to MaxNameLength characters, no control characters.
-func ValidName(name string) bool { return validName(strings.TrimSpace(name)) }
+func ValidName(name string) bool {
+	return validName(strings.TrimSpace(name))
+}
 
 func validName(name string) bool {
 	return name != "" && utf8.RuneCountInString(name) <= MaxNameLength && utf8.ValidString(name) &&
@@ -198,40 +200,64 @@ func (c *Credential) Record() CredentialRecord {
 }
 
 // ID returns the row identifier.
-func (c *Credential) ID() ID { return c.id }
+func (c *Credential) ID() ID {
+	return c.id
+}
 
 // UserID returns the owner.
-func (c *Credential) UserID() identity.UserID { return c.userID }
+func (c *Credential) UserID() identity.UserID {
+	return c.userID
+}
 
 // CredentialID returns the WebAuthn credential ID.
-func (c *Credential) CredentialID() []byte { return slices.Clone(c.credentialID) }
+func (c *Credential) CredentialID() []byte {
+	return slices.Clone(c.credentialID)
+}
 
 // PublicKey returns the COSE public key.
-func (c *Credential) PublicKey() []byte { return slices.Clone(c.publicKey) }
+func (c *Credential) PublicKey() []byte {
+	return slices.Clone(c.publicKey)
+}
 
 // AAGUID returns the authenticator model identifier, or nil.
-func (c *Credential) AAGUID() []byte { return slices.Clone(c.aaguid) }
+func (c *Credential) AAGUID() []byte {
+	return slices.Clone(c.aaguid)
+}
 
 // Transports returns the reported transports.
-func (c *Credential) Transports() []string { return slices.Clone(c.transports) }
+func (c *Credential) Transports() []string {
+	return slices.Clone(c.transports)
+}
 
 // SignCount returns the last signature counter.
-func (c *Credential) SignCount() uint32 { return c.signCount }
+func (c *Credential) SignCount() uint32 {
+	return c.signCount
+}
 
 // BackupEligible reports whether the credential may be synced.
-func (c *Credential) BackupEligible() bool { return c.backupEligible }
+func (c *Credential) BackupEligible() bool {
+	return c.backupEligible
+}
 
 // BackupState reports whether the credential is currently backed up.
-func (c *Credential) BackupState() bool { return c.backupState }
+func (c *Credential) BackupState() bool {
+	return c.backupState
+}
 
 // Name returns the label.
-func (c *Credential) Name() string { return c.name }
+func (c *Credential) Name() string {
+	return c.name
+}
 
 // CreatedAt returns the registration time.
-func (c *Credential) CreatedAt() time.Time { return c.createdAt }
+func (c *Credential) CreatedAt() time.Time {
+	return c.createdAt
+}
 
 // LastUsedAt returns the last successful assertion, or the zero time.
-func (c *Credential) LastUsedAt() time.Time { return c.lastUsedAt }
+func (c *Credential) LastUsedAt() time.Time {
+	return c.lastUsedAt
+}
 
 // UserHandle is the opaque identifier an authenticator keeps for a User: the 16 bytes of the
 // User ID. It is not personal data and never changes, so a credential is tied to its owner

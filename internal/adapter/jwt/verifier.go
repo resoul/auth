@@ -55,7 +55,9 @@ func NewVerifier(keys map[string]*ecdsa.PublicKey, clock port.Clock, issuer, aud
 // (crit) is refused, and so is a repeated name, which parsers resolve differently.
 var allowedHeaders = map[string]bool{"alg": true, "typ": true, "kid": true}
 
-func checkHeaderNames(token string) error { return checkHeaderNamesFor(token, invalid) }
+func checkHeaderNames(token string) error {
+	return checkHeaderNamesFor(token, invalid)
+}
 
 // checkHeaderNamesFor is checkHeaderNames with the error each kind of token reports.
 func checkHeaderNamesFor(token string, invalid func(string) error) error {

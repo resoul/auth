@@ -258,7 +258,9 @@ func TestUserCardShowsWhatTheUserHas(t *testing.T) {
 }
 
 // identity0 is a well-formed identifier of nobody.
-func identity0() string { return "00000000-0000-4000-8000-0000000000ff" }
+func identity0() string {
+	return "00000000-0000-4000-8000-0000000000ff"
+}
 
 func TestBlockEndsEverythingAndIsAuditedAndRepeatable(t *testing.T) {
 	ctx := context.Background()

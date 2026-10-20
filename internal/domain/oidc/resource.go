@@ -42,7 +42,9 @@ func ParseResourceID(s string) (string, error) {
 }
 
 // ValidAPIScope reports whether s has the shape of an API scope.
-func ValidAPIScope(s string) bool { return len(s) <= maxScopeNameLen && apiScopeShape.MatchString(s) }
+func ValidAPIScope(s string) bool {
+	return len(s) <= maxScopeNameLen && apiScopeShape.MatchString(s)
+}
 
 // Resource is a logical API: the recipient of an access token. It is not an application that signs users in (a Client)
 // and its audience is not the client_id of the application that calls it. One resource may stand for several internal
@@ -151,10 +153,14 @@ func checkCatalog(scopes []string) error {
 }
 
 // Active reports whether tokens may be issued for the resource.
-func (r *Resource) Active() bool { return r.Status == ResourceActive }
+func (r *Resource) Active() bool {
+	return r.Status == ResourceActive
+}
 
 // Defines reports whether scope is one of the resource's own.
-func (r *Resource) Defines(scope string) bool { return slices.Contains(r.Scopes, scope) }
+func (r *Resource) Defines(scope string) bool {
+	return slices.Contains(r.Scopes, scope)
+}
 
 // SetScopes replaces the scopes the resource defines and returns the ones taken away; the caller ends the grants that
 // hold them. Raising the policy version is the store's part, with the change.

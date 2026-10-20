@@ -50,7 +50,11 @@ func ParseEmail(raw string) (Email, error) {
 }
 
 // String returns the normalized address.
-func (e Email) String() string { return e.value }
+func (e Email) String() string {
+	return e.value
+}
 
 // IsZero reports whether e is the invalid zero value.
-func (e Email) IsZero() bool { return e.value == "" }
+func (e Email) IsZero() bool {
+	return e.value == ""
+}

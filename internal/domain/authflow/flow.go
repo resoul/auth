@@ -111,49 +111,79 @@ func (f *Flow) Record() Record {
 }
 
 // ID returns the flow identifier.
-func (f *Flow) ID() FlowID { return f.id }
+func (f *Flow) ID() FlowID {
+	return f.id
+}
 
 // Email returns the delivery address fixed at start.
-func (f *Flow) Email() identity.Email { return f.email }
+func (f *Flow) Email() identity.Email {
+	return f.email
+}
 
 // Purpose returns what the flow proves.
-func (f *Flow) Purpose() Purpose { return f.purpose }
+func (f *Flow) Purpose() Purpose {
+	return f.purpose
+}
 
 // Generation returns the current code generation, starting at 1.
-func (f *Flow) Generation() uint64 { return f.generation }
+func (f *Flow) Generation() uint64 {
+	return f.generation
+}
 
 // Salt returns a copy of the current OTP salt; it is empty once the flow is closed.
-func (f *Flow) Salt() []byte { return append([]byte(nil), f.salt...) }
+func (f *Flow) Salt() []byte {
+	return append([]byte(nil), f.salt...)
+}
 
 // KeyID returns the OTP key ID recorded for the current generation.
-func (f *Flow) KeyID() string { return f.keyID }
+func (f *Flow) KeyID() string {
+	return f.keyID
+}
 
 // BindingHash returns the hash of the client binding the flow was started with.
-func (f *Flow) BindingHash() identity.BindingHash { return f.bindingHash }
+func (f *Flow) BindingHash() identity.BindingHash {
+	return f.bindingHash
+}
 
 // State returns the lifecycle state.
-func (f *Flow) State() State { return f.state }
+func (f *Flow) State() State {
+	return f.state
+}
 
 // CreatedAt returns when the flow started.
-func (f *Flow) CreatedAt() time.Time { return f.createdAt }
+func (f *Flow) CreatedAt() time.Time {
+	return f.createdAt
+}
 
 // ExpiresAt returns when the flow stops accepting proofs. Resend does not move it.
-func (f *Flow) ExpiresAt() time.Time { return f.expiresAt }
+func (f *Flow) ExpiresAt() time.Time {
+	return f.expiresAt
+}
 
 // Attempts returns the number of reserved verification attempts.
-func (f *Flow) Attempts() int { return f.attempts }
+func (f *Flow) Attempts() int {
+	return f.attempts
+}
 
 // ResendAfter returns the earliest time of the next resend.
-func (f *Flow) ResendAfter() time.Time { return f.resendAfter }
+func (f *Flow) ResendAfter() time.Time {
+	return f.resendAfter
+}
 
 // QuotaClass returns the quota class chosen at start.
-func (f *Flow) QuotaClass() QuotaClass { return f.quotaClass }
+func (f *Flow) QuotaClass() QuotaClass {
+	return f.quotaClass
+}
 
 // RecognizedClientID returns the recognized client reference; it is zero for the unknown class.
-func (f *Flow) RecognizedClientID() identity.RecognizedClientID { return f.recognizedClientID }
+func (f *Flow) RecognizedClientID() identity.RecognizedClientID {
+	return f.recognizedClientID
+}
 
 // UserID returns the account of a change_email flow; it is zero for every other purpose.
-func (f *Flow) UserID() identity.UserID { return f.userID }
+func (f *Flow) UserID() identity.UserID {
+	return f.userID
+}
 
 // CanDeliver reports whether a mail job for the given generation still matters:
 // the flow is pending, the generation is the current one and the lifetime has not

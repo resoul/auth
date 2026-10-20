@@ -120,4 +120,6 @@ func (r *OTPKeyring) String() string {
 	return fmt.Sprintf("otp keyring (active %q, %d keys)", r.activeKID, len(r.keys))
 }
 
-func (r *OTPKeyring) GoString() string { return r.String() }
+func (r *OTPKeyring) GoString() string {
+	return r.String()
+}

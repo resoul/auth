@@ -8,7 +8,9 @@ import (
 // RequestIDHandler wraps a log handler so that every record logged with the context of a request carries its
 // request_id, without the caller passing it. A line written anywhere below a handler can then be matched to the
 // access line and to the id the client got in its error body. Records outside a request are left as they are.
-func RequestIDHandler(inner slog.Handler) slog.Handler { return requestIDHandler{inner} }
+func RequestIDHandler(inner slog.Handler) slog.Handler {
+	return requestIDHandler{inner}
+}
 
 type requestIDHandler struct{ slog.Handler }
 

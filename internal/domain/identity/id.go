@@ -37,16 +37,24 @@ func ParseRecognizedClientID(s string) (RecognizedClientID, error) {
 }
 
 // String returns the canonical text form.
-func (id UserID) String() string { return id.value }
+func (id UserID) String() string {
+	return id.value
+}
 
 // IsZero reports whether id is the invalid zero value.
-func (id UserID) IsZero() bool { return id.value == "" }
+func (id UserID) IsZero() bool {
+	return id.value == ""
+}
 
 // String returns the canonical text form.
-func (id RecognizedClientID) String() string { return id.value }
+func (id RecognizedClientID) String() string {
+	return id.value
+}
 
 // IsZero reports whether id is the invalid zero value.
-func (id RecognizedClientID) IsZero() bool { return id.value == "" }
+func (id RecognizedClientID) IsZero() bool {
+	return id.value == ""
+}
 
 // isUUIDv4 accepts 8-4-4-4-12 lower-case hex with version 4 and RFC 4122 variant.
 func isUUIDv4(s string) bool {

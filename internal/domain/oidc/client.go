@@ -175,13 +175,19 @@ func checkRedirectURI(raw string) error {
 }
 
 // Active reports whether the client may start new sign-ins.
-func (c *Client) Active() bool { return c.Status == ClientActive }
+func (c *Client) Active() bool {
+	return c.Status == ClientActive
+}
 
 // Service reports whether the client is a service identity, which signs nobody in.
-func (c *Client) Service() bool { return c.Kind == ClientService }
+func (c *Client) Service() bool {
+	return c.Kind == ClientService
+}
 
 // AllowsRedirect reports whether uri is registered, compared exactly: no normalization, no prefix, no pattern.
-func (c *Client) AllowsRedirect(uri string) bool { return slices.Contains(c.RedirectURIs, uri) }
+func (c *Client) AllowsRedirect(uri string) bool {
+	return slices.Contains(c.RedirectURIs, uri)
+}
 
 // Grantable returns the requested scopes if every one is allowed to the client, else ErrInvalidScope.
 func (c *Client) Grantable(requested []string) ([]string, error) {

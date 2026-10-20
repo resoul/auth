@@ -427,7 +427,9 @@ type limiterCase struct {
 	f   *Factory
 }
 
-func (c *limiterCase) email() identity.Email { return c.f.User(UserSpec{}).Email() }
+func (c *limiterCase) email() identity.Email {
+	return c.f.User(UserSpec{}).Email()
+}
 
 func (c *limiterCase) recognizedID() identity.RecognizedClientID {
 	id, err := c.f.IDs.NewRecognizedClientID()

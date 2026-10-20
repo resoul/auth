@@ -14,7 +14,9 @@ var challengeShape = regexp.MustCompile(`^[A-Za-z0-9_-]{43}$`)
 var verifierShape = regexp.MustCompile(`^[A-Za-z0-9._~-]{43,128}$`)
 
 // ValidChallenge reports whether s can be the S256 challenge of some verifier.
-func ValidChallenge(s string) bool { return challengeShape.MatchString(s) }
+func ValidChallenge(s string) bool {
+	return challengeShape.MatchString(s)
+}
 
 // VerifyPKCE reports whether the verifier produces the challenge, comparing in constant time. Only S256 exists:
 // there is no plain method to fall back to.

@@ -25,10 +25,14 @@ func ParseID(s string) (ID, error) {
 }
 
 // String returns the canonical text form.
-func (id ID) String() string { return id.value }
+func (id ID) String() string {
+	return id.value
+}
 
 // IsZero reports whether id is the invalid zero value.
-func (id ID) IsZero() bool { return id.value == "" }
+func (id ID) IsZero() bool {
+	return id.value == ""
+}
 
 // Owner is the identifier under which the operator's credentials and WebAuthn user handle are kept.
 // The WebAuthn adapter and the credential record know one owner type; the operator tables are the
@@ -43,4 +47,6 @@ func (id ID) Owner() identity.UserID {
 }
 
 // IDFromOwner is the inverse of Owner, for the owner of a credential loaded from the operator tables.
-func IDFromOwner(owner identity.UserID) (ID, error) { return ParseID(owner.String()) }
+func IDFromOwner(owner identity.UserID) (ID, error) {
+	return ParseID(owner.String())
+}
