@@ -13,7 +13,3 @@ node_modules/
 /internal/transport/http/admin/ui/dist/*
 !/internal/transport/http/admin/ui/dist/.gitkeep
 
-# These checks depend on the legacy documentation tree, which is not part of this transfer batch.
-/scripts/check_docs.py
-/scripts/check_structure.py
-/scripts/test_check_structure.py

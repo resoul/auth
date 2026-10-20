@@ -12,9 +12,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// newHealthcheckCommand asks the service on this machine whether it is ready, for a container
-// health check: the image has no shell and no curl. It reads the same AIRLANCE_AUTH_HTTP_ADDR as serve
-// and talks to that address, or to the loopback when it listens on every interface.
 func newHealthcheckCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "healthcheck",
@@ -36,7 +33,6 @@ func checkReady(ctx context.Context, addr string, timeout time.Duration) error {
 		return errors.New("healthcheck: AIRLANCE_AUTH_HTTP_ADDR must be an IP address with a port")
 	}
 	if ip.IsUnspecified() {
-		// 0.0.0.0 and [::] accept connections on every interface, this one included.
 		host = "127.0.0.1"
 		if ip.To4() == nil {
 			host = "::1"

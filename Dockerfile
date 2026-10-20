@@ -1,5 +1,4 @@
 # The production image: one static binary, no shell, no package manager, a non-root user.
-# docs/20-deployment.md. Build with `docker build --build-arg VERSION=$(git rev-parse HEAD) .`.
 FROM golang:1.27.1-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum ./
