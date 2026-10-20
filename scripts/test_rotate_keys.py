@@ -321,6 +321,24 @@ class RotateOIDCKeysTest(RotateKeysTest):
             rk.read_ring(self.ring)
 
 
+    def test_a_keyring_that_names_pod_paths_is_rotated_with_keys_dir(self):
+        # The Kubernetes secret mounts the keys at /etc/airlance-auth/keys; here they are in a local copy.
+        root = Path(self.dir.name)
+        ring = self.load()
+        ring["otp_hmac"]["keys"]["otp-a"]["key_file"] = "/etc/airlance-auth/keys/otp-a"
+        ring["jwt_signing"]["keys"]["sign-a"]["key_file"] = "/etc/airlance-auth/keys/sign-a.pem"
+        self.ring.write_text(json.dumps(ring))
+        self.addCleanup(setattr, rk, "KEYS_DIR", None)
+        rk.KEYS_DIR = root
+
+        ok, out = self.run_cli("add", "jwt")
+        self.assertTrue(ok, out)
+        (kid,) = self.kids("jwt") - {"sign-a"}
+        self.assertEqual(self.load()["jwt_signing"]["keys"][kid]["key_file"], f"/etc/airlance-auth/keys/{kid}.pem")
+        self.assertIn("BEGIN PRIVATE KEY", (root / f"{kid}.pem").read_text())
+        self.assertTrue(self.run_cli("status")[0])
+
+
 if __name__ == "__main__":
     unittest.main()
 

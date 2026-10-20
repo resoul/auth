@@ -16,6 +16,11 @@ import (
 func Run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	logKeyring(ctx, logger, cfg.Keyring)
 
+	if public := config.PublicProxyNetworks(cfg.HTTP.TrustedProxies); len(public) > 0 {
+		logger.WarnContext(ctx, "trusted proxy networks include public addresses; only a CDN in front of the service belongs there",
+			"networks", public)
+	}
+
 	otp, err := newOTP(cfg.Keyring)
 	if err != nil {
 		return err

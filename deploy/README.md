@@ -67,6 +67,8 @@ use a managed service or an operator, and run [`sql/app-role.sql`](sql/app-role.
 1. **Edit `kubernetes/kustomization.yaml`**: the image, and `AIRLANCE_AUTH_TRUSTED_PROXIES` — the pod network of your
    ingress controller, as narrow as you can. Without it the pods refuse to start. Edit the host in `ingress.yaml`
    and the namespace labels in `networkpolicy.yaml`. `migrate/kustomization.yaml` needs the same image.
+   To limit where the pods may connect, fill in [`networkpolicy-egress.yaml`](kubernetes/networkpolicy-egress.yaml)
+   (the database, the mail server, the applications that get logout notices) and add it to the resources.
 2. **Make the secrets**, with the key files named for where the pod mounts them:
 
    ```sh
@@ -133,10 +135,9 @@ Turn the OpenID Provider on when more than one of your web applications should s
 - **Logout notices** go from the service to your backends (`oidc client set-logout ID --backchannel-logout-uri ...`). A backend on the
   internet needs nothing more. One on the compose network or in the cluster is on a private address, which the service
   refuses to call unless you list its network in `AIRLANCE_AUTH_OIDC_BACKCHANNEL_ALLOW` (the compose subnet is
-  `AIRLANCE_AUTH_SUBNET`, `172.29.7.0/24` by default). On Kubernetes, also allow the egress in your NetworkPolicy; the one shipped here
-  governs ingress only.
-- **Keys** rotate with `scripts/rotate_keys.py add|activate|retire oidc ...`; applications cache the key set, so publish a new key
-  and wait before it signs, as the script enforces.
+  `AIRLANCE_AUTH_SUBNET`, `172.29.7.0/24` by default). On Kubernetes with [`networkpolicy-egress.yaml`](kubernetes/networkpolicy-egress.yaml), also allow
+  the egress to those endpoints there.
+- **Keys** rotate like the others ([Rotating keys](#rotating-keys)), with the purpose `oidc`.
 - Disabling an application (`oidc client disable ID`) ends every grant it holds at once.
 - **APIs** are registered on the server with `oidc resource register` and opened to an application with `oidc resource allow`
   (see the README). Take rights away with `oidc resource deny`, `set-scopes` or `disable`: the grants that held them end at
@@ -150,5 +151,52 @@ Turn the OpenID Provider on when more than one of your web applications should s
 
 - Keep `AIRLANCE_AUTH_REGISTRATION=invite` until passkeys have been tried on the devices your users have.
 - Back up the database and the keys together; neither works without the other.
-- Rotate keys with `scripts/rotate_keys.py` (Compose) or by replacing the `airlance-auth-keys` secret.
+- Rotate keys as [Rotating keys](#rotating-keys) says, and try it once before you need it.
+
+## Rotating keys
+
+[`scripts/rotate_keys.py`](../scripts/rotate_keys.py) changes the keyring file and refuses a step that comes too soon;
+the service reads the keyring when it starts. Every step below ends with a restart of every instance, and the next step
+waits until all of them run the new keyring.
+
+**Signing keys** (`jwt` for the API, `oidc` for the OpenID Provider):
+
+1. `add jwt`, then restart. The new key is published in the key set and signs nothing yet.
+2. Wait for the services that verify tokens to see it: they cache the key set (the service lets them keep it five
+   minutes). `activate` is refused for 10 minutes after `add` (`--cache-wait`). The wait counts from `add`, so if the
+   restart came later, wait that much longer.
+3. `activate jwt NEW`, then restart. New tokens are signed with the new key; tokens of the old one still verify.
+4. Once every token of the old key has expired (an hour at most, `--access-ttl`), `retire jwt OLD`, then restart. For a
+   key that may have leaked, `retire --compromised` at once: what it signed stops verifying.
+
+**The OTP key**: `add otp`, restart, `activate otp NEW`, restart, then `retire otp OLD` once no sign-in still waits
+for a code made with it (ten minutes; the script asks the database), and restart.
+
+**Compose.** The keys are mounted where they are on the host, so the script works on them as they are:
+
+```sh
+export AIRLANCE_AUTH_KEYRING_FILE=$PWD/.secrets/production/keys/keyring.json AIRLANCE_AUTH_COMPOSE_FILE=deploy/compose.prod.yaml
+scripts/rotate_keys.py status
+scripts/rotate_keys.py add jwt
+docker compose -f deploy/compose.prod.yaml restart airlance-auth
+```
+
+**Kubernetes.** The keyring names the files where the pod mounts them; rotate the local copy the secret was made from
+(step 2 of [Kubernetes](#kubernetes)) with `--keys-dir`, replace the secret and restart the pods:
+
+```sh
+scripts/rotate_keys.py --keyring .secrets/k8s/keys/keyring.json --keys-dir .secrets/k8s/keys add jwt
+kubectl -n airlance-auth create secret generic airlance-auth-keys --from-file=.secrets/k8s/keys \
+  --dry-run=client -o yaml | kubectl apply -f -
+kubectl -n airlance-auth rollout restart deploy/airlance-auth
+kubectl -n airlance-auth rollout status deploy/airlance-auth
+```
+
+Retiring an OTP key needs the database: reach it with `kubectl port-forward` or from a host that can, and name it in
+`AIRLANCE_AUTH_PSQL_URL` (psql must be installed). Keep `.secrets/k8s` with the backups: it is the only copy of the
+keys outside the cluster.
+
+**Backups** hold the database and the keyring together (`make backup`, `make backup-check`, `make restore`); the
+schema of the tables is `auth` unless `AIRLANCE_AUTH_DATABASE_SCHEMA` or `--schema` says otherwise. A restore that
+was never tried is not a backup: run `make backup-check BACKUP=...` on a fresh backup now and then.
 - Alert rules for Prometheus are in [`alerts.yaml`](alerts.yaml).

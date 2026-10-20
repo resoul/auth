@@ -3,6 +3,7 @@ package config_test
 import (
 	"fmt"
 	"log/slog"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strings"
@@ -818,5 +819,28 @@ func TestDatabaseSchema(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), config.EnvDatabaseSchema) {
 			t.Errorf("schema %q: error = %v, want a refusal naming %s", bad, err, config.EnvDatabaseSchema)
 		}
+	}
+}
+
+func TestPublicProxyNetworksAreTheOnesBeyondPrivateAddresses(t *testing.T) {
+	var proxies []netip.Prefix
+	for _, s := range []string{"10.42.0.0/16", "172.16.5.0/24", "192.168.1.10/32", "127.0.0.1/32", "fd00::/64", "100.64.0.0/10",
+		"203.0.113.0/24", "8.0.0.0/7", "2001:db8::/32", "10.0.0.0/7"} {
+		proxies = append(proxies, netip.MustParsePrefix(s))
+	}
+
+	got := config.PublicProxyNetworks(proxies)
+
+	var names []string
+	for _, p := range got {
+		names = append(names, p.String())
+	}
+	// 10.0.0.0/7 reaches 11.0.0.0/8, which is public.
+	if want := "203.0.113.0/24,8.0.0.0/7,2001:db8::/32,10.0.0.0/7"; strings.Join(names, ",") != want {
+		t.Errorf("PublicProxyNetworks = %s, want %s", strings.Join(names, ","), want)
+	}
+
+	if got := config.PublicProxyNetworks(nil); len(got) != 0 {
+		t.Errorf("no proxies = %v", got)
 	}
 }

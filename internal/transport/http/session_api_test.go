@@ -35,7 +35,6 @@ type listBody struct {
 	Sessions []sessionBody `json:"sessions"`
 }
 
-// protected is every operation that needs an access token, in both profiles.
 var protected = []struct{ method, path string }{
 	{http.MethodGet, "/v1/me"}, {http.MethodGet, "/v1/sessions"}, {http.MethodDelete, "/v1/sessions/00000000-0000-4000-8000-000000000001"}, {http.MethodPost, "/v1/signout"},
 	{http.MethodGet, "/v1/native/me"}, {http.MethodGet, "/v1/native/sessions"}, {http.MethodDelete, "/v1/native/sessions/00000000-0000-4000-8000-000000000001"}, {http.MethodPost, "/v1/native/signout"},
@@ -132,10 +131,9 @@ func TestMeReturnsTheUserAndTheCurrentSessionInBothProfiles(t *testing.T) {
 func TestEveryProtectedRouteRefusesAnythingButAValidBearerTokenOfALiveSession(t *testing.T) {
 	e := newEnv(t)
 	old, _ := e.signIn("alice@example.test")
-	expired := old.AccessToken // signed an hour ago with a five minute life
+	expired := old.AccessToken
 
 	e.clock.Advance(time.Hour)
-	// A token that is valid now: each case below is refused for its form alone.
 	signedIn, _ := e.signIn("alice@example.test")
 	good := signedIn.AccessToken
 	goodSession := e.sessionOf(good)
@@ -183,7 +181,7 @@ func TestARevokedSessionStopsWorkingAtOnceDespiteAValidToken(t *testing.T) {
 	if rec := e.call(http.MethodPost, "/v1/native/signout", signedIn.AccessToken, ""); rec.Code != http.StatusNoContent {
 		t.Fatalf("sign out = %d %s", rec.Code, rec.Body)
 	}
-	// The token is signed and unexpired, but its session is over.
+
 	for _, op := range protected[4:7] {
 		e.wantUnauthenticated(e.call(op.method, op.path, signedIn.AccessToken, ""))
 	}
@@ -205,7 +203,7 @@ func TestListShowsOnlyTheCallersActiveSessionsWithoutSecrets(t *testing.T) {
 	if rec := e.call(http.MethodPost, "/v1/native/signout", tablet.AccessToken, ""); rec.Code != http.StatusNoContent {
 		t.Fatal(rec.Code)
 	}
-	// The phone's old access token has expired; its refresh gives a fresh one and counts as activity.
+
 	phone = decode[tokenResponse](t, e.refresh(phone.RefreshToken), http.StatusOK)
 
 	for _, path := range []string{"/v1/sessions", "/v1/native/sessions"} {
@@ -284,7 +282,6 @@ func TestSignOutOfTheCurrentSessionKeepsTheDeviceRecognized(t *testing.T) {
 	laptop, laptopBinding := e.signIn("alice@example.test")
 	phone, _ := e.signIn("alice@example.test")
 
-	// An empty body means scope current without forgetting.
 	if rec := e.call(http.MethodPost, "/v1/native/signout", laptop.AccessToken, ""); rec.Code != http.StatusNoContent {
 		t.Fatalf("sign out = %d %s", rec.Code, rec.Body)
 	}
@@ -389,7 +386,7 @@ func TestBrowserSignOutClearsTheCookies(t *testing.T) {
 			if tc.clearBinder != (binding != nil) || (binding != nil && (binding.MaxAge >= 0 || binding.Path != "/v1/auth")) {
 				t.Errorf("binding cookie = %+v, want cleared = %v", binding, tc.clearBinder)
 			}
-			// The cookie is gone, and the refresh it carried is dead.
+
 			wantProblem(t, b.postRaw(browserRefresh, ""), http.StatusUnauthorized, "invalid_refresh")
 		})
 	}

@@ -16,8 +16,19 @@ ROOT = Path(__file__).resolve().parents[1]
 # The stack to reach: the local one by default; AIRLANCE_AUTH_COMPOSE_FILE names another (deploy/compose.prod.yaml).
 COMPOSE_FILE = os.environ.get("AIRLANCE_AUTH_COMPOSE_FILE") or str(ROOT / "deploy/compose.yaml")
 COMPOSE = ["docker", "compose", "-f", COMPOSE_FILE, "exec", "-T", "postgres"]
-COUNTS_SQL = r"""SELECT format('SELECT %L, count(*) FROM %I.%I;', tablename, schemaname, tablename)
-FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename
+# The schema of the service's tables: AIRLANCE_AUTH_DATABASE_SCHEMA, "auth" unless set. A backup made before the
+# schema was recorded in the manifest counted the tables of "public".
+DEFAULT_SCHEMA = "auth"
+LEGACY_SCHEMA = "public"
+# Every keyring has these groups; oidc_signing is there when the OpenID Provider is on.
+REQUIRED_GROUPS = ("otp_hmac", "jwt_signing")
+OPTIONAL_GROUPS = ("oidc_signing",)
+
+
+def counts_sql(schema):
+    schema_name(schema)
+    return rf"""SELECT format('SELECT %L, count(*) FROM %I.%I;', tablename, schemaname, tablename)
+FROM pg_tables WHERE schemaname = '{schema}' ORDER BY tablename
 \gexec
 """
 
@@ -26,6 +37,20 @@ def database_name(value):
     if not re.fullmatch(r"[a-z][a-z0-9_]{0,62}", value) or value in {"postgres", "template0", "template1"}:
         raise ValueError("database name must be a lowercase application name (max 63 characters)")
     return value
+
+
+def schema_name(value):
+    if not isinstance(value, str) or not re.fullmatch(r"[a-z][a-z0-9_]{0,62}", value) or value.startswith("pg_"):
+        raise ValueError("schema name must be a lowercase name (max 63 characters)")
+    return value
+
+
+def keyring_groups(ring):
+    """The groups of a keyring, required ones first; anything else is refused."""
+    groups = set(ring) - {"format_version"}
+    if ring.get("format_version") != 1 or not set(REQUIRED_GROUPS) <= groups or not groups <= set(REQUIRED_GROUPS + OPTIONAL_GROUPS):
+        raise ValueError("unsupported keyring schema")
+    return [purpose for purpose in REQUIRED_GROUPS + OPTIONAL_GROUPS if purpose in groups]
 
 
 def run(args, **kwargs):
@@ -42,7 +67,7 @@ def psql(database):
     return ["psql", "-X", "-qAt", "-v", "ON_ERROR_STOP=1", "-U", "airlance_auth", "-d", database]
 
 
-def parse_counts(lines):
+def parse_counts(lines, schema):
     result = {}
     for line in lines:
         name, count = line.strip().split("|")
@@ -50,12 +75,12 @@ def parse_counts(lines):
             raise ValueError("duplicate table count")
         result[name] = int(count)
     if not result:
-        raise ValueError("database has no public tables; migrate it before backup")
+        raise ValueError(f"database has no tables in schema {schema}; migrate it before backup, or name the schema with --schema")
     return result
 
 
-def counts(database):
-    return parse_counts(run(psql(database), input=COUNTS_SQL, capture_output=True, text=True).stdout.splitlines())
+def counts(database, schema):
+    return parse_counts(run(psql(database), input=counts_sql(schema), capture_output=True, text=True).stdout.splitlines(), schema)
 
 
 def strict_object(pairs):
@@ -76,12 +101,11 @@ def read_json(path):
 
 def keyring_files(path):
     ring = read_json(path)
-    if set(ring) != {"format_version", "otp_hmac", "jwt_signing"} or ring["format_version"] != 1:
-        raise ValueError("unsupported keyring schema")
+    purposes = keyring_groups(ring)
     files = {"keyring.json": path.read_bytes()}
     portable = json.loads(files["keyring.json"])
     index = 0
-    for purpose in ("otp_hmac", "jwt_signing"):
+    for purpose in purposes:
         group = ring[purpose]
         if set(group) != {"active_kid", "keys"} or group["active_kid"] not in group["keys"]:
             raise ValueError("invalid keyring group")
@@ -115,8 +139,9 @@ def digest(path):
     return value.hexdigest()
 
 
-def create(source, keyring, output):
+def create(source, keyring, output, schema=DEFAULT_SCHEMA):
     database_name(source)
+    schema_name(schema)
     material = keyring_files(keyring)
     output.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     output.mkdir(mode=0o700)  # Existing backup is never overwritten.
@@ -137,7 +162,7 @@ def create(source, keyring, output):
                     os.chmod(output / "database.dump", 0o600)
                     run(["pg_dump", "-U", "airlance_auth", "-d", source, "--format=custom", "--no-owner", "--no-acl", "--lock-wait-timeout=30s",
                          "--snapshot=" + snapshot], stdout=dump)
-                session.stdin.write(COUNTS_SQL + "\\echo COUNTS_END\n")
+                session.stdin.write(counts_sql(schema) + "\\echo COUNTS_END\n")
                 session.stdin.flush()
                 lines = []
                 while True:
@@ -147,7 +172,7 @@ def create(source, keyring, output):
                     if line.strip() == "COUNTS_END":
                         break
                     lines.append(line)
-                expected = parse_counts(lines)
+                expected = parse_counts(lines, schema)
                 session.stdin.write("ROLLBACK;\n\\q\n")
                 session.stdin.flush()
                 if session.wait(timeout=30):
@@ -160,7 +185,7 @@ def create(source, keyring, output):
             raise ValueError("keyring changed during backup; repeat after rotation finishes")
         version = run(["pg_dump", "--version"], capture_output=True, text=True).stdout.strip()
         manifest = {"format_version": 1, "created_at": datetime.now(timezone.utc).isoformat(),
-                    "source_database": source, "pg_dump_version": version, "table_counts": expected,
+                    "source_database": source, "schema": schema, "pg_dump_version": version, "table_counts": expected,
                     "sha256": {name: digest(output / name) for name in ["database.dump", *material]}}
         write_private(output / "manifest.json", (json.dumps(manifest, indent=2) + "\n").encode())
     except BaseException:
@@ -176,6 +201,7 @@ def validate(bundle):
     if manifest.get("format_version") != 1:
         raise ValueError("unsupported backup version")
     database_name(manifest["source_database"])
+    schema_name(manifest.get("schema", LEGACY_SCHEMA))
     expected_counts = manifest["table_counts"]
     if not isinstance(expected_counts, dict) or not expected_counts or any(
             not isinstance(name, str) or type(value) is not int or value < 0
@@ -191,9 +217,7 @@ def validate(bundle):
         if path.is_symlink() or path.parent.is_symlink() or not path.is_file() or digest(path) != expected:
             raise ValueError("backup checksum mismatch or missing file")
     ring = read_json(bundle / "keyring.json")
-    if set(ring) != {"format_version", "otp_hmac", "jwt_signing"} or ring["format_version"] != 1:
-        raise ValueError("unsupported backup keyring schema")
-    for purpose in ("otp_hmac", "jwt_signing"):
+    for purpose in keyring_groups(ring):
         group = ring[purpose]
         if set(group) != {"active_kid", "keys"} or group["active_kid"] not in group["keys"]:
             raise ValueError("missing active key")
@@ -218,13 +242,13 @@ def restore(bundle, target, destination):
         with (bundle / "database.dump").open("rb") as dump:
             run(["pg_restore", "-U", "airlance_auth", "-d", target, "--single-transaction", "--exit-on-error",
                  "--no-owner", "--no-acl"], stdin=dump, stdout=subprocess.DEVNULL)
-        if counts(target) != manifest["table_counts"]:
+        if counts(target, manifest.get("schema", LEGACY_SCHEMA)) != manifest["table_counts"]:
             raise ValueError("restored table counts differ from the backup snapshot")
         (destination / "keys").mkdir(mode=0o700)
         for name in manifest["sha256"]:
             if name.startswith("keys/"):
                 write_private(destination / name, (bundle / name).read_bytes())
-        for purpose in ("otp_hmac", "jwt_signing"):
+        for purpose in keyring_groups(ring):
             for entry in ring[purpose]["keys"].values():
                 entry["key_file"] = str(destination / entry["key_file"])
         write_private(destination / "keyring.json", (json.dumps(ring, indent=2) + "\n").encode())
@@ -244,6 +268,8 @@ def main():
     backup.add_argument("--source-db", default="airlance_auth")
     backup.add_argument("--keyring", type=Path, default=ROOT / ".secrets/real/keyring.json")
     backup.add_argument("--output", type=Path)
+    backup.add_argument("--schema", default=os.environ.get("AIRLANCE_AUTH_DATABASE_SCHEMA") or DEFAULT_SCHEMA,
+                        help="schema of the service's tables (AIRLANCE_AUTH_DATABASE_SCHEMA, default auth)")
     for command in ("restore", "check"):
         child = commands.add_parser(command)
         child.add_argument("--backup", type=Path, required=True)
@@ -254,7 +280,7 @@ def main():
     try:
         if args.command == "create":
             output = args.output or ROOT / ".secrets/backups" / (datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid.uuid4().hex[:8])
-            result = create(args.source_db, args.keyring.resolve(), output.resolve())
+            result = create(args.source_db, args.keyring.resolve(), output.resolve(), args.schema)
             print(f"Backup saved: {result}")
         else:
             target = args.database if args.command == "restore" else "airlance_auth_check_" + uuid.uuid4().hex

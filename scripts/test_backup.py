@@ -14,12 +14,12 @@ class BackupTest(unittest.TestCase):
         self.addCleanup(folder.cleanup)
         self.root = Path(folder.name)
 
-    def bundle(self):
+    def bundle(self, groups=("otp_hmac", "jwt_signing"), schema=None):
         path = self.root / "bundle"
         path.mkdir()
         (path / "keys").mkdir()
         ring = {"format_version": 1}
-        for purpose in ("otp_hmac", "jwt_signing"):
+        for purpose in groups:
             ring[purpose] = {"active_kid": "new", "keys": {
                 "new": {"key_file": "keys/0000"}, "old": {"key_file": "keys/0001"}}}
         (path / "keys/0000").write_bytes(b"active material")
@@ -29,6 +29,8 @@ class BackupTest(unittest.TestCase):
         manifest = {"format_version": 1, "source_database": "airlance_auth", "table_counts": {"users": 2},
                     "sha256": {name: backup.digest(path / name) for name in
                                ("database.dump", "keyring.json", "keys/0000", "keys/0001")}}
+        if schema is not None:
+            manifest["schema"] = schema
         (path / "manifest.json").write_text(json.dumps(manifest))
         return path
 
@@ -121,3 +123,43 @@ class BackupTest(unittest.TestCase):
         self.assertEqual((destination / "keys/0001").read_bytes(), b"historical material")
         self.assertEqual((destination / "keyring.json").stat().st_mode & 0o777, 0o600)
         self.assertEqual(destination.stat().st_mode & 0o777, 0o700)
+
+    def test_counts_are_taken_in_the_service_schema(self):
+        self.assertIn("schemaname = 'auth'", backup.counts_sql("auth"))
+        for schema in ("auth'; DROP TABLE users; --", "Auth", "pg_catalog", ""):
+            with self.subTest(schema=schema), self.assertRaises(ValueError):
+                backup.counts_sql(schema)
+
+    def test_restore_counts_in_the_recorded_schema_and_public_for_older_backups(self):
+        for schema, expected in (("auth", "auth"), (None, "public")):
+            with self.subTest(schema=schema), tempfile.TemporaryDirectory() as folder:
+                self.root = Path(folder)
+                bundle = self.bundle(schema=schema)
+                with patch("backup.run"), patch("backup.counts", return_value={"users": 2}) as counted:
+                    backup.restore(bundle, "copy", self.root / "restored")
+                counted.assert_called_once_with("copy", expected)
+
+    def test_the_openid_provider_keys_are_backed_up_and_restored(self):
+        bundle = self.bundle(groups=("otp_hmac", "jwt_signing", "oidc_signing"), schema="auth")
+        destination = self.root / "restored"
+        with patch("backup.run"), patch("backup.counts", return_value={"users": 2}):
+            backup.restore(bundle, "copy", destination)
+        restored = json.loads((destination / "keyring.json").read_text())
+        self.assertEqual(restored["oidc_signing"]["keys"]["old"]["key_file"], str(destination / "keys/0001"))
+
+        source = json.loads((bundle / "keyring.json").read_text())
+        for purpose in source:
+            if purpose != "format_version":
+                for entry in source[purpose]["keys"].values():
+                    entry["key_file"] = str(bundle / entry["key_file"])
+        (bundle / "source.json").write_text(json.dumps(source))
+        portable = json.loads(backup.keyring_files(bundle / "source.json")["keyring.json"])
+        self.assertEqual(set(portable["oidc_signing"]["keys"]), {"new", "old"})
+
+    def test_a_keyring_with_an_unknown_or_missing_group_is_refused(self):
+        group = {"active_kid": "a", "keys": {"a": {"key_file": "keys/0000"}}}
+        for ring in ({"format_version": 1, "otp_hmac": group, "jwt_signing": group, "extra": group},
+                     {"format_version": 1, "otp_hmac": group, "oidc_signing": group},
+                     {"format_version": 2, "otp_hmac": group, "jwt_signing": group}):
+            with self.subTest(ring=sorted(ring)), self.assertRaisesRegex(ValueError, "unsupported keyring"):
+                backup.keyring_groups(ring)

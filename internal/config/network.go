@@ -4,9 +4,33 @@ import (
 	"errors"
 	"net"
 	"net/netip"
+	"slices"
 	"strconv"
 	"strings"
 )
+
+// privateNetworks never carry a request from the internet straight to the service: a proxy there is the operator's.
+var privateNetworks = []netip.Prefix{
+	netip.MustParsePrefix("10.0.0.0/8"), netip.MustParsePrefix("172.16.0.0/12"), netip.MustParsePrefix("192.168.0.0/16"),
+	netip.MustParsePrefix("100.64.0.0/10"), netip.MustParsePrefix("127.0.0.0/8"), netip.MustParsePrefix("169.254.0.0/16"),
+	netip.MustParsePrefix("fc00::/7"), netip.MustParsePrefix("fe80::/10"), netip.MustParsePrefix("::1/128"),
+}
+
+// PublicProxyNetworks returns the trusted proxy networks that reach beyond private addresses. A CDN in front of the
+// service belongs there; anything else lets a client on the internet name its own address in X-Forwarded-For, and
+// with it escape the limits kept per address.
+func PublicProxyNetworks(proxies []netip.Prefix) []netip.Prefix {
+	var public []netip.Prefix
+
+	for _, p := range proxies {
+		inside := func(r netip.Prefix) bool { return r.Bits() <= p.Bits() && r.Contains(p.Addr()) }
+		if !slices.ContainsFunc(privateNetworks, inside) {
+			public = append(public, p)
+		}
+	}
+
+	return public
+}
 
 // parseTrustedProxies reads a comma-separated list of CIDRs or single IPs. A network
 // covering the whole address space would let any client choose its own address, so it
