@@ -74,7 +74,6 @@ func (u *Clients) Register(ctx context.Context, cmd RegisterCommand) (Registered
 
 		return u.audit(ctx, st, now, client.ID)
 	})
-
 	if err != nil {
 		return Registered{}, fmt.Errorf("register client: %w", err)
 	}
@@ -109,7 +108,6 @@ func (u *Clients) SetLogout(ctx context.Context, id string, postLogout []string,
 
 		return u.audit(ctx, st, now, id)
 	})
-
 	if err != nil {
 		return fmt.Errorf("set client logout: %w", err)
 	}
@@ -155,7 +153,6 @@ func (u *Clients) SetActive(ctx context.Context, id string, active bool) error {
 
 		return u.audit(ctx, st, now, id)
 	})
-
 	if err != nil {
 		return fmt.Errorf("set client status: %w", err)
 	}
@@ -192,7 +189,6 @@ func (u *Clients) RotateSecret(ctx context.Context, id string, overlap time.Dura
 
 		return u.audit(ctx, st, now, id)
 	})
-
 	if err != nil {
 		return "", fmt.Errorf("rotate client secret: %w", err)
 	}
