@@ -586,7 +586,7 @@ func (q *Queries) GetOIDCOPSessionUserID(ctx context.Context, id uuid.UUID) (uui
 }
 
 const getOIDCRefreshForUpdate = `-- name: GetOIDCRefreshForUpdate :one
-SELECT id, grant_id, token_hash, parent_id, created_at, expires_at, used_at, revoked_at
+SELECT id, grant_id, token_hash, parent_id, created_at, expires_at, used_at, revoked_at, superseded_at
 FROM oidc_refresh_tokens WHERE token_hash = $1 FOR UPDATE
 `
 
@@ -602,6 +602,7 @@ func (q *Queries) GetOIDCRefreshForUpdate(ctx context.Context, tokenHash []byte)
 		&i.ExpiresAt,
 		&i.UsedAt,
 		&i.RevokedAt,
+		&i.SupersededAt,
 	)
 	return i, err
 }
@@ -615,6 +616,28 @@ func (q *Queries) GetOIDCRefreshGrantID(ctx context.Context, tokenHash []byte) (
 	var grant_id uuid.UUID
 	err := row.Scan(&grant_id)
 	return grant_id, err
+}
+
+const getOIDCRefreshSuccessor = `-- name: GetOIDCRefreshSuccessor :one
+SELECT id, grant_id, token_hash, parent_id, created_at, expires_at, used_at, revoked_at, superseded_at
+FROM oidc_refresh_tokens WHERE parent_id = $1 AND superseded_at IS NULL FOR UPDATE
+`
+
+func (q *Queries) GetOIDCRefreshSuccessor(ctx context.Context, parentID *uuid.UUID) (OidcRefreshToken, error) {
+	row := q.db.QueryRow(ctx, getOIDCRefreshSuccessor, parentID)
+	var i OidcRefreshToken
+	err := row.Scan(
+		&i.ID,
+		&i.GrantID,
+		&i.TokenHash,
+		&i.ParentID,
+		&i.CreatedAt,
+		&i.ExpiresAt,
+		&i.UsedAt,
+		&i.RevokedAt,
+		&i.SupersededAt,
+	)
+	return i, err
 }
 
 const getOIDCRequestForUpdate = `-- name: GetOIDCRequestForUpdate :one
@@ -1059,6 +1082,23 @@ type SetOIDCClientStatusParams struct {
 
 func (q *Queries) SetOIDCClientStatus(ctx context.Context, arg SetOIDCClientStatusParams) (int64, error) {
 	result, err := q.db.Exec(ctx, setOIDCClientStatus, arg.ID, arg.Status, arg.UpdatedAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const supersedeOIDCRefresh = `-- name: SupersedeOIDCRefresh :execrows
+UPDATE oidc_refresh_tokens SET superseded_at = $2 WHERE id = $1 AND superseded_at IS NULL
+`
+
+type SupersedeOIDCRefreshParams struct {
+	ID           uuid.UUID
+	SupersededAt *time.Time
+}
+
+func (q *Queries) SupersedeOIDCRefresh(ctx context.Context, arg SupersedeOIDCRefreshParams) (int64, error) {
+	result, err := q.db.Exec(ctx, supersedeOIDCRefresh, arg.ID, arg.SupersededAt)
 	if err != nil {
 		return 0, err
 	}

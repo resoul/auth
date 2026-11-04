@@ -42,7 +42,13 @@ meets the internet; the service itself never publishes a port.
 | `caddy` (default) | Caddy on ports 80 and 443 with an automatic certificate for the domain. [`Caddyfile`](Caddyfile). The domain must resolve to this host. |
 | `tunnel` | A Cloudflare Tunnel connector; nothing is published. Point the tunnel's public hostname at `http://airlance-auth:8080` and put its token in `cloudflared.env`. |
 | `monitoring` | Prometheus with the alert rules on `127.0.0.1:9091`. |
+| `mailpit` | Test only. Catches the mail, readable on `127.0.0.1:8025`. Set `AIRLANCE_AUTH_SMTP_ADDR=mailpit:1025` and `AIRLANCE_AUTH_SMTP_TLS=none`. |
 | *(none)* | Bring your own proxy: put it on the `internal` network (or publish `8080` yourself) and make sure its address is inside `AIRLANCE_AUTH_SUBNET` (default `172.29.7.0/24`), which is what the service trusts. |
+
+`AIRLANCE_AUTH_COMPOSE_PROFILES` picks the profiles when `init_production.sh` writes `deploy/.env`, for example
+`tunnel,mailpit`. `AIRLANCE_AUTH_APPLE_APP_IDS` (default `6MWUU9A34L.org.airlance.Contact`) names the iOS apps that may
+use the passkeys: the service publishes them at `/.well-known/apple-app-site-association`, which must reach iOS over
+HTTPS without a redirect or a challenge page.
 
 `AIRLANCE_AUTH_SUBNET` in `deploy/.env` moves that network if it clashes with one of yours.
 

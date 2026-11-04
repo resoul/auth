@@ -368,3 +368,60 @@ func TestAServiceIdentityHasANameAndNothingToSignInWith(t *testing.T) {
 		t.Errorf("application = %+v, %v", app, err)
 	}
 }
+
+func TestANativeClientUsesItsOwnSchemeAndHasNoLogoutSettings(t *testing.T) {
+	now := time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC)
+	params := func(uri string) oidc.NewClientParams {
+		return oidc.NewClientParams{ID: "airlance-ios", Name: "Airlance", RedirectURIs: []string{uri}, Trusted: true, Native: true}
+	}
+
+	got, err := oidc.NewClient(params("airlance://auth/callback"), now)
+	if err != nil || !got.Native() || got.Kind != oidc.ClientNative {
+		t.Fatalf("NewClient = %+v, %v", got, err)
+	}
+
+	for _, uri := range []string{
+		"https://app.example.com/cb", "http://localhost/cb", "javascript://auth/x", "file://auth/x", "data://auth/x", "airlance:callback",
+		"airlance://user@auth/cb", "airlance://auth/cb#x", "airlance://*/cb", "Airlance://auth/cb",
+	} {
+		if _, err := oidc.NewClient(params(uri), now); err == nil {
+			t.Errorf("NewClient accepted %q", uri)
+		}
+	}
+
+	withLogout := params("airlance://auth/callback")
+	withLogout.BackchannelLogoutURI = "https://app.example.com/logout"
+
+	if _, err := oidc.NewClient(withLogout, now); err == nil {
+		t.Error("a native client took logout settings")
+	}
+
+	both := params("airlance://auth/callback")
+	both.Service = true
+
+	if _, err := oidc.NewClient(both, now); err == nil {
+		t.Error("a client was both a service and native")
+	}
+}
+
+func TestOnlyAFreshUsedTokenMayRetry(t *testing.T) {
+	now := time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC)
+	used := oidc.RefreshToken{UsedAt: now, ExpiresAt: now.Add(time.Hour)}
+
+	if !used.MayRetry(now.Add(oidc.RefreshRetryWindow)) {
+		t.Error("refused inside the window")
+	}
+
+	if used.MayRetry(now.Add(oidc.RefreshRetryWindow + time.Second)) {
+		t.Error("allowed after the window")
+	}
+
+	if unused := (oidc.RefreshToken{ExpiresAt: now.Add(time.Hour)}); unused.MayRetry(now) {
+		t.Error("allowed a token that was never exchanged")
+	}
+
+	superseded := oidc.RefreshToken{ExpiresAt: now.Add(time.Hour), SupersededAt: now}
+	if err := superseded.Exchange(now); !errors.Is(err, oidc.ErrRefreshReplayed) {
+		t.Errorf("Exchange of a superseded token = %v", err)
+	}
+}

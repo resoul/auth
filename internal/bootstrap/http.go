@@ -28,15 +28,13 @@ import (
 	oidcapi "go.airlance.org/auth/internal/transport/http/oidc"
 )
 
-// newHTTP assembles the use cases behind the API and opens its listener.
-// The listener is opened last, so a failure before it leaves nothing open.
 func newHTTP(cfg config.Config, logger *slog.Logger, otp *crypto.OTP, tokens *jwtParts, store *postgres.Store, registry *metrics.Registry, oidcParts *oidcParts) (component, net.Addr, error) {
 	if otp == nil || tokens == nil {
 		return component{}, nil, errors.New("http api needs the otp_hmac and jwt_signing keys")
 	}
 
 	flowPolicy, sessionPolicy := authflow.DefaultPolicy(), session.DefaultPolicy()
-	// A configuration not made by Load has no mode; that is the open one, like an unset variable.
+
 	mode := cfg.Registration
 	if mode == "" {
 		mode = config.RegistrationOpen
@@ -241,14 +239,13 @@ func newHTTP(cfg config.Config, logger *slog.Logger, otp *crypto.OTP, tokens *jw
 		return component{}, nil, err
 	}
 
-	// A separate metrics listener takes /metrics off the API port.
 	var metricsHandler http.Handler
 	if !cfg.Metrics.Enabled() {
 		metricsHandler = registry.Handler()
 	}
 
 	appsDeps := appoidc.Apps{UnitOfWork: store, Clock: clock.System{}}
-	if registry != nil { // a nil *Registry must not become a non-nil interface
+	if registry != nil {
 		appsDeps.Metrics = registry
 	}
 
@@ -257,8 +254,6 @@ func newHTTP(cfg config.Config, logger *slog.Logger, otp *crypto.OTP, tokens *jw
 		return component{}, nil, err
 	}
 
-	// Half the pool at most serves the client requests of the provider, which come before any authentication; the
-	// rest stays for sign-ins.
 	oidcRoutes, err := newOIDC(logger, oidcParts, tokens, registry, max(1, int(store.MaxConns())/2))
 	if err != nil {
 		return component{}, nil, err
@@ -272,10 +267,9 @@ func newHTTP(cfg config.Config, logger *slog.Logger, otp *crypto.OTP, tokens *jw
 		DeleteAccount: deleteAccount, StartDevice: startDevice, StatusDevice: statusDevice, DeviceApprover: deviceApprover, RedeemDevice: redeemDevice, StartEmailChange: startEmailChange, ConfirmEmailChange: confirmEmailChange,
 		Auth: auth, Me: me, List: list, SignOut: signOut, RevokeOne: revokeOne, Apps: apps,
 		Ready: store.Ping, Metrics: metricsHandler, Requests: registry, Logger: logger, TrustedProxies: cfg.HTTP.TrustedProxies,
-		BrowserOrigins: cfg.HTTP.BrowserOrigins, CookieSameSite: sameSite(cfg.HTTP.CookieSameSite),
+		AppleAppIDs: cfg.HTTP.AppleAppIDs, BrowserOrigins: cfg.HTTP.BrowserOrigins, CookieSameSite: sameSite(cfg.HTTP.CookieSameSite),
 	}
 	if oidcRoutes != nil {
-		// A nil *Handler must not become a non-nil interface: the routes are added only when the provider is on.
 		deps.OIDC, deps.CrossOriginBypass = oidcRoutes, oidcapi.BypassCrossOrigin()
 	}
 
@@ -300,7 +294,6 @@ func newHTTP(cfg config.Config, logger *slog.Logger, otp *crypto.OTP, tokens *jw
 
 			return nil
 		},
-		// Shutdown closes the listener and waits for requests in flight.
 		stop: srv.Shutdown,
 	}, ln.Addr(), nil
 }
@@ -316,7 +309,6 @@ func sameSite(value string) http.SameSite {
 	return http.SameSiteStrictMode
 }
 
-// listen opens the TCP listener. Config has checked the address and, beyond the loopback, that a proxy is trusted.
 func listen(addr string) (net.Listener, error) {
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -326,8 +318,6 @@ func listen(addr string) (net.Listener, error) {
 	return ln, nil
 }
 
-// newHTTPServer wraps a handler in the server both the API and the admin listener use: bounded header size
-// and read, write and idle times.
 func newHTTPServer(handler http.Handler, logger *slog.Logger) *http.Server {
 	return httpapi.NewServer(handler, logger)
 }

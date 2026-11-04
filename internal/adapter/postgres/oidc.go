@@ -31,9 +31,6 @@ func hashFrom(b []byte) (oidc.SecretHash, error) {
 	return oidc.SecretHashFrom(b)
 }
 
-// lockGrant takes the locks of a grant in the one order every statement uses: the user (shared, so any number of
-// issuers run together and a revoke-all, which takes it exclusively, waits for them), then the grant. Whatever is
-// read before the locks is only used to find them; the caller reads again after.
 func lockGrant(ctx context.Context, q *sqlc.Queries, grantID uuid.UUID) (sqlc.OidcGrant, error) {
 	probe, err := q.GetOIDCGrant(ctx, grantID)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -75,8 +72,6 @@ func grantFromRow(r sqlc.OidcGrant) (*oidc.Grant, error) {
 	}, nil
 }
 
-// ---- clients
-
 type oidcClients struct{ q *sqlc.Queries }
 
 func clientFromRow(r sqlc.OidcClient) *oidc.Client {
@@ -95,7 +90,6 @@ func deref(s pgtype.Text) string {
 	return s.String
 }
 
-// text is a nullable text column: empty is NULL.
 func text(s string) pgtype.Text {
 	return pgtype.Text{String: s, Valid: s != ""}
 }
@@ -114,6 +108,10 @@ func (r *oidcClients) Create(ctx context.Context, c *oidc.Client, secretID strin
 
 	if err != nil {
 		return fmt.Errorf("create client: %w", err)
+	}
+
+	if c.Native() {
+		return nil
 	}
 
 	return r.insertSecret(ctx, c.ID, secretID, secret, c.CreatedAt, nil)
@@ -215,7 +213,6 @@ func ptr[T any](v T) *T {
 	return &v
 }
 
-// nonNil turns a nil list into an empty one: the column is NOT NULL, and an unset list is an empty one.
 func nonNil(s []string) []string {
 	if s == nil {
 		return []string{}
@@ -238,8 +235,6 @@ func (r *oidcClients) SetLogout(ctx context.Context, id string, postLogout []str
 
 	return nil
 }
-
-// ---- authorization requests
 
 type oidcRequests struct{ q *sqlc.Queries }
 
@@ -310,8 +305,6 @@ func (r *oidcRequests) Complete(ctx context.Context, id oidc.SecretHash, now tim
 
 	return nil
 }
-
-// ---- OP sessions
 
 type oidcSessions struct{ q *sqlc.Queries }
 
@@ -425,7 +418,7 @@ func (r *oidcSessions) RevokeAllForUser(ctx context.Context, userID identity.Use
 	}
 
 	t := dbTimePtr(now)
-	// The notices are queued from the live grants, so before the grants are revoked.
+
 	if err := r.q.QueueOIDCLogoutOfUser(ctx, sqlc.QueueOIDCLogoutOfUserParams{Now: dbTime(now), ExpiresAt: dbTime(now.Add(oidc.LogoutNoticeTTL)), UserID: user}); err != nil {
 		return fmt.Errorf("queue logout notices: %w", err)
 	}
@@ -455,13 +448,13 @@ func (r *oidcSessions) RevokeOthersForUser(ctx context.Context, userID identity.
 		return fmt.Errorf("revoke other op sessions: %w", err)
 	}
 
-	var kept *uuid.UUID // NULL keeps nothing
+	var kept *uuid.UUID
 	if id, err := toUUID(keep); err == nil {
 		kept = &id
 	}
 
 	t := dbTimePtr(now)
-	// The notices are queued from the live grants, so before the grants are revoked.
+
 	if err := r.q.QueueOIDCLogoutOfUserExcept(ctx, sqlc.QueueOIDCLogoutOfUserExceptParams{Now: dbTime(now), ExpiresAt: dbTime(now.Add(oidc.LogoutNoticeTTL)), UserID: user, Keep: kept}); err != nil {
 		return fmt.Errorf("queue logout notices: %w", err)
 	}
@@ -484,7 +477,7 @@ func (r *oidcSessions) RevokeOthersForUser(ctx context.Context, userID identity.
 func (r *oidcSessions) End(ctx context.Context, id string, now time.Time) error {
 	session, err := toUUID(id)
 	if err != nil {
-		return nil // not a session id: nothing to end
+		return nil
 	}
 
 	owner, err := r.q.GetOIDCOPSessionUserID(ctx, session)
@@ -495,8 +488,7 @@ func (r *oidcSessions) End(ctx context.Context, id string, now time.Time) error 
 	if err != nil {
 		return fmt.Errorf("end op session: %w", err)
 	}
-	// The user is locked exclusively before the grants are listed: an issuer that holds the user (shared) and is opening a
-	// grant on this session finishes first, and its grant is seen and ended.
+
 	uid, err := identity.ParseUserID(owner.String())
 	if err != nil {
 		return fmt.Errorf("end op session: %w", err)
@@ -526,8 +518,6 @@ func (r *oidcSessions) End(ctx context.Context, id string, now time.Time) error 
 	return nil
 }
 
-// ---- grants
-
 type oidcGrants struct{ q *sqlc.Queries }
 
 func (r *oidcGrants) FindLive(ctx context.Context, clientID, opSessionID string) (*oidc.Grant, error) {
@@ -548,7 +538,6 @@ func (r *oidcGrants) FindLive(ctx context.Context, clientID, opSessionID string)
 	return r.withResources(ctx, sqlc.OidcGrant(row))
 }
 
-// withResources builds the grant of a row together with what it holds of each resource.
 func (r *oidcGrants) withResources(ctx context.Context, row sqlc.OidcGrant) (*oidc.Grant, error) {
 	g, err := grantFromRow(row)
 	if err != nil {
@@ -623,7 +612,7 @@ func (r *oidcGrants) Touch(ctx context.Context, id string, now time.Time) error 
 func (r *oidcGrants) Revoke(ctx context.Context, id string, now time.Time) error {
 	u, err := toUUID(id)
 	if err != nil {
-		return nil // not a grant id: nothing to end
+		return nil
 	}
 
 	t := dbTimePtr(now)
@@ -650,8 +639,6 @@ func (r *oidcGrants) RevokeAllForClient(ctx context.Context, clientID string, no
 
 	return nil
 }
-
-// ---- codes
 
 type oidcCodes struct{ q *sqlc.Queries }
 
@@ -732,8 +719,6 @@ func (r *oidcCodes) Consume(ctx context.Context, c *oidc.AuthorizationCode) erro
 	return nil
 }
 
-// ---- refresh tokens
-
 type oidcRefresh struct{ q *sqlc.Queries }
 
 func (r *oidcRefresh) Create(ctx context.Context, t *oidc.RefreshToken) error {
@@ -810,12 +795,55 @@ func (r *oidcRefresh) GetByHashForUpdate(ctx context.Context, hash oidc.SecretHa
 	token := &oidc.RefreshToken{
 		ID: row.ID.String(), GrantID: row.GrantID.String(), Hash: hash, CreatedAt: goTime(row.CreatedAt),
 		ExpiresAt: goTime(row.ExpiresAt), UsedAt: goTimePtr(row.UsedAt), RevokedAt: goTimePtr(row.RevokedAt),
+		SupersededAt: goTimePtr(row.SupersededAt),
 	}
 	if row.ParentID != nil {
 		token.ParentID = row.ParentID.String()
 	}
 
 	return token, grant, nil
+}
+
+func (r *oidcRefresh) Successor(ctx context.Context, parentID string) (*oidc.RefreshToken, error) {
+	parent, err := toUUID(parentID)
+	if err != nil {
+		return nil, fmt.Errorf("refresh token successor: %w", err)
+	}
+
+	row, err := r.q.GetOIDCRefreshSuccessor(ctx, &parent)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, port.ErrNotFound
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("load refresh token successor: %w", err)
+	}
+
+	return &oidc.RefreshToken{
+		ID: row.ID.String(), GrantID: row.GrantID.String(), ParentID: parentID, CreatedAt: goTime(row.CreatedAt),
+		ExpiresAt: goTime(row.ExpiresAt), UsedAt: goTimePtr(row.UsedAt), RevokedAt: goTimePtr(row.RevokedAt),
+		SupersededAt: goTimePtr(row.SupersededAt),
+	}, nil
+}
+
+func (r *oidcRefresh) Supersede(ctx context.Context, t *oidc.RefreshToken, now time.Time) error {
+	id, err := toUUID(t.ID)
+	if err != nil {
+		return fmt.Errorf("supersede refresh token: %w", err)
+	}
+
+	stamp := dbTime(now)
+
+	n, err := r.q.SupersedeOIDCRefresh(ctx, sqlc.SupersedeOIDCRefreshParams{ID: id, SupersededAt: dbTimePtr(stamp)})
+	if err != nil {
+		return fmt.Errorf("supersede refresh token: %w", err)
+	}
+
+	if n != 1 {
+		return port.ErrRefreshConflict
+	}
+
+	return nil
 }
 
 func (r *oidcRefresh) MarkUsed(ctx context.Context, t *oidc.RefreshToken) error {
@@ -836,8 +864,6 @@ func (r *oidcRefresh) MarkUsed(ctx context.Context, t *oidc.RefreshToken) error 
 	return nil
 }
 
-// ---- logout notices
-
 type oidcLogout struct{ q *sqlc.Queries }
 
 func (r *oidcLogout) Claim(ctx context.Context, now, leaseUntil time.Time) (*port.ClaimedLogout, error) {
@@ -857,7 +883,7 @@ func (r *oidcLogout) Claim(ctx context.Context, now, leaseUntil time.Time) (*por
 
 	uri := row.BackchannelUri
 	if row.ClientStatus != oidc.ClientActive {
-		uri = "" // a disabled client is not told anything
+		uri = ""
 	}
 
 	return &port.ClaimedLogout{

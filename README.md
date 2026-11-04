@@ -608,6 +608,25 @@ application is down, with the same `jti` each time. The call cannot reach intern
 the cloud metadata address) unless `AIRLANCE_AUTH_OIDC_BACKCHANNEL_ALLOW` lists them; it follows no redirect and honours no
 proxy setting.
 
+#### Native applications
+
+An app on a person's device cannot keep a secret, so it is registered without one:
+
+```sh
+airlance-auth oidc client create airlance-ios --name Airlance --native --redirect-uri airlance://auth/callback
+```
+
+It opens `/oauth2/authorize` in the system's web authentication sheet (`ASWebAuthenticationSession` on iOS), with PKCE,
+`state` and `nonce` as every client. The redirect URI uses the app's own scheme and is matched exactly. The app then calls
+`/oauth2/token` and `/oauth2/revoke` with `client_id` in the form body and no HTTP Basic header. A native client that
+presents a secret is refused, and so is any other client that presents none. PKCE is what ties the code to the app.
+
+A mobile network can lose the answer to a refresh. For 30 seconds after its first exchange (`RefreshRetryWindow`) a native
+client may present the same refresh token again, as long as nobody has used its successor. The unused successor is
+superseded and a new one is issued. Using the superseded token later, using the old token after its successor was used, or
+after the window, is a replay and revokes the grant. Other clients have no window, and the `/v1/native` session tokens keep
+their strict rule. Serialize refreshes in the app all the same.
+
 #### APIs, audiences and scopes
 
 An application (a *client*) asks for a sign-in. An **API** (a *resource*) is the recipient of an access token: it has its own
@@ -714,7 +733,7 @@ a new grant without a question. A lasting refusal is a decision about the applic
 grant. Ending access needs no fresh step-up; what widens it (a new authorization) is the application's trusted sign-in.
 
 What it deliberately does not do yet: consent screens for third-party applications (only first-party clients can be
-registered), `offline_access`, dynamic registration, public (native) clients, `prompt=consent` and
+registered), `offline_access`, dynamic registration, `prompt=consent` and
 `select_account`, and a screen for the connected applications in this repository (the API is there; the page that calls it is
 the product's). Discovery lists only what exists. A signed access token cannot be recalled before it expires (5 minutes);
 UserInfo checks the grant on every call.
@@ -797,6 +816,7 @@ native paths.
 | Account | `/v1/me/passkeys`, `/v1/me/recovery-codes`, `/v1/me/step-up/*`, `/v1/me/email/change`, `DELETE /v1/me` |
 | Other device | `POST /v1/auth/device/start`, `status`, `redeem`, and `/v1/device/requests/{id}` with `approve` and `deny` |
 | Operations | `GET /health/alive`, `GET /health/ready`, `GET /metrics` |
+| iOS passkeys | `GET /.well-known/apple-app-site-association`, with `AIRLANCE_AUTH_APPLE_APP_IDS` set |
 
 ## Verifying tokens in your service
 

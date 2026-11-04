@@ -192,14 +192,15 @@ type OidcOpSession struct {
 }
 
 type OidcRefreshToken struct {
-	ID        uuid.UUID
-	GrantID   uuid.UUID
-	TokenHash []byte
-	ParentID  *uuid.UUID
-	CreatedAt time.Time
-	ExpiresAt time.Time
-	UsedAt    *time.Time
-	RevokedAt *time.Time
+	ID           uuid.UUID
+	GrantID      uuid.UUID
+	TokenHash    []byte
+	ParentID     *uuid.UUID
+	CreatedAt    time.Time
+	ExpiresAt    time.Time
+	UsedAt       *time.Time
+	RevokedAt    *time.Time
+	SupersededAt *time.Time
 }
 
 type OidcRequestResource struct {

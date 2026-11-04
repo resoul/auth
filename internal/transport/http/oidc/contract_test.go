@@ -22,15 +22,13 @@ import (
 	oidcapi "go.airlance.org/auth/internal/transport/http/oidc"
 )
 
-// These tests hold the HTTP contract of the provider: methods, forms, repeated parameters, client authentication,
-// error bodies, cookies and caching. They run the real use cases on the in-memory store, so they are fast; the
-// flows end to end, with their transactions, are in the integration tests of internal/bootstrap.
-
 const (
 	issuer      = "https://auth.example.test"
 	clientID    = "example-web"
 	redirectURI = "https://app.example.test/callback"
 )
+
+const nativeClientID = "native-app"
 
 type provider struct {
 	t      *testing.T
@@ -38,8 +36,6 @@ type provider struct {
 	secret string
 }
 
-// newProvider runs the provider on the in-memory store, which holds no client: what is checked before a client is
-// looked up. newProviderOn runs it on another store and registers a client there.
 func newProvider(t *testing.T) *provider {
 	t.Helper()
 
@@ -90,10 +86,15 @@ func newProviderOn(t *testing.T, store port.UnitOfWork, register bool) *provider
 	})
 	must(t, err)
 
-	// Without a stored client the secret only has to look like one: the requests these tests make are refused first.
 	secret := "not-a-registered-secret"
 
 	if register {
+		if _, err := clients.Register(context.Background(), appoidc.RegisterCommand{
+			ID: nativeClientID, Name: "Native", RedirectURIs: []string{"airlance://auth/callback"}, Native: true,
+		}); err != nil {
+			t.Fatal(err)
+		}
+
 		registered, err := clients.Register(context.Background(), appoidc.RegisterCommand{
 			ID: clientID, Name: "Example", RedirectURIs: []string{redirectURI}, AllowedScopes: doidc.SupportedScopes(),
 		})
@@ -125,7 +126,6 @@ func (p *provider) do(r *http.Request) *httptest.ResponseRecorder {
 	return w
 }
 
-// form is a POST with a form body; auth adds the client's HTTP Basic credentials.
 func (p *provider) form(path string, values url.Values, auth bool) *http.Request {
 	r := httptest.NewRequest(http.MethodPost, path, strings.NewReader(values.Encode()))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -137,7 +137,6 @@ func (p *provider) form(path string, values url.Values, auth bool) *http.Request
 	return r
 }
 
-// oauthError reads an RFC 6749 error body and checks it is never cached.
 func oauthError(t *testing.T, w *httptest.ResponseRecorder, status int, code string) {
 	t.Helper()
 

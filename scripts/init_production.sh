@@ -84,6 +84,8 @@ AIRLANCE_AUTH_JWT_AUDIENCE=$AUDIENCE
 AIRLANCE_AUTH_WEBAUTHN_RP_ID=$DOMAIN
 AIRLANCE_AUTH_WEBAUTHN_RP_NAME=Airlance
 AIRLANCE_AUTH_WEBAUTHN_ORIGINS=https://$DOMAIN
+# The iOS apps that may use these passkeys, TEAMID.bundle.id: published at /.well-known/apple-app-site-association.
+AIRLANCE_AUTH_APPLE_APP_IDS=${AIRLANCE_AUTH_APPLE_APP_IDS:-6MWUU9A34L.org.airlance.Contact}
 # Pages of your products that call the browser profile with cookies, as exact origins:
 # AIRLANCE_AUTH_BROWSER_ORIGINS=https://app.airlance.org
 AIRLANCE_AUTH_BROWSER_ORIGINS=
@@ -126,7 +128,7 @@ if [[ $COMPOSE_ENV == none ]]; then
 elif [[ ! -e $COMPOSE_ENV ]]; then
 	# caddy: a TLS proxy with an automatic certificate for $DOMAIN. Use "tunnel" for a Cloudflare Tunnel instead,
 	# or no profile to bring your own proxy; add "monitoring" for Prometheus.
-	printf 'AIRLANCE_AUTH_SECRETS_DIR=%s\nAIRLANCE_AUTH_UID=%s\nAIRLANCE_AUTH_GID=%s\nAIRLANCE_AUTH_DOMAIN=%s\nCOMPOSE_PROFILES=caddy\n' "$DIR" "$(id -u)" "$(id -g)" "$DOMAIN" >"$COMPOSE_ENV"
+	printf 'AIRLANCE_AUTH_SECRETS_DIR=%s\nAIRLANCE_AUTH_UID=%s\nAIRLANCE_AUTH_GID=%s\nAIRLANCE_AUTH_DOMAIN=%s\nCOMPOSE_PROFILES=%s\n' "$DIR" "$(id -u)" "$(id -g)" "$DOMAIN" "${AIRLANCE_AUTH_COMPOSE_PROFILES:-caddy}" >"$COMPOSE_ENV"
 	chmod 600 "$COMPOSE_ENV"
 	echo "wrote $COMPOSE_ENV"
 else

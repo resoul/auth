@@ -14,9 +14,6 @@ import (
 	"go.airlance.org/auth/internal/testutil"
 )
 
-// The cases of the HTTP contract that need a registered client, on PostgreSQL: the in-memory store holds no data of
-// the provider.
-
 func newProviderWithClient(t *testing.T) *provider {
 	t.Helper()
 
@@ -45,7 +42,39 @@ func TestTheTokenEndpointRefusesWhatAClientMayNotDo(t *testing.T) {
 	})
 }
 
-// authorizeQuery is a valid authorization request of the registered client.
+func TestTheTokenEndpointNamesANativeClientInTheBody(t *testing.T) {
+	p := newProviderWithClient(t)
+	values := func(id string) url.Values {
+		return url.Values{"client_id": {id}, "grant_type": {"authorization_code"}, "code": {"x"}, "redirect_uri": {"airlance://auth/callback"}, "code_verifier": {"v"}}
+	}
+
+	t.Run("a native client is known by its id", func(t *testing.T) {
+		oauthError(t, p.do(p.form("/oauth2/token", values(nativeClientID), false)), http.StatusBadRequest, "invalid_grant")
+	})
+	t.Run("a client with a secret must present it", func(t *testing.T) {
+		oauthError(t, p.do(p.form("/oauth2/token", values(clientID), false)), http.StatusUnauthorized, "invalid_client")
+	})
+	t.Run("a secret in the body is not a credential", func(t *testing.T) {
+		body := values(clientID)
+		body.Set("client_secret", p.secret)
+		oauthError(t, p.do(p.form("/oauth2/token", body, false)), http.StatusUnauthorized, "invalid_client")
+	})
+	t.Run("no client at all", func(t *testing.T) {
+		oauthError(t, p.do(p.form("/oauth2/token", url.Values{"grant_type": {"authorization_code"}}, false)), http.StatusUnauthorized, "invalid_client")
+	})
+	t.Run("a repeated id", func(t *testing.T) {
+		body := values(nativeClientID)
+		body.Add("client_id", nativeClientID)
+		oauthError(t, p.do(p.form("/oauth2/token", body, false)), http.StatusUnauthorized, "invalid_client")
+	})
+	t.Run("a native client may revoke", func(t *testing.T) {
+		w := p.do(p.form("/oauth2/revoke", url.Values{"client_id": {nativeClientID}, "token": {"x"}}, false))
+		if w.Code != http.StatusOK {
+			t.Errorf("revoke = %d", w.Code)
+		}
+	})
+}
+
 func authorizeQuery() url.Values {
 	sum := sha256.Sum256([]byte("a verifier that is long enough to be a real PKCE verifier, 43+"))
 

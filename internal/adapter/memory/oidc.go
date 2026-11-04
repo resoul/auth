@@ -10,9 +10,6 @@ import (
 	"go.airlance.org/auth/internal/domain/oidc"
 )
 
-// errNoOIDC is what every OpenID Provider repository answers here. The provider's rules are about row locks and
-// concurrent exchanges, which a store that runs one transaction at a time cannot show; its tests run on PostgreSQL.
-// Only the revocation hook is real, as a no-op, because use cases of the /v1 API call it.
 var errNoOIDC = errors.New("the in-memory store does not hold the OpenID Provider's data: use PostgreSQL")
 
 func (s *Store) oidcStores() port.OIDCStores {
@@ -28,7 +25,7 @@ func (noClients) Create(context.Context, *oidc.Client, string, oidc.SecretHash) 
 	return errNoOIDC
 }
 func (noClients) Get(context.Context, string) (*oidc.Client, error) {
-	return nil, errNoOIDC
+	return nil, port.ErrNotFound
 }
 
 func (noClients) List(context.Context) ([]*oidc.Client, error) {
@@ -79,7 +76,6 @@ func (noSessions) Touch(context.Context, string, time.Time) error {
 	return errNoOIDC
 }
 
-// RevokeAllForUser and End have nothing to revoke: no OP session exists here.
 func (noSessions) RevokeAllForUser(context.Context, identity.UserID, time.Time) error {
 	return nil
 }
@@ -140,6 +136,14 @@ func (noRefresh) Create(context.Context, *oidc.RefreshToken) error {
 func (noRefresh) GetByHashForUpdate(context.Context, oidc.SecretHash) (*oidc.RefreshToken, *oidc.Grant, error) {
 	return nil, nil, errNoOIDC
 }
+func (noRefresh) Successor(context.Context, string) (*oidc.RefreshToken, error) {
+	return nil, port.ErrNotFound
+}
+
+func (noRefresh) Supersede(context.Context, *oidc.RefreshToken, time.Time) error {
+	return nil
+}
+
 func (noRefresh) MarkUsed(context.Context, *oidc.RefreshToken) error {
 	return errNoOIDC
 }
@@ -223,7 +227,6 @@ func (noResources) DeleteClientScopes(context.Context, string, string) ([]string
 
 type noApps struct{}
 
-// Nothing is connected here, so listing finds nothing and there is nothing to end.
 func (noApps) LiveGrantsOfUser(context.Context, identity.UserID, time.Time) ([]port.AppGrant, error) {
 	return nil, nil
 }

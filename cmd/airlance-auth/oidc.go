@@ -32,10 +32,11 @@ func newOIDCCommand() *cobra.Command {
 
 	create := &cobra.Command{
 		Use:   "create ID",
-		Short: "Register a first-party application, or a service with --service, and print its secret once",
+		Short: "Register a first-party application, a service with --service, or a device app with --native; print any secret once",
 		Long: "Registers a confidential web client with a backend: it authenticates with client_secret_basic and PKCE. " +
 			"The ID is lower-case letters, digits, '-' and '_'. Redirect URIs are matched exactly and must be https " +
-			"(http only for localhost).",
+			"(http only for localhost). With --native it is an app on a device: it has no secret, and its redirect URIs " +
+			"use its own scheme, such as app://auth/callback.",
 		Args: cobra.ExactArgs(1),
 	}
 	name := create.Flags().String("name", "", "the application's name (required)")
@@ -44,10 +45,11 @@ func newOIDCCommand() *cobra.Command {
 	postLogout := create.Flags().StringArray("post-logout-redirect-uri", nil, "an exact address the browser may be sent to after logging out; repeat for more")
 	backchannel := create.Flags().String("backchannel-logout-uri", "", "the application backend's address that is told when a sign-in ends (optional)")
 	service := create.Flags().Bool("service", false, "register a service identity for the client_credentials grant: no redirect URIs, scopes or logout settings")
+	native := create.Flags().Bool("native", false, "register an app on a device: no secret, its own redirect scheme and no logout settings")
 	create.RunE = func(cmd *cobra.Command, args []string) error {
 		return run(cmd, bootstrap.OIDCClientRequest{
 			Action: bootstrap.OIDCClientCreate, ID: args[0], Name: *name, RedirectURIs: *redirects, Scopes: *scopes,
-			PostLogoutURIs: *postLogout, BackchannelURI: *backchannel, Service: *service,
+			PostLogoutURIs: *postLogout, BackchannelURI: *backchannel, Service: *service, Native: *native,
 		})
 	}
 

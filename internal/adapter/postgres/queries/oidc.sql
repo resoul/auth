@@ -154,8 +154,15 @@ VALUES ($1, $2, $3, $4, $5, $6);
 SELECT grant_id FROM oidc_refresh_tokens WHERE token_hash = $1;
 
 -- name: GetOIDCRefreshForUpdate :one
-SELECT id, grant_id, token_hash, parent_id, created_at, expires_at, used_at, revoked_at
+SELECT id, grant_id, token_hash, parent_id, created_at, expires_at, used_at, revoked_at, superseded_at
 FROM oidc_refresh_tokens WHERE token_hash = $1 FOR UPDATE;
+
+-- name: GetOIDCRefreshSuccessor :one
+SELECT id, grant_id, token_hash, parent_id, created_at, expires_at, used_at, revoked_at, superseded_at
+FROM oidc_refresh_tokens WHERE parent_id = $1 AND superseded_at IS NULL FOR UPDATE;
+
+-- name: SupersedeOIDCRefresh :execrows
+UPDATE oidc_refresh_tokens SET superseded_at = $2 WHERE id = $1 AND superseded_at IS NULL;
 
 -- name: MarkOIDCRefreshUsed :execrows
 UPDATE oidc_refresh_tokens SET used_at = $2 WHERE id = $1 AND used_at IS NULL;
