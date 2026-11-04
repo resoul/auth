@@ -66,7 +66,10 @@ services:
     env_file:
       - "${AIRLANCE_AUTH_SECRETS_DIR:?set AIRLANCE_AUTH_SECRETS_DIR to the directory scripts/init_production.sh made}/airlance_auth.env"
       - "${AIRLANCE_AUTH_SECRETS_DIR}/airlance_auth_migrate.env"
-    # The command reads the whole configuration, the keyring path included, though it uses only the database.
+    # The command reads the whole configuration, the keyring path included, though it uses only the database. The OpenID
+    # Provider's settings need an API address to be valid; the migration listens on nothing.
+    environment:
+      AIRLANCE_AUTH_HTTP_ADDR: 127.0.0.1:8080
     volumes:
       - "${AIRLANCE_AUTH_SECRETS_DIR}/keys:${AIRLANCE_AUTH_SECRETS_DIR}/keys:ro"
     read_only: true
