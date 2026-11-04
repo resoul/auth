@@ -67,6 +67,8 @@ type ClaimOIDCLogoutRow struct {
 	ClientStatus   string
 }
 
+// Claim leases one due notice and counts the attempt. SKIP LOCKED passes over a notice another worker is claiming; an
+// expired lease makes a notice claimable again. The client's endpoint is read now, not when the notice was queued.
 func (q *Queries) ClaimOIDCLogout(ctx context.Context, arg ClaimOIDCLogoutParams) (ClaimOIDCLogoutRow, error) {
 	row := q.db.QueryRow(ctx, claimOIDCLogout, arg.LeaseUntil, arg.Now)
 	var i ClaimOIDCLogoutRow
@@ -470,6 +472,7 @@ const getOIDCCodeGrantID = `-- name: GetOIDCCodeGrantID :one
 SELECT grant_id FROM oidc_authorization_codes WHERE code_hash = $1
 `
 
+// The grant of a code, read without a lock: the user and the grant are locked first, then the code.
 func (q *Queries) GetOIDCCodeGrantID(ctx context.Context, codeHash []byte) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, getOIDCCodeGrantID, codeHash)
 	var grant_id uuid.UUID
@@ -573,6 +576,8 @@ const getOIDCOPSessionUserID = `-- name: GetOIDCOPSessionUserID :one
 SELECT user_id FROM oidc_op_sessions WHERE id = $1
 `
 
+// Ending one sign-in. The user is locked first, from the id, so an issuer that holds the user (shared) finishes before the
+// grants are listed.
 func (q *Queries) GetOIDCOPSessionUserID(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, getOIDCOPSessionUserID, id)
 	var user_id uuid.UUID
@@ -792,6 +797,8 @@ type QueueOIDCLogoutOfUserParams struct {
 	UserID    uuid.UUID
 }
 
+// The notices of an ended sign-in: one per live grant whose client takes them. Queued before the grants are revoked, in the
+// transaction that revokes them.
 func (q *Queries) QueueOIDCLogoutOfUser(ctx context.Context, arg QueueOIDCLogoutOfUserParams) error {
 	_, err := q.db.Exec(ctx, queueOIDCLogoutOfUser, arg.Now, arg.ExpiresAt, arg.UserID)
 	return err
@@ -832,6 +839,7 @@ type RetireOIDCClientSecretsParams struct {
 	RevokedAt *time.Time
 }
 
+// A rotation: what ended an earlier overlap goes at once, what is live now ends at the new time.
 func (q *Queries) RetireOIDCClientSecrets(ctx context.Context, arg RetireOIDCClientSecretsParams) error {
 	_, err := q.db.Exec(ctx, retireOIDCClientSecrets, arg.ClientID, arg.RevokedAt)
 	return err
@@ -966,6 +974,8 @@ type RevokeOIDCOPSessionsOfUserExceptParams struct {
 	Keep      *uuid.UUID
 }
 
+// The sign-ins of a user except the one that grew from the device session keep (nil keeps none): what a deleted key or a
+// moved address cuts off. A sign-in with no device session is not the keeper's, so it goes.
 func (q *Queries) RevokeOIDCOPSessionsOfUserExcept(ctx context.Context, arg RevokeOIDCOPSessionsOfUserExceptParams) error {
 	_, err := q.db.Exec(ctx, revokeOIDCOPSessionsOfUserExcept, arg.RevokedAt, arg.UserID, arg.Keep)
 	return err
