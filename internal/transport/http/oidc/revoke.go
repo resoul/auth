@@ -3,13 +3,10 @@ package oidc
 import (
 	"mime"
 	"net/http"
-	"net/url"
 
 	appoidc "go.airlance.org/auth/internal/application/oidc"
 )
 
-// revoke is the revocation endpoint (RFC 7009). The client authenticates as at the token endpoint. The answer is an empty
-// 200 for any token, so a client cannot learn whether a token it does not own exists.
 func (h *Handler) revoke(w http.ResponseWriter, r *http.Request) {
 	noStore(w)
 
@@ -18,16 +15,8 @@ func (h *Handler) revoke(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, secret, ok := r.BasicAuth()
+	id, secret, ok := clientCredentials(r)
 	if !ok {
-		h.clientRefused(w, r)
-		return
-	}
-
-	id, errID := url.QueryUnescape(id)
-
-	secret, errSecret := url.QueryUnescape(secret)
-	if errID != nil || errSecret != nil {
 		h.clientRefused(w, r)
 		return
 	}

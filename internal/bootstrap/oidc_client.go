@@ -16,10 +16,8 @@ import (
 	"go.airlance.org/auth/internal/config"
 )
 
-// OIDCClientAction selects what the oidc client command does.
 type OIDCClientAction string
 
-// Client actions.
 const (
 	OIDCClientCreate  OIDCClientAction = "create"
 	OIDCClientList    OIDCClientAction = "list"
@@ -29,25 +27,19 @@ const (
 	OIDCClientLogout  OIDCClientAction = "set-logout"
 )
 
-// OIDCClientRequest is the input of OIDCClient. ID is used by every action but list; Name, RedirectURIs and Scopes by
-// create; Overlap by rotate-secret.
 type OIDCClientRequest struct {
-	Action       OIDCClientAction
-	ID           string
-	Name         string
-	RedirectURIs []string
-	Scopes       []string
-	Overlap      time.Duration
-	// PostLogoutURIs and BackchannelURI are used by create and set-logout; set-logout replaces both.
+	Action         OIDCClientAction
+	ID             string
+	Name           string
+	RedirectURIs   []string
+	Scopes         []string
+	Overlap        time.Duration
 	PostLogoutURIs []string
 	BackchannelURI string
-	// Service makes create register a service identity (client_credentials) instead of an application.
-	Service bool
+	Service        bool
+	Native         bool
 }
 
-// OIDCClient manages the clients of the OpenID Provider against the configured database and reports to out. The
-// operator runs it on the server: access to the server is what lets a person register an application, so it is not an
-// API. A secret is printed once, here, and never again.
 func OIDCClient(ctx context.Context, cfg config.Config, req OIDCClientRequest, out io.Writer) error {
 	if !cfg.Database.URL.IsSet() {
 		return fmt.Errorf("%s is required for oidc client", config.EnvDatabaseURL)
@@ -67,8 +59,14 @@ func OIDCClient(ctx context.Context, cfg config.Config, req OIDCClientRequest, o
 	switch req.Action {
 	case OIDCClientCreate:
 		got, err := clients.Register(ctx, appoidc.RegisterCommand{ID: req.ID, Name: req.Name, RedirectURIs: req.RedirectURIs, AllowedScopes: req.Scopes,
-			PostLogoutRedirectURIs: req.PostLogoutURIs, BackchannelLogoutURI: req.BackchannelURI, Service: req.Service})
+			PostLogoutRedirectURIs: req.PostLogoutURIs, BackchannelLogoutURI: req.BackchannelURI, Service: req.Service, Native: req.Native})
 		if err != nil {
+			return err
+		}
+
+		if req.Native {
+			_, err = fmt.Fprintf(out, "registered native application %s\nclient_id: %s\nIt has no secret: it signs in with PKCE and comes back through its registered address.\n", got.Client.Name, got.Client.ID)
+
 			return err
 		}
 
@@ -92,6 +90,14 @@ func OIDCClient(ctx context.Context, cfg config.Config, req OIDCClientRequest, o
 		for _, c := range list {
 			if c.Service() {
 				if _, err := fmt.Fprintf(out, "%s\t%s\tservice\n", c.ID, c.Status); err != nil {
+					return err
+				}
+
+				continue
+			}
+
+			if c.Native() {
+				if _, err := fmt.Fprintf(out, "%s\t%s\tnative\t%s\t%s\n", c.ID, c.Status, strings.Join(c.AllowedScopes, " "), strings.Join(c.RedirectURIs, " ")); err != nil {
 					return err
 				}
 

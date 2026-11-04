@@ -2,13 +2,15 @@ package config
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"net/url"
+	"regexp"
 	"strings"
 )
 
-// checkInvitationURL accepts the address an invitation sends people to: https, or http on the local machine,
-// without credentials or a fragment. Messages never echo the value.
+var appleAppID = regexp.MustCompile(`^[A-Z0-9]{10}\.[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*$`)
+
 func checkInvitationURL(raw string) error {
 	u, err := url.Parse(raw)
 	if raw == "" || err != nil || u.Host == "" || u.Hostname() == "" || u.User != nil || u.Fragment != "" || u.Opaque != "" {
@@ -28,9 +30,6 @@ func checkInvitationURL(raw string) error {
 	return nil
 }
 
-// parseBrowserOrigins reads a comma-separated list of exact origins. A wildcard, a path,
-// credentials and a plain-HTTP origin outside the local machine are refused: a trusted
-// origin may act with the user's cookies. Messages never echo the value.
 func parseBrowserOrigins(list string) ([]string, error) {
 	var out []string
 
@@ -62,8 +61,6 @@ func parseBrowserOrigins(list string) ([]string, error) {
 	return out, nil
 }
 
-// validRPID accepts a lower-case domain of letters, digits, hyphens and dots, or localhost.
-// An IP address is not a valid relying party ID.
 func validRPID(id string) bool {
 	if len(id) == 0 || len(id) > 253 || net.ParseIP(id) != nil {
 		return false
@@ -84,12 +81,8 @@ func validRPID(id string) bool {
 	return true
 }
 
-// androidOriginPrefix starts the origin of an Android app, which the platform reports as the
-// hash of the app's signing key.
 const androidOriginPrefix = "android:apk-key-hash:"
 
-// parseWebAuthnOrigins reads the origins of ceremonies: web origins as for the browser
-// profile, and the opaque origins of Android apps. Messages never echo the value.
 func parseWebAuthnOrigins(list string) ([]string, error) {
 	var out []string
 
@@ -116,8 +109,6 @@ func parseWebAuthnOrigins(list string) ([]string, error) {
 	return out, nil
 }
 
-// checkOriginsMatchRPID refuses a web origin outside the relying party's domain: the browser
-// would never accept a ceremony there, so it is a typo rather than a choice.
 func checkOriginsMatchRPID(origins []string, rpID string) error {
 	for _, o := range origins {
 		if strings.HasPrefix(o, androidOriginPrefix) {
@@ -136,4 +127,19 @@ func checkOriginsMatchRPID(origins []string, rpID string) error {
 	}
 
 	return nil
+}
+
+func parseAppleAppIDs(list string) ([]string, error) {
+	var ids []string
+
+	for item := range strings.SplitSeq(list, ",") {
+		id := strings.TrimSpace(item)
+		if !appleAppID.MatchString(id) {
+			return nil, fmt.Errorf("%q: want TEAMID.bundle.id, such as ABCDE12345.com.example.app", id)
+		}
+
+		ids = append(ids, id)
+	}
+
+	return ids, nil
 }

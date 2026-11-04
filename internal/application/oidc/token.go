@@ -119,17 +119,7 @@ func (u *Token) Execute(ctx context.Context, cmd TokenCommand) (TokenResult, err
 	return result, nil
 }
 
-// authenticateClient returns the client when its secret is one of its live ones and it is active; otherwise nil.
 func (u Deps) authenticateClient(ctx context.Context, st port.Stores, id, secret string, now time.Time) (*doidc.Client, error) {
-	hash, err := u.Secrets.HashOIDCSecret(secret)
-	if errors.Is(err, port.ErrInvalidOIDCSecret) {
-		return nil, nil
-	}
-
-	if err != nil {
-		return nil, fmt.Errorf("hash client secret: %w", err)
-	}
-
 	client, err := st.OIDCClients.Get(ctx, id)
 	if errors.Is(err, port.ErrNotFound) {
 		return nil, nil
@@ -137,6 +127,23 @@ func (u Deps) authenticateClient(ctx context.Context, st port.Stores, id, secret
 
 	if err != nil {
 		return nil, fmt.Errorf("load client: %w", err)
+	}
+
+	if client.Native() {
+		if secret != "" || !client.Active() {
+			return nil, nil
+		}
+
+		return client, nil
+	}
+
+	hash, err := u.Secrets.HashOIDCSecret(secret)
+	if errors.Is(err, port.ErrInvalidOIDCSecret) {
+		return nil, nil
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("hash client secret: %w", err)
 	}
 
 	ok, err := st.OIDCClients.SecretValid(ctx, id, hash, now)
@@ -153,9 +160,6 @@ func (u Deps) authenticateClient(ctx context.Context, st port.Stores, id, secret
 
 var errInvalidGrant = fail(ErrInvalidGrant, "The grant is not valid.")
 
-// liveGrant loads what a token must stand on: a live grant, a live OP session and a user who is not blocked. The user
-// is already share-locked by the repository that returned the grant. It returns the OP session and the user, or nil
-// when anything is gone.
 func (u Deps) liveGrant(ctx context.Context, st port.Stores, now time.Time, grant *doidc.Grant) (*doidc.OPSession, *identity.User, error) {
 	if !grant.Active(now) {
 		return nil, nil, nil
@@ -191,7 +195,6 @@ func (u Deps) liveGrant(ctx context.Context, st port.Stores, now time.Time, gran
 }
 
 func (u Deps) exchangeCode(ctx context.Context, st port.Stores, now time.Time, client *doidc.Client, cmd TokenCommand) (result TokenResult, err error) {
-	// The resource comes first in the order of locks: before the user, the grant and the code.
 	target, f, err := u.lockTarget(ctx, st, cmd.Resource)
 	if err != nil {
 		return TokenResult{}, err
@@ -222,17 +225,13 @@ func (u Deps) exchangeCode(ctx context.Context, st port.Stores, now time.Time, c
 	if err != nil {
 		return TokenResult{}, fmt.Errorf("load code: %w", err)
 	}
-	// A code of another client is not this client's business: refuse and change nothing, so a client cannot close
-	// a grant that is not its own.
+
 	if grant.ClientID != client.ID {
 		return TokenResult{Failure: errInvalidGrant}, nil
 	}
 
 	switch err := code.Exchange(now, cmd.RedirectURI, cmd.CodeVerifier); {
 	case errors.Is(err, doidc.ErrCodeReplayed):
-		// A second exchange of a used code is the sign of a copied code. The grant ends, and this is committed. Only a
-		// request that could have been the first (the same redirect URI and a matching verifier) ends it. The age of the
-		// code does not matter: tokens were issued from it, and they go however late the copy is shown.
 		if code.Matches(cmd.RedirectURI, cmd.CodeVerifier) {
 			if err := u.revokeForReplay(ctx, st, now, client, grant); err != nil {
 				return TokenResult{}, err
@@ -243,7 +242,6 @@ func (u Deps) exchangeCode(ctx context.Context, st port.Stores, now time.Time, c
 
 		return TokenResult{Failure: errInvalidGrant}, nil
 	case errors.Is(err, doidc.ErrRedirectMismatch), errors.Is(err, doidc.ErrPKCE):
-		// A code presented wrongly is spent, so it cannot be guessed at.
 		code.ConsumedAt = now.UTC()
 		if err := st.OIDCCodes.Consume(ctx, code); err != nil {
 			return TokenResult{}, fmt.Errorf("spend code: %w", err)
@@ -260,11 +258,9 @@ func (u Deps) exchangeCode(ctx context.Context, st port.Stores, now time.Time, c
 	}
 
 	if op == nil {
-		// The code is consumed in the transaction below only on success; a dead grant needs no tokens.
 		return TokenResult{Failure: errInvalidGrant}, nil
 	}
-	// What the access token carries. The code is consumed only when there is a token to give: a refusal for the resource
-	// leaves it, so the application can ask again for the right one.
+
 	audience, scopes := u.UserInfoAudience(), code.Scopes
 
 	if target != nil {
@@ -368,17 +364,22 @@ func (u Deps) refresh(ctx context.Context, st port.Stores, now time.Time, client
 		scopes = asked
 	}
 
-	if err := token.Exchange(now); err != nil {
-		if errors.Is(err, doidc.ErrRefreshReplayed) {
-			// A token that was already exchanged is in two hands. The whole grant ends, and the revocation is committed
-			// with the refusal.
+	var lost *doidc.RefreshToken
+
+	if err := token.Exchange(now); errors.Is(err, doidc.ErrRefreshReplayed) {
+		lost, err = u.lostSuccessor(ctx, st, now, client, token)
+		if err != nil {
+			return TokenResult{}, err
+		}
+
+		if lost == nil {
 			if err := u.revokeForReplay(ctx, st, now, client, grant); err != nil {
 				return TokenResult{}, err
 			}
 
 			return TokenResult{Failure: errInvalidGrant, Replay: true}, nil
 		}
-
+	} else if err != nil {
 		return TokenResult{Failure: errInvalidGrant}, nil
 	}
 
@@ -390,8 +391,7 @@ func (u Deps) refresh(ctx context.Context, st port.Stores, now time.Time, client
 	if op == nil {
 		return TokenResult{Failure: errInvalidGrant}, nil
 	}
-	// What the access token carries. A refusal for the resource leaves the refresh token unused, so a client that asked
-	// for the wrong one can ask again; a grant that is gone has already been answered above.
+
 	audience := u.UserInfoAudience()
 
 	if target != nil {
@@ -409,7 +409,11 @@ func (u Deps) refresh(ctx context.Context, st port.Stores, now time.Time, client
 		audience = target.Audience
 	}
 
-	if err := st.OIDCRefresh.MarkUsed(ctx, token); err != nil {
+	if lost != nil {
+		if err := st.OIDCRefresh.Supersede(ctx, lost, now); err != nil {
+			return TokenResult{}, fmt.Errorf("supersede refresh token: %w", err)
+		}
+	} else if err := st.OIDCRefresh.MarkUsed(ctx, token); err != nil {
 		return TokenResult{}, fmt.Errorf("mark refresh token used: %w", err)
 	}
 
@@ -440,7 +444,27 @@ func (u Deps) refresh(ctx context.Context, st port.Stores, now time.Time, client
 	}}, nil
 }
 
-// newRefresh stores the next token of the grant's chain and returns its secret.
+func (u Deps) lostSuccessor(ctx context.Context, st port.Stores, now time.Time, client *doidc.Client, token *doidc.RefreshToken) (*doidc.RefreshToken, error) {
+	if !client.Native() || !token.MayRetry(now) {
+		return nil, nil
+	}
+
+	next, err := st.OIDCRefresh.Successor(ctx, token.ID)
+	if errors.Is(err, port.ErrNotFound) {
+		return nil, nil
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("load refresh token successor: %w", err)
+	}
+
+	if !next.UsedAt.IsZero() || !next.RevokedAt.IsZero() {
+		return nil, nil
+	}
+
+	return next, nil
+}
+
 func (u Deps) newRefresh(ctx context.Context, st port.Stores, now time.Time, grant *doidc.Grant, parentID string) (string, error) {
 	secret, hash, err := u.Secrets.NewOIDCSecret()
 	if err != nil {
@@ -462,8 +486,6 @@ func (u Deps) newRefresh(ctx context.Context, st port.Stores, now time.Time, gra
 	return secret, nil
 }
 
-// touch records the use of the grant and of the sign-in it stands on. The sign-in's idle time runs from its last
-// use, but its absolute end does not move.
 func (u Deps) touch(ctx context.Context, st port.Stores, now time.Time, grant *doidc.Grant, op *doidc.OPSession) error {
 	if err := st.OIDCGrants.Touch(ctx, grant.ID, now); err != nil {
 		return fmt.Errorf("touch grant: %w", err)
@@ -500,9 +522,6 @@ func seconds(end, now time.Time) int {
 	return n
 }
 
-// lockTarget finds the resource a token request names and locks it shared, before anything else of the request. No
-// resource is no target: the token is then the one for UserInfo, as it was before resources existed. A resource that is
-// malformed, unknown or disabled is invalid_target, and the answer never says which.
 func (u Deps) lockTarget(ctx context.Context, st port.Stores, uri string) (*doidc.Resource, *Failure, error) {
 	if uri == "" {
 		return nil, nil, nil
@@ -525,7 +544,6 @@ func (u Deps) lockTarget(ctx context.Context, st port.Stores, uri string) (*doid
 	return found[0], nil, nil
 }
 
-// grantScopes are the rights a grant holds of a resource; nil when it holds none.
 func grantScopes(grant *doidc.Grant, resourceID string) []string {
 	if r := grant.Resource(resourceID); r != nil {
 		return r.Scopes
@@ -534,8 +552,6 @@ func grantScopes(grant *doidc.Grant, resourceID string) []string {
 	return nil
 }
 
-// intersectGrant are the rights both the code and its grant hold of a resource: the authorization that issued the code
-// can ask for no more than it agreed, and the grant no more than it holds.
 func intersectGrant(grant *doidc.Grant, code *doidc.AuthorizationCode, resourceID string) []string {
 	c := doidc.FindResource(code.Resources, resourceID)
 	if c == nil {
@@ -545,10 +561,6 @@ func intersectGrant(grant *doidc.Grant, code *doidc.AuthorizationCode, resourceI
 	return doidc.Intersect(c.Scopes, grantScopes(grant, resourceID))
 }
 
-// resourceScopes works out the rights of a token for a resource: those the grant holds (base) that the client may still
-// ask of the resource and the resource still defines, narrowed to the scope parameter when there is one. A grant never
-// gives more than it held, and a right taken away since is not given: invalid_target when the client lost the resource,
-// invalid_scope when it lost the rights or asked for ones it does not hold.
 func (u Deps) resourceScopes(ctx context.Context, st port.Stores, client *doidc.Client, res *doidc.Resource, base []string, asked string) ([]string, *Failure, error) {
 	if len(base) == 0 {
 		return nil, fail(ErrInvalidTarget, "The resource is not part of this authorization."), nil
@@ -582,7 +594,6 @@ func (u Deps) resourceScopes(ctx context.Context, st port.Stores, client *doidc.
 	return scopes, nil, nil
 }
 
-// tokenFields are the audit fields of an issue: the client, and the resource when the token is for one.
 func tokenFields(client *doidc.Client, res *doidc.Resource) map[string]string {
 	if res == nil {
 		return map[string]string{"client": client.ID}
@@ -591,10 +602,6 @@ func tokenFields(client *doidc.Client, res *doidc.Resource) map[string]string {
 	return map[string]string{"client": client.ID, "resource": res.ID}
 }
 
-// clientCredentials issues the access token of a service identity (RFC 6749 section 4.4) for one resource. There is no
-// user, no sign-in and no grant: what a service may do is what the operator allowed it of the resource, read afresh at
-// every request, and the token carries those rights, or the narrower ones the request names. No refresh token and no ID
-// token are issued: a service asks again, with its secret.
 func (u Deps) clientCredentials(ctx context.Context, st port.Stores, now time.Time, client *doidc.Client, cmd TokenCommand) (result TokenResult, err error) {
 	if !client.Service() {
 		return TokenResult{Failure: fail(ErrUnauthorizedClient, "This client may not use this grant type.")}, nil
@@ -607,7 +614,7 @@ func (u Deps) clientCredentials(ctx context.Context, st port.Stores, now time.Ti
 	if cmd.Resource == "" {
 		return TokenResult{Failure: fail(ErrInvalidTarget, "A resource is required.")}, nil
 	}
-	// The resource first, shared, as for every issuer: a change of its rights is final once it has committed.
+
 	target, f, err := u.lockTarget(ctx, st, cmd.Resource)
 	if err != nil {
 		return TokenResult{}, err

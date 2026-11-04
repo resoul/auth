@@ -67,8 +67,6 @@ type ClaimOIDCLogoutRow struct {
 	ClientStatus   string
 }
 
-// Claim leases one due notice and counts the attempt. SKIP LOCKED passes over a notice another worker is claiming; an
-// expired lease makes a notice claimable again. The client's endpoint is read now, not when the notice was queued.
 func (q *Queries) ClaimOIDCLogout(ctx context.Context, arg ClaimOIDCLogoutParams) (ClaimOIDCLogoutRow, error) {
 	row := q.db.QueryRow(ctx, claimOIDCLogout, arg.LeaseUntil, arg.Now)
 	var i ClaimOIDCLogoutRow
@@ -472,7 +470,6 @@ const getOIDCCodeGrantID = `-- name: GetOIDCCodeGrantID :one
 SELECT grant_id FROM oidc_authorization_codes WHERE code_hash = $1
 `
 
-// The grant of a code, read without a lock: the user and the grant are locked first, then the code.
 func (q *Queries) GetOIDCCodeGrantID(ctx context.Context, codeHash []byte) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, getOIDCCodeGrantID, codeHash)
 	var grant_id uuid.UUID
@@ -576,8 +573,6 @@ const getOIDCOPSessionUserID = `-- name: GetOIDCOPSessionUserID :one
 SELECT user_id FROM oidc_op_sessions WHERE id = $1
 `
 
-// Ending one sign-in. The user is locked first, from the id, so an issuer that holds the user (shared) finishes before the
-// grants are listed.
 func (q *Queries) GetOIDCOPSessionUserID(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, getOIDCOPSessionUserID, id)
 	var user_id uuid.UUID
@@ -586,7 +581,7 @@ func (q *Queries) GetOIDCOPSessionUserID(ctx context.Context, id uuid.UUID) (uui
 }
 
 const getOIDCRefreshForUpdate = `-- name: GetOIDCRefreshForUpdate :one
-SELECT id, grant_id, token_hash, parent_id, created_at, expires_at, used_at, revoked_at
+SELECT id, grant_id, token_hash, parent_id, created_at, expires_at, used_at, revoked_at, superseded_at
 FROM oidc_refresh_tokens WHERE token_hash = $1 FOR UPDATE
 `
 
@@ -602,6 +597,7 @@ func (q *Queries) GetOIDCRefreshForUpdate(ctx context.Context, tokenHash []byte)
 		&i.ExpiresAt,
 		&i.UsedAt,
 		&i.RevokedAt,
+		&i.SupersededAt,
 	)
 	return i, err
 }
@@ -615,6 +611,28 @@ func (q *Queries) GetOIDCRefreshGrantID(ctx context.Context, tokenHash []byte) (
 	var grant_id uuid.UUID
 	err := row.Scan(&grant_id)
 	return grant_id, err
+}
+
+const getOIDCRefreshSuccessor = `-- name: GetOIDCRefreshSuccessor :one
+SELECT id, grant_id, token_hash, parent_id, created_at, expires_at, used_at, revoked_at, superseded_at
+FROM oidc_refresh_tokens WHERE parent_id = $1 AND superseded_at IS NULL FOR UPDATE
+`
+
+func (q *Queries) GetOIDCRefreshSuccessor(ctx context.Context, parentID *uuid.UUID) (OidcRefreshToken, error) {
+	row := q.db.QueryRow(ctx, getOIDCRefreshSuccessor, parentID)
+	var i OidcRefreshToken
+	err := row.Scan(
+		&i.ID,
+		&i.GrantID,
+		&i.TokenHash,
+		&i.ParentID,
+		&i.CreatedAt,
+		&i.ExpiresAt,
+		&i.UsedAt,
+		&i.RevokedAt,
+		&i.SupersededAt,
+	)
+	return i, err
 }
 
 const getOIDCRequestForUpdate = `-- name: GetOIDCRequestForUpdate :one
@@ -774,8 +792,6 @@ type QueueOIDCLogoutOfUserParams struct {
 	UserID    uuid.UUID
 }
 
-// The notices of an ended sign-in: one per live grant whose client takes them. Queued before the grants are revoked, in the
-// transaction that revokes them.
 func (q *Queries) QueueOIDCLogoutOfUser(ctx context.Context, arg QueueOIDCLogoutOfUserParams) error {
 	_, err := q.db.Exec(ctx, queueOIDCLogoutOfUser, arg.Now, arg.ExpiresAt, arg.UserID)
 	return err
@@ -816,7 +832,6 @@ type RetireOIDCClientSecretsParams struct {
 	RevokedAt *time.Time
 }
 
-// A rotation: what ended an earlier overlap goes at once, what is live now ends at the new time.
 func (q *Queries) RetireOIDCClientSecrets(ctx context.Context, arg RetireOIDCClientSecretsParams) error {
 	_, err := q.db.Exec(ctx, retireOIDCClientSecrets, arg.ClientID, arg.RevokedAt)
 	return err
@@ -951,8 +966,6 @@ type RevokeOIDCOPSessionsOfUserExceptParams struct {
 	Keep      *uuid.UUID
 }
 
-// The sign-ins of a user except the one that grew from the device session keep (nil keeps none): what a deleted key or a
-// moved address cuts off. A sign-in with no device session is not the keeper's, so it goes.
 func (q *Queries) RevokeOIDCOPSessionsOfUserExcept(ctx context.Context, arg RevokeOIDCOPSessionsOfUserExceptParams) error {
 	_, err := q.db.Exec(ctx, revokeOIDCOPSessionsOfUserExcept, arg.RevokedAt, arg.UserID, arg.Keep)
 	return err
@@ -1059,6 +1072,23 @@ type SetOIDCClientStatusParams struct {
 
 func (q *Queries) SetOIDCClientStatus(ctx context.Context, arg SetOIDCClientStatusParams) (int64, error) {
 	result, err := q.db.Exec(ctx, setOIDCClientStatus, arg.ID, arg.Status, arg.UpdatedAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const supersedeOIDCRefresh = `-- name: SupersedeOIDCRefresh :execrows
+UPDATE oidc_refresh_tokens SET superseded_at = $2 WHERE id = $1 AND superseded_at IS NULL
+`
+
+type SupersedeOIDCRefreshParams struct {
+	ID           uuid.UUID
+	SupersededAt *time.Time
+}
+
+func (q *Queries) SupersedeOIDCRefresh(ctx context.Context, arg SupersedeOIDCRefreshParams) (int64, error) {
+	result, err := q.db.Exec(ctx, supersedeOIDCRefresh, arg.ID, arg.SupersededAt)
 	if err != nil {
 		return 0, err
 	}

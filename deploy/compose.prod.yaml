@@ -8,6 +8,7 @@
 #   caddy        Caddy on ports 80 and 443 with an automatic certificate for AIRLANCE_AUTH_DOMAIN
 #   tunnel       a Cloudflare Tunnel connector; nothing is published on this host
 #   monitoring   Prometheus with the alert rules, on 127.0.0.1:9091
+#   mailpit      test only: catches the mail on 127.0.0.1:8025, with AIRLANCE_AUTH_SMTP_ADDR=mailpit:1025 and SMTP_TLS=none
 # Or use none of them and point your own proxy (nginx, Traefik, a load balancer) at airlance-auth:8080 from a
 # container on the "internal" network, or add a `ports:` entry to the service. Whatever it is, it must be inside
 # AIRLANCE_AUTH_SUBNET, which is what the service trusts for X-Forwarded-For. Kubernetes: deploy/kubernetes/.
@@ -132,6 +133,14 @@ services:
     # The public hostname of the tunnel points at http://airlance-auth:8080.
     depends_on:
       airlance-auth: {condition: service_healthy}
+    networks: [internal]
+
+  mailpit:
+    profiles: [mailpit]
+    image: axllent/mailpit:v1.31.3
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8025:8025"
     networks: [internal]
 
   prometheus:

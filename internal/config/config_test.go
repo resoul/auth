@@ -844,3 +844,20 @@ func TestPublicProxyNetworksAreTheOnesBeyondPrivateAddresses(t *testing.T) {
 		t.Errorf("no proxies = %v", got)
 	}
 }
+
+func TestAppleAppIDsNeedATeamAndABundle(t *testing.T) {
+	cfg, err := config.Load(lookupFrom(map[string]string{config.EnvAppleAppIDs: "ABCDE12345.com.example.app, ZYXWV98765.org.example"}))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	if len(cfg.HTTP.AppleAppIDs) != 2 || cfg.HTTP.AppleAppIDs[1] != "ZYXWV98765.org.example" {
+		t.Errorf("got %v", cfg.HTTP.AppleAppIDs)
+	}
+
+	for _, bad := range []string{"com.example.app", "abcde12345.com.example.app", "ABCDE12345.", "ABCDE12345.com.example.app,"} {
+		if _, err := config.Load(lookupFrom(map[string]string{config.EnvAppleAppIDs: bad})); err == nil {
+			t.Errorf("Load accepted %q", bad)
+		}
+	}
+}
