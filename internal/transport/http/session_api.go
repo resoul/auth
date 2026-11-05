@@ -105,8 +105,7 @@ func (a *API) listSessions(ctx context.Context) (body openapi.SessionList, ok bo
 
 type signOutResult struct {
 	invalid, unauthenticated bool
-	// forget says the binding cookie should go too; revoked says the refresh cookie should.
-	forget bool
+	forget                   bool
 }
 
 func (a *API) signOut(ctx context.Context, body *openapi.SignOutRequest) (signOutResult, error) {

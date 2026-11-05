@@ -619,7 +619,7 @@ airlance-auth oidc client create airlance-ios --name Airlance --native --redirec
 It opens `/oauth2/authorize` in the system's web authentication sheet (`ASWebAuthenticationSession` on iOS), with PKCE,
 `state` and `nonce` as every client. The redirect URI uses the app's own scheme and is matched exactly. The app then calls
 `/oauth2/token` and `/oauth2/revoke` with `client_id` in the form body and no HTTP Basic header. A native client that
-presents a secret is refused, and so is any other client that presents none. PKCE is what ties the code to the app.
+presents a secret is refused, and so is any other client that presents none. PKCE is what ties the code to the app. Discovery lists both `client_secret_basic` and `none` for that reason.
 
 A mobile network can lose the answer to a refresh. For 30 seconds after its first exchange (`RefreshRetryWindow`) a native
 client may present the same refresh token again, as long as nobody has used its successor. The unused successor is

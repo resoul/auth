@@ -2,49 +2,74 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sign in</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Airlance</title>
 <link rel="stylesheet" href="/oauth2/login/app.css">
 </head>
-<body>
+<body class="login">
 <main>
-  <h1>Sign in</h1>
+  <p class="wordmark" aria-hidden="true">AIRLANCE</p>
 
   <section id="choose">
-    <button id="passkey" type="button">Sign in with a passkey</button>
-    <p class="or">or with your email</p>
+    <h1 data-t="entryTitle"></h1>
+    <p class="lead" data-t="entryLead"></p>
     <form id="emailForm">
-      <label for="email">Email</label>
-      <input id="email" type="email" autocomplete="username webauthn" required>
-      <button type="submit">Send me a code</button>
+      <label for="email" class="sr" data-t="email"></label>
+      <input id="email" type="email" autocomplete="username webauthn" autocapitalize="none" spellcheck="false" data-p="email" required>
+      <button type="submit" data-t="sendCode"></button>
     </form>
+    <button id="passkey" class="plain" type="button" data-t="signInPasskey"></button>
   </section>
 
   <section id="codeStep" hidden>
-    <p>We sent a code to your email.</p>
+    <h1 data-t="codeTitle"></h1>
+    <p class="lead" id="codeLead"></p>
     <form id="codeForm">
-      <label for="code">Code</label>
-      <input id="code" inputmode="numeric" autocomplete="one-time-code" required>
-      <button type="submit">Continue</button>
+      <label for="code" class="sr" data-t="codeTitle"></label>
+      <input id="code" class="code" inputmode="numeric" autocomplete="one-time-code" maxlength="9" placeholder="0000 0000" required>
+      <button type="submit" data-t="continue"></button>
     </form>
+    <button id="resend" class="plain" type="button"></button>
+    <button id="changeEmail" class="plain" type="button" data-t="changeEmail"></button>
   </section>
 
-  <section id="nextStep" hidden>
-    <p id="nextText"></p>
-    <button id="createPasskey" type="button" hidden>Create a passkey</button>
-    <button id="usePasskey" type="button" hidden>Use my passkey</button>
-    <form id="recoveryForm" hidden>
-      <label for="recovery">Lost your passkey? A recovery code</label>
-      <input id="recovery" autocomplete="off">
-      <button type="submit">Use the recovery code</button>
+  <section id="createStep" hidden>
+    <h1 data-t="createTitle"></h1>
+    <p class="lead" data-t="createLead"></p>
+    <button id="createPasskey" type="button" data-t="createAction"></button>
+  </section>
+
+  <section id="useStep" hidden>
+    <h1 data-t="useTitle"></h1>
+    <p class="lead" data-t="useLead"></p>
+    <button id="usePasskey" type="button" data-t="useAction"></button>
+    <button id="lostPasskey" class="plain" type="button" data-t="useLost"></button>
+  </section>
+
+  <section id="recoveryStep" hidden>
+    <h1 data-t="recoveryTitle"></h1>
+    <p class="lead" data-t="recoveryLead"></p>
+    <form id="recoveryForm">
+      <label for="recovery" class="sr" data-t="recoveryField"></label>
+      <input id="recovery" autocomplete="off" autocapitalize="characters" spellcheck="false" data-p="recoveryField" required>
+      <button type="submit" data-t="continue"></button>
     </form>
+    <button id="recoveryBack" class="plain" type="button" data-t="back"></button>
+  </section>
+
+  <section id="replaceStep" hidden>
+    <h1 data-t="replaceTitle"></h1>
+    <p class="lead" data-t="replaceLead"></p>
+    <button id="replacePasskey" type="button" data-t="createAction"></button>
   </section>
 
   <section id="codesStep" hidden>
-    <h2>Save your recovery codes</h2>
-    <p>Each works once if you lose your passkey. They are shown only now. Using one replaces every passkey you have.</p>
+    <h1 data-t="codesTitle"></h1>
+    <p class="lead" data-t="codesLead"></p>
     <pre id="codeList"></pre>
-    <button id="codesSaved" type="button">I saved them</button>
+    <button id="codesSaved" type="button" data-t="codesSaved"></button>
+    <button id="codesCopy" class="plain" type="button" data-t="codesCopy"></button>
   </section>
 
   <p id="message" role="status"></p>

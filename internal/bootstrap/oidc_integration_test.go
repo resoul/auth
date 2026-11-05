@@ -492,12 +492,18 @@ func TestTheProviderPublishesWhatItImplements(t *testing.T) {
 
 	for key, want := range map[string]any{
 		"response_types_supported": "code", "code_challenge_methods_supported": "S256", "id_token_signing_alg_values_supported": "RS256",
-		"token_endpoint_auth_methods_supported": "client_secret_basic", "revocation_endpoint_auth_methods_supported": "client_secret_basic",
 		"introspection_endpoint_auth_methods_supported": "client_secret_basic",
 	} {
 		list, _ := doc[key].([]any)
 		if len(list) != 1 || list[0] != want {
 			t.Errorf("%s = %v, want exactly [%v]", key, doc[key], want)
+		}
+	}
+
+	for _, key := range []string{"token_endpoint_auth_methods_supported", "revocation_endpoint_auth_methods_supported"} {
+		list, _ := doc[key].([]any)
+		if len(list) != 2 || list[0] != "client_secret_basic" || list[1] != "none" {
+			t.Errorf("%s = %v, want a secret for applications and none for native clients", key, doc[key])
 		}
 	}
 

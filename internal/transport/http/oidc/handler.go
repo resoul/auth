@@ -1,6 +1,3 @@
-// Package oidc is the HTTP face of the OpenID Provider: the discovery document, the key set, the authorize,
-// token and UserInfo endpoints and the sign-in page. Their formats are those of OAuth 2.0 and OpenID Connect, not
-// the JSON contract of the /v1 API, so they are plain net/http handlers and not generated ones.
 package oidc
 
 import (
@@ -16,9 +13,6 @@ import (
 	doidc "go.airlance.org/auth/internal/domain/oidc"
 )
 
-// Cookies of the provider. Both are host-only (no Domain), HttpOnly, Secure and Path=/, as the __Host- prefix makes the
-// browser insist. The SSO cookie is Lax: the browser must send it on the top-level navigation from a client to
-// /oauth2/authorize.
 const (
 	ssoCookie     = "__Host-airlance_sso"
 	requestCookie = "__Host-airlance_oidc_req"
@@ -27,41 +21,31 @@ const (
 //go:embed web/*
 var web embed.FS
 
-// Deps are what the handlers need.
 type Deps struct {
-	Issuer    string
-	Policy    doidc.Policy
-	Authorize *appoidc.Authorize
-	Login     *appoidc.CompleteLogin
-	Token     *appoidc.Token
-	UserInfo  *appoidc.UserInfo
-	Logout    *appoidc.Logout
-	Revoke    *appoidc.Revoke
-	// Introspect answers the APIs that ask whether an access token is live; nil leaves the endpoint out.
-	Introspect *appoidc.Introspect
-	// JWKS publishes the public RS256 keys.
-	JWKS     port.JWKSPublisher
-	Logger   *slog.Logger
-	Requests port.RequestMetrics
-	Clock    port.Clock
-	// ClientRequests caps the token, introspection and revocation requests served at once; 0 lifts the cap. These
-	// endpoints answer anyone before a client is authenticated and each request holds a database connection, so a
-	// flood of them must leave connections to the sign-ins.
+	Issuer         string
+	Policy         doidc.Policy
+	Authorize      *appoidc.Authorize
+	Login          *appoidc.CompleteLogin
+	Token          *appoidc.Token
+	UserInfo       *appoidc.UserInfo
+	Logout         *appoidc.Logout
+	Revoke         *appoidc.Revoke
+	Introspect     *appoidc.Introspect
+	JWKS           port.JWKSPublisher
+	Logger         *slog.Logger
+	Requests       port.RequestMetrics
+	Clock          port.Clock
 	ClientRequests int
 }
 
-// Handler serves the provider's routes.
 type Handler struct {
 	d         Deps
 	jwks      []byte
 	discovery []byte
-	// slots holds one token per client request being served; nil when ClientRequests is 0.
-	slots chan struct{}
-	// slotWait is how long a client request waits for a slot before it is refused.
-	slotWait time.Duration
+	slots     chan struct{}
+	slotWait  time.Duration
 }
 
-// New checks the dependencies and builds the documents that never change while the process runs.
 func New(d Deps) (*Handler, error) {
 	if d.Issuer == "" || d.Authorize == nil || d.Login == nil || d.Token == nil || d.UserInfo == nil || d.Logout == nil || d.Revoke == nil || d.JWKS == nil || d.Logger == nil || d.Clock == nil {
 		return nil, errors.New("new oidc handler: all dependencies are required")
@@ -94,14 +78,10 @@ type discardRequests struct{}
 func (discardRequests) RequestServed(string, int, time.Duration) {}
 func (discardRequests) AuthDenied(string, string)                {}
 
-// BypassCrossOrigin lists the routes the cross-origin protection of the API must let through: the authorize endpoint
-// is called by a client's page with a form post, from another origin by design, and it only starts a request that a
-// browser signs in to complete.
 func BypassCrossOrigin() []string {
 	return []string{"POST /oauth2/authorize"}
 }
 
-// Routes registers every route of the provider on mux, each with its own pattern so that metrics and logs name them.
 func (h *Handler) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /.well-known/openid-configuration", h.serveDiscovery)
 	mux.HandleFunc("GET /oauth2/jwks", h.serveJWKS)
@@ -124,7 +104,6 @@ func (h *Handler) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /oauth2/login/complete", h.completeLogin)
 }
 
-// discoveryDocument lists exactly what is implemented: a client that trusts it must not find a missing endpoint.
 func discoveryDocument(issuer string, introspection bool) map[string]any {
 	doc := map[string]any{
 		"issuer":                                         issuer,
@@ -140,8 +119,8 @@ func discoveryDocument(issuer string, introspection bool) map[string]any {
 		"subject_types_supported":                        []string{"public"},
 		"scopes_supported":                               doidc.SupportedScopes(),
 		"id_token_signing_alg_values_supported":          []string{"RS256"},
-		"token_endpoint_auth_methods_supported":          []string{"client_secret_basic"},
-		"revocation_endpoint_auth_methods_supported":     []string{"client_secret_basic"},
+		"token_endpoint_auth_methods_supported":          []string{"client_secret_basic", "none"},
+		"revocation_endpoint_auth_methods_supported":     []string{"client_secret_basic", "none"},
 		"backchannel_logout_supported":                   true,
 		"backchannel_logout_session_supported":           true,
 		"code_challenge_methods_supported":               []string{"S256"},
@@ -171,13 +150,11 @@ func (h *Handler) serveJWKS(w http.ResponseWriter, _ *http.Request) {
 	_, _ = w.Write(h.jwks)
 }
 
-// noStore forbids caching of a response that carries or leads to a credential.
 func noStore(w http.ResponseWriter) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Pragma", "no-cache")
 }
 
-// oauthError writes a token-endpoint style error body (RFC 6749 section 5.2).
 func oauthError(w http.ResponseWriter, status int, f *appoidc.Failure) {
 	noStore(w)
 	w.Header().Set("Content-Type", "application/json")
@@ -195,9 +172,6 @@ func (h *Handler) denied(r *http.Request, operation, reason string) {
 	h.d.Logger.DebugContext(r.Context(), "request denied", "operation", operation, "reason", reason)
 }
 
-// limited serves next only while one of the client request slots is free. A request that finds none within slotWait
-// is refused with 503 and Retry-After, before it reaches the database: it is cheaper to turn a flood away here than
-// to queue it for connections the sign-ins need.
 func (h *Handler) limited(next http.HandlerFunc) http.HandlerFunc {
 	if h.slots == nil {
 		return next
@@ -221,11 +195,10 @@ func (h *Handler) limited(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// asset serves one embedded file of the sign-in page.
 func (h *Handler) asset(name, contentType string) http.HandlerFunc {
 	data, err := web.ReadFile(name)
 	if err != nil {
-		panic(err) // the file is part of the embed pattern
+		panic(err)
 	}
 
 	return func(w http.ResponseWriter, _ *http.Request) {
