@@ -10,10 +10,6 @@ import (
 	"go.airlance.org/auth/internal/transport/http/openapi"
 )
 
-// The routes of a signed-in user's passkeys. Each one authenticates first and answers
-// unauthenticated for every kind of credential failure alike; a missing or wrong step-up
-// token is its own answer, step_up_required, so a client knows to run the ceremony.
-
 func stepUpRequired(ctx context.Context) openapi.Error {
 	return problem(ctx, openapi.ErrorCodeStepUpRequired)
 }
@@ -26,7 +22,6 @@ func rateLimited(ctx context.Context) openapi.RateLimitedJSONResponse {
 	return openapi.RateLimitedJSONResponse(problem(ctx, openapi.ErrorCodeRateLimited))
 }
 
-// stepUpToken reads the X-Step-Up header: one header with one token or nothing.
 func stepUpToken(values *string) string {
 	if values == nil {
 		return ""
@@ -52,7 +47,6 @@ func apiPasskey(c passkey.CredentialSummary) openapi.Passkey {
 	return out
 }
 
-// stepUpOptions begins the proof. ok is false when the caller is not authenticated.
 func (a *API) stepUpOptions(ctx context.Context, operation string) (res passkey.CeremonyResult, unauth bool, err error) {
 	actor, ok, err := a.authenticate(ctx)
 	if err != nil || !ok {
@@ -169,7 +163,6 @@ func (a *API) regenerateCodes(ctx context.Context, token *string) (res passkey.R
 	return res, false, err
 }
 
-// NativeBeginStepUp starts the fresh proof for one operation.
 func (a *API) NativeBeginStepUp(ctx context.Context, req openapi.NativeBeginStepUpRequestObject) (openapi.NativeBeginStepUpResponseObject, error) {
 	res, unauth, err := a.stepUpOptions(ctx, string(req.Body.Operation))
 	switch {
@@ -188,7 +181,6 @@ func (a *API) NativeBeginStepUp(ctx context.Context, req openapi.NativeBeginStep
 	return openapi.NativeBeginStepUp200JSONResponse(ceremony(res)), nil
 }
 
-// NativeFinishStepUp verifies the proof and hands out the step-up token.
 func (a *API) NativeFinishStepUp(ctx context.Context, req openapi.NativeFinishStepUpRequestObject) (openapi.NativeFinishStepUpResponseObject, error) {
 	res, unauth, err := a.stepUpVerify(ctx, req.Body.ChallengeId, req.Body.Credential)
 	switch {
@@ -204,7 +196,6 @@ func (a *API) NativeFinishStepUp(ctx context.Context, req openapi.NativeFinishSt
 	return openapi.NativeFinishStepUp200JSONResponse(stepUpResponse(res)), nil
 }
 
-// NativeListPasskeys lists the passkeys of the signed-in user.
 func (a *API) NativeListPasskeys(ctx context.Context, _ openapi.NativeListPasskeysRequestObject) (openapi.NativeListPasskeysResponseObject, error) {
 	body, unauth, err := a.listPasskeys(ctx)
 	switch {
@@ -217,7 +208,6 @@ func (a *API) NativeListPasskeys(ctx context.Context, _ openapi.NativeListPasske
 	return openapi.NativeListPasskeys200JSONResponse(body), nil
 }
 
-// NativeRenamePasskey changes the label of a passkey.
 func (a *API) NativeRenamePasskey(ctx context.Context, req openapi.NativeRenamePasskeyRequestObject) (openapi.NativeRenamePasskeyResponseObject, error) {
 	res, unauth, invalid, err := a.renamePasskey(ctx, req.Id, req.Body.Name)
 	switch {
@@ -235,7 +225,6 @@ func (a *API) NativeRenamePasskey(ctx context.Context, req openapi.NativeRenameP
 	return openapi.NativeRenamePasskey200JSONResponse(apiPasskey(res.Credential)), nil
 }
 
-// NativeBeginAddPasskey starts adding a passkey; it needs the step-up token.
 func (a *API) NativeBeginAddPasskey(ctx context.Context, req openapi.NativeBeginAddPasskeyRequestObject) (openapi.NativeBeginAddPasskeyResponseObject, error) {
 	res, unauth, err := a.beginAddPasskey(ctx, req.Params.XStepUp)
 	switch {
@@ -260,7 +249,6 @@ func (a *API) NativeBeginAddPasskey(ctx context.Context, req openapi.NativeBegin
 	return openapi.NativeBeginAddPasskey200JSONResponse(ceremony(res)), nil
 }
 
-// NativeFinishAddPasskey stores the new passkey; it needs the step-up token.
 func (a *API) NativeFinishAddPasskey(ctx context.Context, req openapi.NativeFinishAddPasskeyRequestObject) (openapi.NativeFinishAddPasskeyResponseObject, error) {
 	res, unauth, invalid, err := a.finishAddPasskey(ctx, req.Params.XStepUp, *req.Body)
 	switch {
@@ -284,7 +272,6 @@ func (a *API) NativeFinishAddPasskey(ctx context.Context, req openapi.NativeFini
 	return openapi.NativeFinishAddPasskey201JSONResponse(apiPasskey(res.Credential)), nil
 }
 
-// NativeDeletePasskey removes a passkey; it needs the step-up token and never removes the last one.
 func (a *API) NativeDeletePasskey(ctx context.Context, req openapi.NativeDeletePasskeyRequestObject) (openapi.NativeDeletePasskeyResponseObject, error) {
 	res, unauth, err := a.deletePasskey(ctx, req.Id, req.Params.XStepUp)
 	switch {
@@ -309,7 +296,6 @@ func (a *API) NativeDeletePasskey(ctx context.Context, req openapi.NativeDeleteP
 	return openapi.NativeDeletePasskey204Response{}, nil
 }
 
-// NativeRegenerateRecoveryCodes replaces the recovery codes; it needs the step-up token.
 func (a *API) NativeRegenerateRecoveryCodes(ctx context.Context, req openapi.NativeRegenerateRecoveryCodesRequestObject) (openapi.NativeRegenerateRecoveryCodesResponseObject, error) {
 	res, unauth, err := a.regenerateCodes(ctx, req.Params.XStepUp)
 	switch {
@@ -328,7 +314,6 @@ func (a *API) NativeRegenerateRecoveryCodes(ctx context.Context, req openapi.Nat
 	return openapi.NativeRegenerateRecoveryCodes200JSONResponse(openapi.RecoveryCodesResponse{RecoveryCodes: res.Codes}), nil
 }
 
-// BrowserBeginStepUp starts the fresh proof for one operation.
 func (a *API) BrowserBeginStepUp(ctx context.Context, req openapi.BrowserBeginStepUpRequestObject) (openapi.BrowserBeginStepUpResponseObject, error) {
 	res, unauth, err := a.stepUpOptions(ctx, string(req.Body.Operation))
 	switch {
@@ -347,7 +332,6 @@ func (a *API) BrowserBeginStepUp(ctx context.Context, req openapi.BrowserBeginSt
 	return openapi.BrowserBeginStepUp200JSONResponse(ceremony(res)), nil
 }
 
-// BrowserFinishStepUp verifies the proof and hands out the step-up token.
 func (a *API) BrowserFinishStepUp(ctx context.Context, req openapi.BrowserFinishStepUpRequestObject) (openapi.BrowserFinishStepUpResponseObject, error) {
 	res, unauth, err := a.stepUpVerify(ctx, req.Body.ChallengeId, req.Body.Credential)
 	switch {
@@ -363,7 +347,6 @@ func (a *API) BrowserFinishStepUp(ctx context.Context, req openapi.BrowserFinish
 	return openapi.BrowserFinishStepUp200JSONResponse(stepUpResponse(res)), nil
 }
 
-// BrowserListPasskeys lists the passkeys of the signed-in user.
 func (a *API) BrowserListPasskeys(ctx context.Context, _ openapi.BrowserListPasskeysRequestObject) (openapi.BrowserListPasskeysResponseObject, error) {
 	body, unauth, err := a.listPasskeys(ctx)
 	switch {
@@ -376,7 +359,6 @@ func (a *API) BrowserListPasskeys(ctx context.Context, _ openapi.BrowserListPass
 	return openapi.BrowserListPasskeys200JSONResponse(body), nil
 }
 
-// BrowserRenamePasskey changes the label of a passkey.
 func (a *API) BrowserRenamePasskey(ctx context.Context, req openapi.BrowserRenamePasskeyRequestObject) (openapi.BrowserRenamePasskeyResponseObject, error) {
 	res, unauth, invalid, err := a.renamePasskey(ctx, req.Id, req.Body.Name)
 	switch {
@@ -394,7 +376,6 @@ func (a *API) BrowserRenamePasskey(ctx context.Context, req openapi.BrowserRenam
 	return openapi.BrowserRenamePasskey200JSONResponse(apiPasskey(res.Credential)), nil
 }
 
-// BrowserBeginAddPasskey starts adding a passkey; it needs the step-up token.
 func (a *API) BrowserBeginAddPasskey(ctx context.Context, req openapi.BrowserBeginAddPasskeyRequestObject) (openapi.BrowserBeginAddPasskeyResponseObject, error) {
 	res, unauth, err := a.beginAddPasskey(ctx, req.Params.XStepUp)
 	switch {
@@ -419,7 +400,6 @@ func (a *API) BrowserBeginAddPasskey(ctx context.Context, req openapi.BrowserBeg
 	return openapi.BrowserBeginAddPasskey200JSONResponse(ceremony(res)), nil
 }
 
-// BrowserFinishAddPasskey stores the new passkey; it needs the step-up token.
 func (a *API) BrowserFinishAddPasskey(ctx context.Context, req openapi.BrowserFinishAddPasskeyRequestObject) (openapi.BrowserFinishAddPasskeyResponseObject, error) {
 	res, unauth, invalid, err := a.finishAddPasskey(ctx, req.Params.XStepUp, *req.Body)
 	switch {
@@ -443,7 +423,6 @@ func (a *API) BrowserFinishAddPasskey(ctx context.Context, req openapi.BrowserFi
 	return openapi.BrowserFinishAddPasskey201JSONResponse(apiPasskey(res.Credential)), nil
 }
 
-// BrowserDeletePasskey removes a passkey; it needs the step-up token and never removes the last one.
 func (a *API) BrowserDeletePasskey(ctx context.Context, req openapi.BrowserDeletePasskeyRequestObject) (openapi.BrowserDeletePasskeyResponseObject, error) {
 	res, unauth, err := a.deletePasskey(ctx, req.Id, req.Params.XStepUp)
 	switch {
@@ -468,7 +447,6 @@ func (a *API) BrowserDeletePasskey(ctx context.Context, req openapi.BrowserDelet
 	return openapi.BrowserDeletePasskey204Response{}, nil
 }
 
-// BrowserRegenerateRecoveryCodes replaces the recovery codes; it needs the step-up token.
 func (a *API) BrowserRegenerateRecoveryCodes(ctx context.Context, req openapi.BrowserRegenerateRecoveryCodesRequestObject) (openapi.BrowserRegenerateRecoveryCodesResponseObject, error) {
 	res, unauth, err := a.regenerateCodes(ctx, req.Params.XStepUp)
 	switch {
